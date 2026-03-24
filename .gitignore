@@ -1,0 +1,42 @@
+# ── KiCad ────────────────────────────────────────────────────────────────────
+# Auto-save / backup files
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*.kicad_pro-bak
+*-bak/
+# KiCad auto-generated outputs
+fp-info-cache
+*.net
+*.xml
+
+# KiCad project-specific generated files
+*-backups/
+
+# ── PlatformIO ────────────────────────────────────────────────────────────────
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ── VS Code ───────────────────────────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ── Windows ───────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ── macOS (if ever opened on Mac) ─────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Temporary / editor files ──────────────────────────────────────────────────
+*.swp
+*.swo
+*~
+*.tmp
