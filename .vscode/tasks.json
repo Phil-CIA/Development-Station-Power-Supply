@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "WorkStation: Upload (esp32dev)",
+			"detail": "WorkStation project upload on COM4",
+			"type": "shell",
+			"command": "C:/Users/user/.platformio/penv/Scripts/platformio.exe",
+			"args": [
+				"run",
+				"-e",
+				"esp32dev",
+				"-t",
+				"upload"
+			],
+			"group": "build"
+		},
+		{
+			"label": "WorkStation: Build (esp32dev)",
+			"detail": "WorkStation project build only",
+			"type": "shell",
+			"command": "C:/Users/user/.platformio/penv/Scripts/platformio.exe",
+			"args": [
+				"run",
+				"-e",
+				"esp32dev"
+			],
+			"group": "build"
+		}
+	]
+}

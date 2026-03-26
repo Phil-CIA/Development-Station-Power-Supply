@@ -1,0 +1,83 @@
+# WorkStation Breakpoint Handoff (I2C Focus)
+
+Date: 2026-03-04
+Project: WorkStation (ESP32 + PlatformIO)
+Primary focus at breakpoint: I2C bus bring-up and INA3221 detection
+
+## Current Status
+- Display path is now **working in write-only SPI mode**.
+- TFT no longer blocks boot; board reaches stable runtime heartbeat.
+- TFT can be cleared/updated via raw write path (`TFTWAKE`, `TFTCLEAR`, write-only dashboard).
+- I2C is now communicating and INA3221 bring-up is no longer blocked.
+
+## Confirmed Root Cause
+- I2C lines were swapped between firmware expectation and hardware wiring.
+- Working mapping is now:
+  - `SDA = GPIO22`
+  - `SCL = GPIO21`
+- This matches the schematic review (attached image) indicating SDA/SCL net crossover at the INA3221 interface.
+
+## Known-Good So Far
+- Upload to `COM4` is working with manual-reset-friendly settings.
+- Runtime heartbeat is stable (loop output continues).
+- TFT reset sequencing fixed (control lines idled before reset).
+- `display.init()` path is avoided by default (write-only TFT init used).
+
+## Previous I2C Symptoms (for history)
+- Typical diagnostics had reported:
+  - `I2C Count : 0`
+  - `INA3221 : FAIL`
+  - `I2C line idle: SDA=1 SCL=1`
+- Root cause was confirmed as SDA/SCL mapping mismatch, not dead bus hardware.
+
+## Firmware Notes
+- INA bring-up probes the **detected address** (`0x40..0x43`) instead of assuming default only.
+- Temporary deep I2C debug paths were removed after bring-up success to keep runtime clean.
+
+## Recent I2C Firmware Additions
+In `src/main.cpp`:
+- Added bus recovery routine (clock pulses + STOP): `i2cBusRecover()`
+- Added startup behavior:
+  - regular scan
+  - if count=0, automatic recovery + rescan
+- Active commands retained:
+  - `I2CRECOVER`
+  - `I2CSCAN`
+  - `STATUS`
+
+## Minimal Verification Commands
+Use serial monitor (115200):
+1. `STATUS`
+2. `I2CSCAN`
+3. `I2CRECOVER` (only if scan/regression appears)
+
+## What We Learned
+- If bus waves look alive but no ACK/device found, pin-map mismatch is still possible even with valid pull-ups.
+- Swapping firmware pin mapping resolved communication in this case.
+
+## Minimal Next Checks (keep)
+1. Firmware: keep I2C at `100000` for now.
+2. Hardware: keep pull-ups (4.7k) and address strap review in schematic notes.
+3. Validation: spot-check `STATUS` after each major firmware update.
+
+## Outcome
+- Issue class: **pin mapping mismatch (SDA/SCL swapped)**.
+- Resolution: updated `env:esp32dev` build flags to `-DI2C_SDA_GPIO=22` and `-DI2C_SCL_GPIO=21`.
+
+## Current Config Notes
+`platformio.ini` (`env:esp32dev`):
+- I2C pins: SDA=22, SCL=21 (via build flags)
+- TFT write-only reset config active:
+  - `-DTFT_RST=-1`
+  - `-DTFT_HW_RST=17`
+  - `-DTFT_RST_ACTIVE_LOW=1`
+- Upload settings for stability:
+  - `upload_flags --before no_reset --after no_reset`
+  - `upload_speed = 115200`
+
+## File Touchpoints
+- `src/main.cpp` (display write-only path + I2C diagnostics)
+- `platformio.ini` (env settings)
+
+## Suggested Next Chat Prompt
+Continue WorkStation ESP32 from stable baseline. Display write-only path is stable and INA3221 I2C is communicating with swapped mapping (`SDA=22`, `SCL=21`). Keep changes minimal and preserve this mapping unless hardware is rewired.

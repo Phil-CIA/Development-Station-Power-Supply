@@ -1,0 +1,1 @@
+Continue WorkStation ESP32 bring-up from I2C breakpoint: display is stable in write-only SPI mode, focus only on INA3221 using I2CRECOVER → I2CSCAN → I2CDEEP → I2CFIND, then classify failure as wiring/pull-ups/pin map/address/speed and propose only minimal next firmware or hardware checks.

@@ -1,0 +1,9 @@
+[Schematic image and description moved here. Please refer to the original schematic for full details.]
+
+Summary:
+- 12V, 5V, and 3.3V rails with fuses, switches, and voltmeters
+- ESP32-DevKitM-1 as controller
+- INA3221 current/voltage monitor on I2C
+- Two SSD1306 OLED displays on I2C
+
+(For the actual schematic, use the original .kicad_sch file in the previous project.)

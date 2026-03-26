@@ -1,0 +1,19 @@
+# WorkStation Quick Handoff
+
+- Project: WorkStation (ESP32, PlatformIO, Arduino)
+- Port: COM4
+- Main blocker: boot hangs in TFT init
+- Last serial lines:
+  - [TFT] Auto-init enabled
+  - [TFT] Init start
+  - then no LED heartbeat and no further serial output
+- Current TFT pins: CS=4, DC=16, RST=17, SCLK=18, MISO=19, MOSI=23
+- I2C pins: SDA=21, SCL=22
+- INA3221 status: not detected on scan
+- Logic analyzer: CS/DC/RST toggle seen; minimal SCK/MOSI before hang; EN stays high
+- Goal: add guarded timeout-based TFT init so setup continues even if display.init() blocks
+- Keep existing serial diagnostics and heartbeat path intact
+- Files: src/main.cpp, platformio.ini
+
+## Paste Prompt
+Continue WorkStation ESP32 bring-up. Current firmware hangs inside display.init() right after [TFT] Init start. Modify src/main.cpp to run TFT init in a guarded timeout path so boot still reaches serial command loop and GPIO2 heartbeat even when TFT init blocks. Keep changes minimal and preserve existing diagnostics commands. Then build and report results.

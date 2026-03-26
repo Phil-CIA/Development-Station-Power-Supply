@@ -1,0 +1,70 @@
+# WorkStation ESP32 Bring-up Handoff
+
+Date: 2026-03-03
+Project: WorkStation (PlatformIO, ESP32 Arduino)
+
+## Current Objective
+Stabilize TFT bring-up for a 4" 480x320 SPI display while keeping firmware responsive (serial + heartbeat LED), then continue INA3221 and MCP4231 validation.
+
+## Hardware/Connection Context
+- MCU: ESP32 dev board
+- USB serial: COM4
+- TFT SPI control lines active in firmware
+- INA3221 on I2C (not currently discovered)
+- MCP4231 on SPI CS pin 5
+
+## Key Config/Pins in Firmware
+- TFT_CS = 4
+- TFT_DC = 16
+- TFT_RST = 17
+- SPI bus: SCLK=18, MISO=19, MOSI=23
+- I2C bus: SDA=21, SCL=22
+- Status LED: GPIO2
+
+## Current Boot Behavior (Most Important)
+Serial output reaches:
+- [SYS] Reset reason: POWERON (1)
+- [SPI] pin map
+- [SPI] Running raw SPI burst test (0xAA/0x55)
+- [SPI] Raw SPI burst complete
+- [TFT] Auto-init enabled
+- [TFT] Init start
+
+After `[TFT] Init start`, system hangs inside `display.init()`:
+- No further serial output
+- No LED heartbeat
+- Boot appears stalled
+
+## Logic Analyzer Findings
+- CS/DC/RST transitions are visible.
+- Very limited SCK/MOSI activity appears before hang.
+- EN line remains high in this failure mode (not the earlier CH340 EN-pull issue).
+
+## Resolved/Previously Addressed
+- Upload pipeline works for WorkStation.
+- Manual and task-based uploads have succeeded.
+- Earlier CH340 handshake reset behavior was identified and mitigated in monitor settings.
+- Multiple TFT driver variants were tested (ST7796/ILI9488/ILI9486 and pin-swap/no-reset variants).
+
+## Open Problems
+1. `TFT_eSPI display.init()` appears to block/hard-fault in current hardware/driver combination.
+2. INA3221 is still not found on I2C scan (0 devices found).
+
+## Next Implementation Step (Priority)
+Implement guarded TFT initialization so setup always survives:
+- Run TFT init in a bounded task/guarded path.
+- If init does not return within timeout, mark TFT failed and continue setup.
+- Keep serial command console and GPIO2 heartbeat alive regardless of TFT state.
+
+## Secondary Debug Steps
+- Add a minimal low-level TFT command probe (single known command with explicit CS/DC transitions).
+- Verify TFT backlight enable line and module power rail under init attempt.
+- Re-check RST polarity/timing for panel module.
+- Continue I2C hardware continuity checks for INA3221 separately from TFT issue.
+
+## Current Files of Interest
+- `src/main.cpp`
+- `platformio.ini`
+
+## Suggested Prompt for New Chat
+"Continue WorkStation ESP32 bring-up. Current firmware hangs inside `display.init()` right after `[TFT] Init start`. Please modify `src/main.cpp` to use a guarded/timeout TFT init path so boot continues with serial and LED heartbeat even if TFT init blocks. Preserve existing serial diagnostic commands and keep changes minimal. Then build for current env and report results."
