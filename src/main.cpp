@@ -3,13 +3,14 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
-#include <SDL_Arduino_INA3221.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include "power_telemetry_map.h"
 
 SDL_Arduino_INA3221 ina3221;
 TFT_eSPI display = TFT_eSPI();
+HatPowerTelemetry hatTelemetry(ina3221);
 
 constexpr uint8_t STATUS_LED_PIN = 2;
 constexpr uint8_t MCP4231_CS_PIN = 5;
@@ -99,6 +100,9 @@ constexpr const char* PROJECT_ENV = "esp32dev";
 float ch3VoltageScale = 1.00f;
 float ch3CurrentScale = 1.00f;
 uint8_t mcpWiperCached[2] = {128, 128};
+bool autoRangeEnabled = true;
+float autoRangeLowThresholdmA = 250.0f;
+float autoRangeHighThresholdmA = 900.0f;
 
 #if defined(TFT_WIDTH)
 constexpr uint16_t TFT_PANEL_WIDTH = TFT_WIDTH;
@@ -174,6 +178,81 @@ static float readInaCurrentScaled(int channel) {
     current *= ch3CurrentScale;
   }
   return current;
+}
+
+static RailMeasurement readRailMeasurement(HatRail rail) {
+  if (autoRangeEnabled) {
+    return hatTelemetry.readAutoCalibrated(rail);
+  }
+  return hatTelemetry.readCalibrated(rail, HatRange::High);
+}
+
+static bool parseRailToken(const String& token, HatRail& rail) {
+  if (token == "5V" || token == "RAIL5V") {
+    rail = HatRail::Rail5V;
+    return true;
+  }
+  if (token == "3V3" || token == "3.3" || token == "RAIL3V3") {
+    rail = HatRail::Rail3V3;
+    return true;
+  }
+  if (token == "ADJ" || token == "ADJUSTABLE" || token == "RAILADJ") {
+    rail = HatRail::RailAdj;
+    return true;
+  }
+  if (token == "IN12" || token == "INCOMING" || token == "12V") {
+    rail = HatRail::RailIncoming12V;
+    return true;
+  }
+  return false;
+}
+
+static bool parseRangeToken(const String& token, HatRange& range) {
+  if (token == "HIGH" || token == "HI") {
+    range = HatRange::High;
+    return true;
+  }
+  if (token == "LOW" || token == "LO") {
+    range = HatRange::Low;
+    return true;
+  }
+  if (token == "SINGLE" || token == "ONE") {
+    range = HatRange::Single;
+    return true;
+  }
+  return false;
+}
+
+static void printLogicalRailSnapshot() {
+  static const HatRail rails[] = {
+    HatRail::Rail5V,
+    HatRail::Rail3V3,
+    HatRail::RailAdj,
+    HatRail::RailIncoming12V
+  };
+
+  for (const HatRail rail : rails) {
+    const RailMeasurement active = readRailMeasurement(rail);
+    if (rail == HatRail::RailIncoming12V) {
+      Serial.printf("[RAIL] IN12V      ACTIVE=%s V=%.3f I=%.1f\n",
+                    HatPowerTelemetry::rangeName(active.usedRange),
+                    active.busVoltageV,
+                    active.currentmA);
+      continue;
+    }
+
+    const RailMeasurement lo = hatTelemetry.readCalibrated(rail, HatRange::Low);
+    const RailMeasurement hr = hatTelemetry.readCalibrated(rail, HatRange::High);
+    Serial.printf("[RAIL] %-10s ACTIVE=%s V=%.3f I=%.1f | HI V=%.3f I=%.1f | LO V=%.3f I=%.1f\n",
+                  hatTelemetry.mapping(rail).railName,
+                  HatPowerTelemetry::rangeName(active.usedRange),
+                  active.busVoltageV,
+                  active.currentmA,
+                  hr.busVoltageV,
+                  hr.currentmA,
+                  lo.busVoltageV,
+                  lo.currentmA);
+  }
 }
 
 static bool isI2cDevicePresent(uint8_t address) {
@@ -658,9 +737,11 @@ static void drawRuntimeDashboardWriteOnly(uint32_t nowMs) {
   constexpr int colIx = 206;
   constexpr int colPx = 346;
 
+  static const HatRail rails[3] = {HatRail::Rail5V, HatRail::Rail3V3, HatRail::RailAdj};
   for (int ch = 1; ch <= 3; ch++) {
-    const float voltage = bootStatus.inaOk ? readInaVoltageScaled(ch) : 0.0f;
-    const float current = bootStatus.inaOk ? readInaCurrentScaled(ch) : 0.0f;
+    const RailMeasurement m = bootStatus.inaOk ? readRailMeasurement(rails[ch - 1]) : RailMeasurement{0.0f, 0.0f, HatRange::High};
+    const float voltage = m.busVoltageV;
+    const float current = m.currentmA;
     const float powerMw = voltage * current;
     const int centiVolts = clamp999(static_cast<int>(lroundf(voltage * 100.0f)));
     const int centiAmps = clamp999(static_cast<int>(lroundf(fabsf(current) * 0.1f)));
@@ -1552,9 +1633,11 @@ static void drawRuntimeDashboard(uint32_t nowMs) {
   display.setTextColor(TFT_WHITE, TFT_BLACK);
   display.drawString("CH   V(V)      I(mA)      P(mW)", 8, 102, 2);
 
+  static const HatRail rails[3] = {HatRail::Rail5V, HatRail::Rail3V3, HatRail::RailAdj};
   for (int ch = 1; ch <= 3; ch++) {
-    const float voltage = bootStatus.inaOk ? readInaVoltageScaled(ch) : 0.0f;
-    const float current = bootStatus.inaOk ? readInaCurrentScaled(ch) : 0.0f;
+    const RailMeasurement m = bootStatus.inaOk ? readRailMeasurement(rails[ch - 1]) : RailMeasurement{0.0f, 0.0f, HatRange::High};
+    const float voltage = m.busVoltageV;
+    const float current = m.currentmA;
     const float power = voltage * current;
     const int rowY = 132 + ((ch - 1) * 56);
 
@@ -1635,8 +1718,107 @@ static void handleSerialCommands() {
     return;
   }
 
+  if (command == "HWMAP") {
+    hatTelemetry.printTopology(Serial);
+    return;
+  }
+
+  if (command == "RCALSHOW") {
+    hatTelemetry.printCalibration(Serial);
+    return;
+  }
+
+  if (command.startsWith("AUTORANGE ")) {
+    const String arg = command.substring(10);
+    if (arg == "ON" || arg == "1") {
+      autoRangeEnabled = true;
+      Serial.println("[RANGE] Auto-range enabled");
+      return;
+    }
+    if (arg == "OFF" || arg == "0") {
+      autoRangeEnabled = false;
+      Serial.println("[RANGE] Auto-range disabled (HIGH path fixed)");
+      return;
+    }
+    Serial.println("[RANGE] Use AUTORANGE ON or AUTORANGE OFF");
+    return;
+  }
+
+  if (command.startsWith("RTHR ")) {
+    float lowmA = 0.0f;
+    float highmA = 0.0f;
+    if (sscanf(command.c_str(), "RTHR %f %f", &lowmA, &highmA) == 2) {
+      if (lowmA > 0.0f && highmA > lowmA) {
+        autoRangeLowThresholdmA = lowmA;
+        autoRangeHighThresholdmA = highmA;
+        hatTelemetry.setAutoRangeThresholds(lowmA, highmA);
+        Serial.printf("[RANGE] Thresholds set: low<=%.1f mA, high>=%.1f mA\n", lowmA, highmA);
+      } else {
+        Serial.println("[RANGE] Invalid thresholds. Require: low>0 and high>low");
+      }
+    } else {
+      Serial.println("[RANGE] Usage: RTHR <low_mA> <high_mA>");
+    }
+    return;
+  }
+
+  if (command.startsWith("RCAL ")) {
+    char railToken[16] = {0};
+    char rangeToken[16] = {0};
+    float vGain = 1.0f;
+    float vOff = 0.0f;
+    float iGain = 1.0f;
+    float iOff = 0.0f;
+
+    if (sscanf(command.c_str(), "RCAL %15s %15s %f %f %f %f", railToken, rangeToken, &vGain, &vOff, &iGain, &iOff) == 6) {
+      HatRail rail;
+      HatRange range;
+      String railArg(railToken);
+      String rangeArg(rangeToken);
+      railArg.toUpperCase();
+      rangeArg.toUpperCase();
+
+      if (!parseRailToken(railArg, rail)) {
+        Serial.println("[CAL] Unknown rail. Use 5V, 3V3, ADJ, IN12");
+        return;
+      }
+      if (!parseRangeToken(rangeArg, range)) {
+        Serial.println("[CAL] Unknown range. Use HIGH, LOW, SINGLE");
+        return;
+      }
+
+      const RailMapping& map = hatTelemetry.mapping(rail);
+      if (!map.hasDualRange && range != HatRange::Single) {
+        Serial.println("[CAL] Incoming rail supports SINGLE range only");
+        return;
+      }
+      if (map.hasDualRange && range == HatRange::Single) {
+        Serial.println("[CAL] Use HIGH or LOW for dual-range rails");
+        return;
+      }
+
+      hatTelemetry.setCalibration(rail, range, {vGain, vOff, iGain, iOff});
+      Serial.printf("[CAL] %s %s set V=(gain %.6f, off %.6f) I=(gain %.6f, off %.6f)\n",
+                    map.railName,
+                    HatPowerTelemetry::rangeName(range),
+                    vGain,
+                    vOff,
+                    iGain,
+                    iOff);
+      return;
+    }
+
+    Serial.println("[CAL] Usage: RCAL <rail> <range> <vgain> <voff> <igain> <ioff>");
+    return;
+  }
+
+  if (command == "RAILSNAP") {
+    printLogicalRailSnapshot();
+    return;
+  }
+
   if (command == "HELP") {
-    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
+    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
     return;
   }
 
@@ -1820,6 +2002,8 @@ void setup() {
   pinMode(MCP4231_CS_PIN, OUTPUT);
   digitalWrite(MCP4231_CS_PIN, HIGH);
 
+  hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+
   if (BOOT_LOG_VERBOSE) {
     printSpiPinMap();
   }
@@ -1863,13 +2047,20 @@ void loop() {
     }
     if ((loopCounter % 20U) == 0U) {
       if (bootStatus.inaOk) {
-        Serial.printf("HB=%u loop=%lu CH2V=%.3f CH2I=%.1f CH3V=%.3f CH3I=%.1f\n",
+        const RailMeasurement rail5v = readRailMeasurement(HatRail::Rail5V);
+        const RailMeasurement railAdj = readRailMeasurement(HatRail::RailAdj);
+        const RailMeasurement railIn = readRailMeasurement(HatRail::RailIncoming12V);
+        Serial.printf("HB=%u loop=%lu 5V=%.3fV/%.1fmA(%s) ADJ=%.3fV/%.1fmA(%s) IN12=%.3fV/%.1fmA\n",
                       ledState ? 1 : 0,
                       loopCounter,
-                      readInaVoltageScaled(2),
-                      readInaCurrentScaled(2),
-                      readInaVoltageScaled(3),
-                      readInaCurrentScaled(3));
+                      rail5v.busVoltageV,
+                      rail5v.currentmA,
+                      HatPowerTelemetry::rangeName(rail5v.usedRange),
+                      railAdj.busVoltageV,
+                      railAdj.currentmA,
+                      HatPowerTelemetry::rangeName(railAdj.usedRange),
+                      railIn.busVoltageV,
+                      railIn.currentmA);
       } else {
         Serial.printf("HB=%u loop=%lu INA=offline\n", ledState ? 1 : 0, loopCounter);
       }
