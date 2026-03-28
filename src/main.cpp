@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <esp_system.h>
+#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "power_telemetry_map.h"
@@ -11,6 +12,7 @@
 SDL_Arduino_INA3221 ina3221;
 TFT_eSPI display = TFT_eSPI();
 HatPowerTelemetry hatTelemetry(ina3221);
+Preferences prefs;
 
 constexpr uint8_t STATUS_LED_PIN = 2;
 constexpr uint8_t MCP4231_CS_PIN = 5;
@@ -104,6 +106,19 @@ bool autoRangeEnabled = true;
 float autoRangeLowThresholdmA = 250.0f;
 float autoRangeHighThresholdmA = 900.0f;
 
+constexpr uint32_t PERSIST_VERSION = 1;
+constexpr const char* PERSIST_NAMESPACE = "hatpsu";
+constexpr size_t PERSIST_RAIL_COUNT = static_cast<size_t>(HatRail::Count);
+constexpr size_t PERSIST_RANGE_COUNT = 3;
+
+struct PersistentConfig {
+  uint32_t version;
+  uint8_t autoRangeEnabled;
+  float lowThresholdmA;
+  float highThresholdmA;
+  RailCalibration cal[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
+};
+
 #if defined(TFT_WIDTH)
 constexpr uint16_t TFT_PANEL_WIDTH = TFT_WIDTH;
 #else
@@ -178,6 +193,103 @@ static float readInaCurrentScaled(int channel) {
     current *= ch3CurrentScale;
   }
   return current;
+}
+
+static void savePersistentConfig() {
+  PersistentConfig cfg = {};
+  cfg.version = PERSIST_VERSION;
+  cfg.autoRangeEnabled = autoRangeEnabled ? 1U : 0U;
+  cfg.lowThresholdmA = autoRangeLowThresholdmA;
+  cfg.highThresholdmA = autoRangeHighThresholdmA;
+
+  for (size_t rail = 0; rail < PERSIST_RAIL_COUNT; rail++) {
+    for (size_t range = 0; range < PERSIST_RANGE_COUNT; range++) {
+      cfg.cal[rail][range] = hatTelemetry.calibration(static_cast<HatRail>(rail), static_cast<HatRange>(range));
+    }
+  }
+
+  if (!prefs.begin(PERSIST_NAMESPACE, false)) {
+    Serial.println("[CFG] NVS open failed for write");
+    return;
+  }
+
+  const size_t written = prefs.putBytes("cfg", &cfg, sizeof(cfg));
+  prefs.end();
+
+  if (written == sizeof(cfg)) {
+    Serial.println("[CFG] Saved");
+  } else {
+    Serial.printf("[CFG] Save failed (%u/%u bytes)\n", static_cast<unsigned>(written), static_cast<unsigned>(sizeof(cfg)));
+  }
+}
+
+static bool loadPersistentConfig(bool verbose) {
+  if (!prefs.begin(PERSIST_NAMESPACE, true)) {
+    if (verbose) {
+      Serial.println("[CFG] NVS open failed for read");
+    }
+    return false;
+  }
+
+  PersistentConfig cfg = {};
+  const size_t readBytes = prefs.getBytes("cfg", &cfg, sizeof(cfg));
+  prefs.end();
+
+  if (readBytes != sizeof(cfg)) {
+    if (verbose) {
+      Serial.println("[CFG] No saved config");
+    }
+    return false;
+  }
+
+  if (cfg.version != PERSIST_VERSION) {
+    if (verbose) {
+      Serial.printf("[CFG] Version mismatch (got %lu, expected %lu)\n", static_cast<unsigned long>(cfg.version), static_cast<unsigned long>(PERSIST_VERSION));
+    }
+    return false;
+  }
+
+  autoRangeEnabled = (cfg.autoRangeEnabled != 0U);
+  autoRangeLowThresholdmA = cfg.lowThresholdmA;
+  autoRangeHighThresholdmA = cfg.highThresholdmA;
+  hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+
+  for (size_t rail = 0; rail < PERSIST_RAIL_COUNT; rail++) {
+    const RailMapping& map = hatTelemetry.mapping(static_cast<HatRail>(rail));
+    for (size_t range = 0; range < PERSIST_RANGE_COUNT; range++) {
+      const HatRange r = static_cast<HatRange>(range);
+      if (!map.hasDualRange && r != HatRange::Single) {
+        continue;
+      }
+      if (map.hasDualRange && r == HatRange::Single) {
+        continue;
+      }
+      hatTelemetry.setCalibration(static_cast<HatRail>(rail), r, cfg.cal[rail][range]);
+    }
+  }
+
+  if (verbose) {
+    Serial.printf("[CFG] Loaded: AUTORANGE=%s RTHR=%.1f/%.1f mA\n", autoRangeEnabled ? "ON" : "OFF", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+  }
+  return true;
+}
+
+static void resetPersistentConfigDefaults() {
+  autoRangeEnabled = true;
+  autoRangeLowThresholdmA = 250.0f;
+  autoRangeHighThresholdmA = 900.0f;
+  hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+  hatTelemetry.resetCalibration();
+}
+
+static void erasePersistentConfig() {
+  if (!prefs.begin(PERSIST_NAMESPACE, false)) {
+    Serial.println("[CFG] NVS open failed for erase");
+    return;
+  }
+  prefs.remove("cfg");
+  prefs.end();
+  Serial.println("[CFG] Erased saved config");
 }
 
 static RailMeasurement readRailMeasurement(HatRail rail) {
@@ -1728,16 +1840,42 @@ static void handleSerialCommands() {
     return;
   }
 
+  if (command == "CFGSAVE") {
+    savePersistentConfig();
+    return;
+  }
+
+  if (command == "CFGLOAD") {
+    if (!loadPersistentConfig(true)) {
+      Serial.println("[CFG] Load failed or no config present");
+    }
+    return;
+  }
+
+  if (command == "CFGRESET") {
+    resetPersistentConfigDefaults();
+    savePersistentConfig();
+    Serial.println("[CFG] Reset to defaults and saved");
+    return;
+  }
+
+  if (command == "CFGERASE") {
+    erasePersistentConfig();
+    return;
+  }
+
   if (command.startsWith("AUTORANGE ")) {
     const String arg = command.substring(10);
     if (arg == "ON" || arg == "1") {
       autoRangeEnabled = true;
       Serial.println("[RANGE] Auto-range enabled");
+      savePersistentConfig();
       return;
     }
     if (arg == "OFF" || arg == "0") {
       autoRangeEnabled = false;
       Serial.println("[RANGE] Auto-range disabled (HIGH path fixed)");
+      savePersistentConfig();
       return;
     }
     Serial.println("[RANGE] Use AUTORANGE ON or AUTORANGE OFF");
@@ -1753,6 +1891,7 @@ static void handleSerialCommands() {
         autoRangeHighThresholdmA = highmA;
         hatTelemetry.setAutoRangeThresholds(lowmA, highmA);
         Serial.printf("[RANGE] Thresholds set: low<=%.1f mA, high>=%.1f mA\n", lowmA, highmA);
+        savePersistentConfig();
       } else {
         Serial.println("[RANGE] Invalid thresholds. Require: low>0 and high>low");
       }
@@ -1805,6 +1944,7 @@ static void handleSerialCommands() {
                     vOff,
                     iGain,
                     iOff);
+      savePersistentConfig();
       return;
     }
 
@@ -1818,7 +1958,7 @@ static void handleSerialCommands() {
   }
 
   if (command == "HELP") {
-    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
+    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
     return;
   }
 
@@ -2003,6 +2143,9 @@ void setup() {
   digitalWrite(MCP4231_CS_PIN, HIGH);
 
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+  if (!loadPersistentConfig(true)) {
+    savePersistentConfig();
+  }
 
   if (BOOT_LOG_VERBOSE) {
     printSpiPinMap();
