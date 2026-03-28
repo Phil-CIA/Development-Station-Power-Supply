@@ -1,22 +1,81 @@
 # Development-Station-Power-Supply
-3 channel bench supply  with current and voltage plotting
+3 channel bench supply with current and voltage plotting.
 
-## Current status (Display board)
+## Current architecture status
 
-- Standard MCU for prototyping: **ESP32-C6**
-- Firmware framework: **Arduino** (not ESP-IDF)
-- Interconnect to host/main board: **10-pin IDC (2×5) ribbon**
-  - Alternating GND pins for signal integrity over ~12–18" cable
-  - Host ↔ display-board communication is **SPI only**
-- Power
-  - IDC-10 provides **5V_IN only**
-  - Display board generates **3.3V** locally using **AMS1117-3.3**
-  - Typical current expected < ~300 mA (regulator sized for margin; pay attention to heat/copper area)
-- Architecture
-  - Display-board ESP32-C6 is **SPI SLAVE** to the host over IDC-10 (GPIO4–GPIO7)
-  - Display-board ESP32-C6 is **SPI MASTER** to local peripherals (GPIO10–GPIO22)
-  - Local SPI bus is shared across TFT (ST7796S), touch (XPT2046), and SD (separate CS lines)
+Hardware topology now tracked as:
 
-## Pinout (single source of truth)
-See `docs/GPIO_PINOUT.md`.# Development-Station-Power-Supply
-3 channel bench supply  with current and voltage plotting
+- External supply (12V) -> Regulator board -> Hat board -> auxiliary boards (display and USB hub)
+- Regulator board performs buck conversion for:
+  - 5V rail
+  - 3.3V rail
+  - Adjustable rail (relay-selected 3.3V or 5V)
+- Hat board performs measurement/control:
+  - Voltage and current measurement for all rails
+  - Incoming 12V measurement path
+  - High/low range shunt paths
+  - Feedback and current-limit control signaling to regulator board
+
+## Firmware stopping point (March 28, 2026)
+
+This repository is paused at a stable checkpoint.
+
+Completed and pushed to main:
+
+- Added logical rail mapping layer for hat telemetry in src/power_telemetry_map.h
+- Added runtime topology and rail snapshot commands
+- Added automatic range selection (high/low) with hysteresis
+- Added per-rail/per-range calibration support
+- Added persistent storage (NVS) for:
+  - autorange enabled state
+  - range thresholds
+  - calibration values
+
+Latest commits on main:
+
+- 9590dbe Persist rail auto-range and calibration config in NVS
+- fcad256 Add hat rail auto-range and calibration controls
+
+## Runtime command quick reference
+
+Telemetry and mapping:
+
+- HWMAP
+- RAILSNAP
+- RCALSHOW
+
+Range control:
+
+- AUTORANGE ON
+- AUTORANGE OFF
+- RTHR <low_mA> <high_mA>
+
+Calibration:
+
+- RCAL <rail> <range> <vgain> <voff> <igain> <ioff>
+- Rail options: 5V, 3V3, ADJ, IN12
+- Range options: HIGH, LOW, SINGLE
+
+Persistent config:
+
+- CFGSAVE
+- CFGLOAD
+- CFGRESET
+- CFGERASE
+
+## Resume checklist
+
+When returning to work:
+
+1. Build firmware: platformio run
+2. Flash board: platformio run -t upload
+3. Verify mapping: HWMAP
+4. Verify live readings: RAILSNAP
+5. Tune thresholds and calibration as needed:
+   - RTHR 250 900
+   - RCAL ...
+   - CFGSAVE
+
+## Display board note
+
+Display-board details and pinout references remain in docs/GPIO_PINOUT.md.
