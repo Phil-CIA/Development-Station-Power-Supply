@@ -58,20 +58,20 @@ class HatPowerTelemetry {
 
   void setInaAddresses(uint8_t addr5V, uint8_t addr3V3, uint8_t addrAdj) {
     // U1 = 5V rails, U2 = 3.3V + incoming 12V at CH3, U3 = adjustable rails.
-    // Shunt defaults: HIGH=0.100 Ohm, LOW=0.010 Ohm, Incoming12V=0.010 Ohm (R44 schematic).
+    // Shunt defaults from BOM: HIGH=0.020 Ohm, LOW=0.200 Ohm, Incoming12V=0.010 Ohm.
     // Confirm actual PCB values with a DMM then update via SHUNT command + CFGSAVE.
     map_[static_cast<size_t>(HatRail::Rail5V)] = {
-      "5V rail", {addr5V, 1, 0.100f}, {addr5V, 2, 0.010f}, {addr5V, 1, 0.100f}, true,
+      "5V rail", {addr5V, 1, 0.020f}, {addr5V, 2, 0.200f}, {addr5V, 1, 0.020f}, true,
       "Feedback 5V", "ISET_MPU_5V", "+5V_Control"
     };
 
     map_[static_cast<size_t>(HatRail::Rail3V3)] = {
-      "3.3V rail", {addr3V3, 1, 0.100f}, {addr3V3, 2, 0.010f}, {addr3V3, 1, 0.100f}, true,
+      "3.3V rail", {addr3V3, 1, 0.020f}, {addr3V3, 2, 0.200f}, {addr3V3, 1, 0.020f}, true,
       "Feedback 3.3", "ISET_MPU_3V3", "(none)"
     };
 
     map_[static_cast<size_t>(HatRail::RailAdj)] = {
-      "Adjustable rail", {addrAdj, 1, 0.100f}, {addrAdj, 2, 0.010f}, {addrAdj, 1, 0.100f}, true,
+      "Adjustable rail", {addrAdj, 1, 0.020f}, {addrAdj, 2, 0.200f}, {addrAdj, 1, 0.020f}, true,
       "Feedback Adj Channel", "ISET_MPU_Channel_3", "3.3_Select"
     };
 

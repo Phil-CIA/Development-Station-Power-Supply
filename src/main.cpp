@@ -106,7 +106,7 @@ bool autoRangeEnabled = true;
 float autoRangeLowThresholdmA = 250.0f;
 float autoRangeHighThresholdmA = 900.0f;
 
-constexpr uint32_t PERSIST_VERSION = 2;
+constexpr uint32_t PERSIST_VERSION = 3;
 constexpr const char* PERSIST_NAMESPACE = "hatpsu";
 constexpr size_t PERSIST_RAIL_COUNT = static_cast<size_t>(HatRail::Count);
 constexpr size_t PERSIST_RANGE_COUNT = 3;
