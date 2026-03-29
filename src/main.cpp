@@ -106,6 +106,14 @@ bool autoRangeEnabled = true;
 float autoRangeLowThresholdmA = 250.0f;
 float autoRangeHighThresholdmA = 900.0f;
 
+enum class OperationMode : uint8_t {
+  Normal = 0,
+  CurrentLimit = 1
+};
+
+OperationMode operationMode = OperationMode::Normal;
+volatile uint8_t tftRequestedOperationMode = static_cast<uint8_t>(OperationMode::Normal);
+
 enum class CurrentLimitMode : uint8_t {
   LatchOff = 0,
   Hiccup = 1,
@@ -130,7 +138,7 @@ struct RailCurrentLimitState {
   uint32_t lastWarnMs;
 };
 
-constexpr uint32_t PERSIST_VERSION = 4;
+constexpr uint32_t PERSIST_VERSION = 5;
 constexpr const char* PERSIST_NAMESPACE = "hatpsu";
 constexpr size_t PERSIST_RAIL_COUNT = static_cast<size_t>(HatRail::Count);
 constexpr size_t PERSIST_RANGE_COUNT = 3;
@@ -138,6 +146,7 @@ constexpr size_t PERSIST_RANGE_COUNT = 3;
 struct PersistentConfig {
   uint32_t version;
   uint8_t autoRangeEnabled;
+  uint8_t operationMode;
   float lowThresholdmA;
   float highThresholdmA;
   RailCalibration cal[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
@@ -227,6 +236,22 @@ static const char* currentLimitModeName(CurrentLimitMode mode) {
   }
 }
 
+static const char* operationModeName(OperationMode mode) {
+  return (mode == OperationMode::CurrentLimit) ? "CURRENT_LIMIT" : "NORMAL";
+}
+
+static bool parseOperationModeToken(const String& token, OperationMode& mode) {
+  if (token == "NORMAL" || token == "NORM") {
+    mode = OperationMode::Normal;
+    return true;
+  }
+  if (token == "CURRENT" || token == "CURRENTLIMIT" || token == "CL" || token == "CLIM") {
+    mode = OperationMode::CurrentLimit;
+    return true;
+  }
+  return false;
+}
+
 static bool parseCurrentLimitModeToken(const String& token, CurrentLimitMode& mode) {
   if (token == "LATCH" || token == "LATCHOFF") {
     mode = CurrentLimitMode::LatchOff;
@@ -243,7 +268,30 @@ static bool parseCurrentLimitModeToken(const String& token, CurrentLimitMode& mo
   return false;
 }
 
+static void savePersistentConfig();
+static void setRailOutputEnabled(HatRail rail, bool enabled, bool logAction);
 static RailMeasurement readRailMeasurement(HatRail rail);
+static void clearCurrentLimitRuntime();
+
+static void applyOperationMode(OperationMode mode, bool verbose) {
+  operationMode = mode;
+
+  if (mode == OperationMode::CurrentLimit) {
+    // Enter CL mode from a deterministic state: start in HIGH range, then auto-range by measured current.
+    hatTelemetry.resetActiveRangesToHigh();
+    autoRangeEnabled = true;
+  } else {
+    // Normal mode is fixed HIGH path and has no active CL trip state.
+    clearCurrentLimitRuntime();
+    setRailOutputEnabled(HatRail::Rail5V, true, false);
+    setRailOutputEnabled(HatRail::Rail3V3, true, false);
+    setRailOutputEnabled(HatRail::RailAdj, true, false);
+  }
+
+  if (verbose) {
+    Serial.printf("[MODE] %s\n", operationModeName(mode));
+  }
+}
 
 static bool isControllableRail(HatRail rail) {
   return rail != HatRail::RailIncoming12V;
@@ -339,6 +387,13 @@ static void clearCurrentLimitTrip(HatRail rail, bool logAction) {
 }
 
 static void updateCurrentLimitProtection(uint32_t nowMs) {
+  if (operationMode != OperationMode::CurrentLimit) {
+    for (size_t idx = 0; idx < PERSIST_RAIL_COUNT; idx++) {
+      railCurrentState[idx].inCc = false;
+    }
+    return;
+  }
+
   if ((nowMs - lastCurrentLimitUpdateMs) < CURRENT_LIMIT_UPDATE_MS) {
     return;
   }
@@ -417,6 +472,21 @@ static void updateCurrentLimitProtection(uint32_t nowMs) {
   }
 }
 
+static void syncOperationModeFromTftRequest() {
+  const uint8_t requestedRaw = tftRequestedOperationMode;
+  if (requestedRaw > static_cast<uint8_t>(OperationMode::CurrentLimit)) {
+    return;
+  }
+
+  const OperationMode requested = static_cast<OperationMode>(requestedRaw);
+  if (requested == operationMode) {
+    return;
+  }
+
+  applyOperationMode(requested, true);
+  savePersistentConfig();
+}
+
 static float readInaVoltageScaled(int channel) {
   float voltage = ina3221.getBusVoltage_V(channel);
   if (channel == 3) {
@@ -437,6 +507,7 @@ static void savePersistentConfig() {
   PersistentConfig cfg = {};
   cfg.version = PERSIST_VERSION;
   cfg.autoRangeEnabled = autoRangeEnabled ? 1U : 0U;
+  cfg.operationMode = static_cast<uint8_t>(operationMode);
   cfg.lowThresholdmA = autoRangeLowThresholdmA;
   cfg.highThresholdmA = autoRangeHighThresholdmA;
 
@@ -490,6 +561,11 @@ static bool loadPersistentConfig(bool verbose) {
   }
 
   autoRangeEnabled = (cfg.autoRangeEnabled != 0U);
+  if (cfg.operationMode <= static_cast<uint8_t>(OperationMode::CurrentLimit)) {
+    applyOperationMode(static_cast<OperationMode>(cfg.operationMode), false);
+  } else {
+    applyOperationMode(OperationMode::Normal, false);
+  }
   autoRangeLowThresholdmA = cfg.lowThresholdmA;
   autoRangeHighThresholdmA = cfg.highThresholdmA;
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
@@ -542,12 +618,17 @@ static bool loadPersistentConfig(bool verbose) {
   clearCurrentLimitRuntime();
 
   if (verbose) {
-    Serial.printf("[CFG] Loaded: AUTORANGE=%s RTHR=%.1f/%.1f mA\n", autoRangeEnabled ? "ON" : "OFF", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+    Serial.printf("[CFG] Loaded: MODE=%s AUTORANGE=%s RTHR=%.1f/%.1f mA\n",
+                  operationModeName(operationMode),
+                  autoRangeEnabled ? "ON" : "OFF",
+                  autoRangeLowThresholdmA,
+                  autoRangeHighThresholdmA);
   }
   return true;
 }
 
 static void resetPersistentConfigDefaults() {
+  applyOperationMode(OperationMode::Normal, false);
   autoRangeEnabled = true;
   autoRangeLowThresholdmA = 250.0f;
   autoRangeHighThresholdmA = 900.0f;
@@ -569,7 +650,7 @@ static void erasePersistentConfig() {
 }
 
 static RailMeasurement readRailMeasurement(HatRail rail) {
-  if (autoRangeEnabled) {
+  if (operationMode == OperationMode::CurrentLimit && autoRangeEnabled) {
     return hatTelemetry.readAutoCalibrated(rail);
   }
   return hatTelemetry.readCalibrated(rail, HatRange::High);
@@ -2106,6 +2187,25 @@ static void handleSerialCommands() {
     return;
   }
 
+  if (command == "MODE") {
+    Serial.printf("[MODE] %s\n", operationModeName(operationMode));
+    return;
+  }
+
+  if (command.startsWith("MODE ")) {
+    OperationMode mode;
+    String arg = command.substring(5);
+    arg.trim();
+    if (!parseOperationModeToken(arg, mode)) {
+      Serial.println("[MODE] Usage: MODE <NORMAL|CURRENT_LIMIT>");
+      return;
+    }
+    applyOperationMode(mode, true);
+    tftRequestedOperationMode = static_cast<uint8_t>(mode);
+    savePersistentConfig();
+    return;
+  }
+
   if (command == "HWMAP") {
     hatTelemetry.printTopology(Serial);
     return;
@@ -2144,13 +2244,13 @@ static void handleSerialCommands() {
     const String arg = command.substring(10);
     if (arg == "ON" || arg == "1") {
       autoRangeEnabled = true;
-      Serial.println("[RANGE] Auto-range enabled");
+      Serial.printf("[RANGE] Auto-range enabled (%s mode)\n", operationModeName(operationMode));
       savePersistentConfig();
       return;
     }
     if (arg == "OFF" || arg == "0") {
       autoRangeEnabled = false;
-      Serial.println("[RANGE] Auto-range disabled (HIGH path fixed)");
+      Serial.printf("[RANGE] Auto-range disabled (HIGH path fixed in %s mode)\n", operationModeName(operationMode));
       savePersistentConfig();
       return;
     }
@@ -2392,6 +2492,7 @@ static void handleSerialCommands() {
   }
 
   if (command == "CFGSHOW") {
+    Serial.printf("[CFG] MODE        : %s\n", operationModeName(operationMode));
     Serial.printf("[CFG] AUTORANGE   : %s\n", autoRangeEnabled ? "ON" : "OFF");
     Serial.printf("[CFG] RTHR        : low=%.1f mA  high=%.1f mA\n", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
     hatTelemetry.printShuntConfig(Serial);
@@ -2455,7 +2556,7 @@ static void handleSerialCommands() {
   }
 
   if (command == "HELP") {
-    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, SHUNT <rail> <range> <ohms>, SHUNTSHOW, CLENABLE <rail> <ON|OFF>, CLSET <rail> <iset_mA> <icut_mA> [hyst_mA], CLMODE <rail> <LATCH|HICCUP|MONITOR>, CLDELAY <rail> <trip_ms> <retry_ms>, CLSTAT, CLCLEAR <rail|ALL>, CFGSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
+    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, MODE [NORMAL|CURRENT_LIMIT], HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, SHUNT <rail> <range> <ohms>, SHUNTSHOW, CLENABLE <rail> <ON|OFF>, CLSET <rail> <iset_mA> <icut_mA> [hyst_mA], CLMODE <rail> <LATCH|HICCUP|MONITOR>, CLDELAY <rail> <trip_ms> <retry_ms>, CLSTAT, CLCLEAR <rail|ALL>, CFGSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
     return;
   }
 
@@ -2656,6 +2757,7 @@ void setup() {
     resetPersistentConfigDefaults();
     savePersistentConfig();
   }
+  tftRequestedOperationMode = static_cast<uint8_t>(operationMode);
 
   setRailOutputEnabled(HatRail::Rail5V, true, false);
   setRailOutputEnabled(HatRail::Rail3V3, true, false);
@@ -2688,6 +2790,7 @@ void setup() {
 }
 
 void loop() {
+  syncOperationModeFromTftRequest();
   handleSerialCommands();
 
   const uint32_t now = millis();

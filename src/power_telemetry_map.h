@@ -173,6 +173,13 @@ class HatPowerTelemetry {
     return raw;
   }
 
+  void resetActiveRangesToHigh() {
+    activeRange_[static_cast<size_t>(HatRail::Rail5V)] = HatRange::High;
+    activeRange_[static_cast<size_t>(HatRail::Rail3V3)] = HatRange::High;
+    activeRange_[static_cast<size_t>(HatRail::RailAdj)] = HatRange::High;
+    activeRange_[static_cast<size_t>(HatRail::RailIncoming12V)] = HatRange::Single;
+  }
+
   void printTopology(Stream& out) const {
     out.println("[HWMAP] Hat power telemetry mapping");
     out.println("[HWMAP] Rail, INA addr, CH high, CH low/single, feedback, iset, control");
