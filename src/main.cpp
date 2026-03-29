@@ -106,7 +106,31 @@ bool autoRangeEnabled = true;
 float autoRangeLowThresholdmA = 250.0f;
 float autoRangeHighThresholdmA = 900.0f;
 
-constexpr uint32_t PERSIST_VERSION = 3;
+enum class CurrentLimitMode : uint8_t {
+  LatchOff = 0,
+  Hiccup = 1,
+  Monitor = 2
+};
+
+struct RailCurrentLimitConfig {
+  uint8_t enabled;
+  float isetmA;
+  float icutmA;
+  float hysteresismA;
+  uint8_t mode;
+  uint16_t tripDelayMs;
+  uint16_t retryDelayMs;
+};
+
+struct RailCurrentLimitState {
+  bool inCc;
+  bool tripped;
+  uint32_t overStartMs;
+  uint32_t tripMs;
+  uint32_t lastWarnMs;
+};
+
+constexpr uint32_t PERSIST_VERSION = 4;
 constexpr const char* PERSIST_NAMESPACE = "hatpsu";
 constexpr size_t PERSIST_RAIL_COUNT = static_cast<size_t>(HatRail::Count);
 constexpr size_t PERSIST_RANGE_COUNT = 3;
@@ -118,7 +142,22 @@ struct PersistentConfig {
   float highThresholdmA;
   RailCalibration cal[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
   float shuntOhms[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
+  RailCurrentLimitConfig currentLimit[PERSIST_RAIL_COUNT];
 };
+
+RailCurrentLimitConfig railCurrentLimit[PERSIST_RAIL_COUNT] = {};
+RailCurrentLimitState railCurrentState[PERSIST_RAIL_COUNT] = {};
+
+constexpr uint32_t CURRENT_LIMIT_UPDATE_MS = 100;
+uint32_t lastCurrentLimitUpdateMs = 0;
+
+// Per-rail hardware output enable hooks for a future board revision.
+constexpr int RAIL5V_ENABLE_PIN = -1;
+constexpr int RAIL3V3_ENABLE_PIN = -1;
+constexpr int RAILADJ_ENABLE_PIN = -1;
+constexpr bool RAIL5V_ENABLE_ACTIVE_HIGH = true;
+constexpr bool RAIL3V3_ENABLE_ACTIVE_HIGH = true;
+constexpr bool RAILADJ_ENABLE_ACTIVE_HIGH = true;
 
 #if defined(TFT_WIDTH)
 constexpr uint16_t TFT_PANEL_WIDTH = TFT_WIDTH;
@@ -180,6 +219,204 @@ static const char* activeTftDriverText() {
 #endif
 }
 
+static const char* currentLimitModeName(CurrentLimitMode mode) {
+  switch (mode) {
+    case CurrentLimitMode::LatchOff: return "LATCH";
+    case CurrentLimitMode::Hiccup: return "HICCUP";
+    default: return "MONITOR";
+  }
+}
+
+static bool parseCurrentLimitModeToken(const String& token, CurrentLimitMode& mode) {
+  if (token == "LATCH" || token == "LATCHOFF") {
+    mode = CurrentLimitMode::LatchOff;
+    return true;
+  }
+  if (token == "HICCUP") {
+    mode = CurrentLimitMode::Hiccup;
+    return true;
+  }
+  if (token == "MONITOR" || token == "WARN") {
+    mode = CurrentLimitMode::Monitor;
+    return true;
+  }
+  return false;
+}
+
+static RailMeasurement readRailMeasurement(HatRail rail);
+
+static bool isControllableRail(HatRail rail) {
+  return rail != HatRail::RailIncoming12V;
+}
+
+static void setRailOutputEnabled(HatRail rail, bool enabled, bool logAction) {
+  int pin = -1;
+  bool activeHigh = true;
+
+  switch (rail) {
+    case HatRail::Rail5V:
+      pin = RAIL5V_ENABLE_PIN;
+      activeHigh = RAIL5V_ENABLE_ACTIVE_HIGH;
+      break;
+    case HatRail::Rail3V3:
+      pin = RAIL3V3_ENABLE_PIN;
+      activeHigh = RAIL3V3_ENABLE_ACTIVE_HIGH;
+      break;
+    case HatRail::RailAdj:
+      pin = RAILADJ_ENABLE_PIN;
+      activeHigh = RAILADJ_ENABLE_ACTIVE_HIGH;
+      break;
+    default:
+      return;
+  }
+
+  if (pin >= 0) {
+    pinMode(pin, OUTPUT);
+    const uint8_t level = enabled ? (activeHigh ? HIGH : LOW) : (activeHigh ? LOW : HIGH);
+    digitalWrite(pin, level);
+  }
+
+  if (logAction) {
+    Serial.printf("[CL] %s output %s%s\n",
+                  hatTelemetry.mapping(rail).railName,
+                  enabled ? "ENABLED" : "DISABLED",
+                  (pin < 0) ? " (no control pin assigned)" : "");
+  }
+}
+
+static void resetCurrentLimitDefaults() {
+  for (size_t idx = 0; idx < PERSIST_RAIL_COUNT; idx++) {
+    RailCurrentLimitConfig& cfg = railCurrentLimit[idx];
+    cfg.enabled = 0U;
+    cfg.isetmA = 500.0f;
+    cfg.icutmA = 800.0f;
+    cfg.hysteresismA = 30.0f;
+    cfg.mode = static_cast<uint8_t>(CurrentLimitMode::LatchOff);
+    cfg.tripDelayMs = 150;
+    cfg.retryDelayMs = 600;
+  }
+
+  // Incoming 12V is an input monitor channel, not a controllable output rail.
+  railCurrentLimit[static_cast<size_t>(HatRail::RailIncoming12V)].enabled = 0U;
+  railCurrentLimit[static_cast<size_t>(HatRail::RailIncoming12V)].mode = static_cast<uint8_t>(CurrentLimitMode::Monitor);
+}
+
+static void clearCurrentLimitRuntime() {
+  for (size_t idx = 0; idx < PERSIST_RAIL_COUNT; idx++) {
+    railCurrentState[idx] = {false, false, 0, 0, 0};
+  }
+}
+
+static void printCurrentLimitStatus() {
+  Serial.println("[CL] rail,en,mode,iset_mA,icut_mA,hyst_mA,trip_ms,retry_ms,in_cc,tripped");
+  for (size_t idx = 0; idx < PERSIST_RAIL_COUNT; idx++) {
+    const HatRail rail = static_cast<HatRail>(idx);
+    const RailCurrentLimitConfig& cfg = railCurrentLimit[idx];
+    const RailCurrentLimitState& st = railCurrentState[idx];
+    Serial.printf("[CL] %s,%u,%s,%.1f,%.1f,%.1f,%u,%u,%u,%u\n",
+                  hatTelemetry.mapping(rail).railName,
+                  static_cast<unsigned>(cfg.enabled),
+                  currentLimitModeName(static_cast<CurrentLimitMode>(cfg.mode)),
+                  cfg.isetmA,
+                  cfg.icutmA,
+                  cfg.hysteresismA,
+                  static_cast<unsigned>(cfg.tripDelayMs),
+                  static_cast<unsigned>(cfg.retryDelayMs),
+                  st.inCc ? 1U : 0U,
+                  st.tripped ? 1U : 0U);
+  }
+}
+
+static void clearCurrentLimitTrip(HatRail rail, bool logAction) {
+  if (!isControllableRail(rail)) {
+    return;
+  }
+  RailCurrentLimitState& st = railCurrentState[static_cast<size_t>(rail)];
+  st.tripped = false;
+  st.overStartMs = 0;
+  st.inCc = false;
+  setRailOutputEnabled(rail, true, logAction);
+}
+
+static void updateCurrentLimitProtection(uint32_t nowMs) {
+  if ((nowMs - lastCurrentLimitUpdateMs) < CURRENT_LIMIT_UPDATE_MS) {
+    return;
+  }
+  lastCurrentLimitUpdateMs = nowMs;
+
+  if (!bootStatus.inaOk) {
+    return;
+  }
+
+  static const HatRail rails[] = {HatRail::Rail5V, HatRail::Rail3V3, HatRail::RailAdj};
+  for (const HatRail rail : rails) {
+    const size_t idx = static_cast<size_t>(rail);
+    RailCurrentLimitConfig& cfg = railCurrentLimit[idx];
+    RailCurrentLimitState& st = railCurrentState[idx];
+
+    if (cfg.enabled == 0U) {
+      st.inCc = false;
+      continue;
+    }
+
+    const CurrentLimitMode mode = static_cast<CurrentLimitMode>(cfg.mode);
+
+    if (st.tripped) {
+      if (mode == CurrentLimitMode::Hiccup && (nowMs - st.tripMs) >= cfg.retryDelayMs) {
+        st.tripped = false;
+        st.overStartMs = 0;
+        setRailOutputEnabled(rail, true, true);
+      } else {
+        continue;
+      }
+    }
+
+    const RailMeasurement m = readRailMeasurement(rail);
+    const float absCurrentmA = fabsf(m.currentmA);
+
+    const float ccOn = cfg.isetmA + cfg.hysteresismA;
+    const float ccOff = max(0.0f, cfg.isetmA - cfg.hysteresismA);
+    if (absCurrentmA >= ccOn) {
+      st.inCc = true;
+    } else if (absCurrentmA <= ccOff) {
+      st.inCc = false;
+    }
+
+    if (absCurrentmA >= cfg.icutmA) {
+      if (st.overStartMs == 0U) {
+        st.overStartMs = nowMs;
+      }
+      const bool exceededDelay = (nowMs - st.overStartMs) >= cfg.tripDelayMs;
+      if (!exceededDelay) {
+        continue;
+      }
+
+      if (mode == CurrentLimitMode::Monitor) {
+        if ((nowMs - st.lastWarnMs) >= 1000U) {
+          st.lastWarnMs = nowMs;
+          Serial.printf("[CL] WARN %s overcurrent: %.1f mA (icut %.1f mA)\n",
+                        hatTelemetry.mapping(rail).railName,
+                        absCurrentmA,
+                        cfg.icutmA);
+        }
+        continue;
+      }
+
+      st.tripped = true;
+      st.tripMs = nowMs;
+      st.overStartMs = 0U;
+      setRailOutputEnabled(rail, false, true);
+      Serial.printf("[CL] TRIP %s overcurrent: %.1f mA (icut %.1f mA, mode=%s)\n",
+                    hatTelemetry.mapping(rail).railName,
+                    absCurrentmA,
+                    cfg.icutmA,
+                    currentLimitModeName(mode));
+    } else {
+      st.overStartMs = 0U;
+    }
+  }
+}
+
 static float readInaVoltageScaled(int channel) {
   float voltage = ina3221.getBusVoltage_V(channel);
   if (channel == 3) {
@@ -208,6 +445,7 @@ static void savePersistentConfig() {
       cfg.cal[rail][range] = hatTelemetry.calibration(static_cast<HatRail>(rail), static_cast<HatRange>(range));
       cfg.shuntOhms[rail][range] = hatTelemetry.shuntOhms(static_cast<HatRail>(rail), static_cast<HatRange>(range));
     }
+    cfg.currentLimit[rail] = railCurrentLimit[rail];
   }
 
   if (!prefs.begin(PERSIST_NAMESPACE, false)) {
@@ -272,7 +510,36 @@ static bool loadPersistentConfig(bool verbose) {
         hatTelemetry.setShuntOhms(static_cast<HatRail>(rail), r, ohms);
       }
     }
+
+    RailCurrentLimitConfig incoming = cfg.currentLimit[rail];
+    if (incoming.isetmA <= 0.0f || incoming.isetmA > 50000.0f) {
+      incoming.isetmA = 500.0f;
+    }
+    if (incoming.icutmA <= incoming.isetmA || incoming.icutmA > 60000.0f) {
+      incoming.icutmA = incoming.isetmA + 300.0f;
+    }
+    if (incoming.hysteresismA < 0.0f || incoming.hysteresismA > 5000.0f) {
+      incoming.hysteresismA = 30.0f;
+    }
+    if (incoming.tripDelayMs == 0U) {
+      incoming.tripDelayMs = 1U;
+    }
+    if (incoming.retryDelayMs == 0U) {
+      incoming.retryDelayMs = 1U;
+    }
+    if (incoming.mode > static_cast<uint8_t>(CurrentLimitMode::Monitor)) {
+      incoming.mode = static_cast<uint8_t>(CurrentLimitMode::LatchOff);
+    }
+
+    if (!isControllableRail(static_cast<HatRail>(rail))) {
+      incoming.enabled = 0U;
+      incoming.mode = static_cast<uint8_t>(CurrentLimitMode::Monitor);
+    }
+
+    railCurrentLimit[rail] = incoming;
   }
+
+  clearCurrentLimitRuntime();
 
   if (verbose) {
     Serial.printf("[CFG] Loaded: AUTORANGE=%s RTHR=%.1f/%.1f mA\n", autoRangeEnabled ? "ON" : "OFF", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
@@ -287,6 +554,8 @@ static void resetPersistentConfigDefaults() {
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
   hatTelemetry.resetCalibration();
   hatTelemetry.setInaAddresses(0x40, 0x41, 0x42);  // Restores default shunt resistor values.
+  resetCurrentLimitDefaults();
+  clearCurrentLimitRuntime();
 }
 
 static void erasePersistentConfig() {
@@ -1959,11 +2228,175 @@ static void handleSerialCommands() {
     return;
   }
 
+  if (command == "CLSTAT") {
+    printCurrentLimitStatus();
+    return;
+  }
+
+  if (command.startsWith("CLENABLE ")) {
+    char railToken[16] = {0};
+    char enToken[16] = {0};
+    if (sscanf(command.c_str(), "CLENABLE %15s %15s", railToken, enToken) == 2) {
+      HatRail rail;
+      String railArg(railToken);
+      String enArg(enToken);
+      railArg.toUpperCase();
+      enArg.toUpperCase();
+
+      if (!parseRailToken(railArg, rail) || !isControllableRail(rail)) {
+        Serial.println("[CL] Unknown/unsupported rail. Use 5V, 3V3, ADJ");
+        return;
+      }
+
+      RailCurrentLimitConfig& cfg = railCurrentLimit[static_cast<size_t>(rail)];
+      if (enArg == "ON" || enArg == "1") {
+        cfg.enabled = 1U;
+      } else if (enArg == "OFF" || enArg == "0") {
+        cfg.enabled = 0U;
+        clearCurrentLimitTrip(rail, true);
+      } else {
+        Serial.println("[CL] Usage: CLENABLE <rail> <ON|OFF>");
+        return;
+      }
+
+      Serial.printf("[CL] %s enabled=%u\n", hatTelemetry.mapping(rail).railName, static_cast<unsigned>(cfg.enabled));
+      savePersistentConfig();
+      return;
+    }
+    Serial.println("[CL] Usage: CLENABLE <rail> <ON|OFF>");
+    return;
+  }
+
+  if (command.startsWith("CLSET ")) {
+    char railToken[16] = {0};
+    float isetmA = 0.0f;
+    float icutmA = 0.0f;
+    float hystmA = 30.0f;
+
+    const int parsed = sscanf(command.c_str(), "CLSET %15s %f %f %f", railToken, &isetmA, &icutmA, &hystmA);
+    if (parsed >= 3) {
+      HatRail rail;
+      String railArg(railToken);
+      railArg.toUpperCase();
+      if (!parseRailToken(railArg, rail) || !isControllableRail(rail)) {
+        Serial.println("[CL] Unknown/unsupported rail. Use 5V, 3V3, ADJ");
+        return;
+      }
+      if (isetmA <= 0.0f || icutmA <= isetmA || hystmA < 0.0f) {
+        Serial.println("[CL] Invalid values. Require: iset>0, icut>iset, hyst>=0");
+        return;
+      }
+
+      RailCurrentLimitConfig& cfg = railCurrentLimit[static_cast<size_t>(rail)];
+      cfg.isetmA = isetmA;
+      cfg.icutmA = icutmA;
+      cfg.hysteresismA = hystmA;
+      cfg.enabled = 1U;
+      Serial.printf("[CL] %s set Iset=%.1f mA Icut=%.1f mA Hyst=%.1f mA\n",
+                    hatTelemetry.mapping(rail).railName,
+                    cfg.isetmA,
+                    cfg.icutmA,
+                    cfg.hysteresismA);
+      savePersistentConfig();
+      return;
+    }
+    Serial.println("[CL] Usage: CLSET <rail> <iset_mA> <icut_mA> [hyst_mA]");
+    return;
+  }
+
+  if (command.startsWith("CLMODE ")) {
+    char railToken[16] = {0};
+    char modeToken[16] = {0};
+    if (sscanf(command.c_str(), "CLMODE %15s %15s", railToken, modeToken) == 2) {
+      HatRail rail;
+      String railArg(railToken);
+      String modeArg(modeToken);
+      railArg.toUpperCase();
+      modeArg.toUpperCase();
+      if (!parseRailToken(railArg, rail) || !isControllableRail(rail)) {
+        Serial.println("[CL] Unknown/unsupported rail. Use 5V, 3V3, ADJ");
+        return;
+      }
+
+      CurrentLimitMode mode;
+      if (!parseCurrentLimitModeToken(modeArg, mode)) {
+        Serial.println("[CL] Unknown mode. Use LATCH, HICCUP, MONITOR");
+        return;
+      }
+
+      RailCurrentLimitConfig& cfg = railCurrentLimit[static_cast<size_t>(rail)];
+      cfg.mode = static_cast<uint8_t>(mode);
+      Serial.printf("[CL] %s mode=%s\n", hatTelemetry.mapping(rail).railName, currentLimitModeName(mode));
+      savePersistentConfig();
+      return;
+    }
+    Serial.println("[CL] Usage: CLMODE <rail> <LATCH|HICCUP|MONITOR>");
+    return;
+  }
+
+  if (command.startsWith("CLDELAY ")) {
+    char railToken[16] = {0};
+    unsigned tripMs = 0;
+    unsigned retryMs = 0;
+    if (sscanf(command.c_str(), "CLDELAY %15s %u %u", railToken, &tripMs, &retryMs) == 3) {
+      HatRail rail;
+      String railArg(railToken);
+      railArg.toUpperCase();
+      if (!parseRailToken(railArg, rail) || !isControllableRail(rail)) {
+        Serial.println("[CL] Unknown/unsupported rail. Use 5V, 3V3, ADJ");
+        return;
+      }
+      if (tripMs == 0U || retryMs == 0U) {
+        Serial.println("[CL] Delay values must be > 0 ms");
+        return;
+      }
+
+      RailCurrentLimitConfig& cfg = railCurrentLimit[static_cast<size_t>(rail)];
+      cfg.tripDelayMs = static_cast<uint16_t>(min(tripMs, 65535U));
+      cfg.retryDelayMs = static_cast<uint16_t>(min(retryMs, 65535U));
+      Serial.printf("[CL] %s delays trip=%u ms retry=%u ms\n",
+                    hatTelemetry.mapping(rail).railName,
+                    static_cast<unsigned>(cfg.tripDelayMs),
+                    static_cast<unsigned>(cfg.retryDelayMs));
+      savePersistentConfig();
+      return;
+    }
+    Serial.println("[CL] Usage: CLDELAY <rail> <trip_ms> <retry_ms>");
+    return;
+  }
+
+  if (command == "CLCLEAR" || command == "CLCLEAR ALL") {
+    clearCurrentLimitTrip(HatRail::Rail5V, true);
+    clearCurrentLimitTrip(HatRail::Rail3V3, true);
+    clearCurrentLimitTrip(HatRail::RailAdj, true);
+    Serial.println("[CL] Cleared all trip latches");
+    return;
+  }
+
+  if (command.startsWith("CLCLEAR ")) {
+    char railToken[16] = {0};
+    if (sscanf(command.c_str(), "CLCLEAR %15s", railToken) == 1) {
+      HatRail rail;
+      String railArg(railToken);
+      railArg.toUpperCase();
+      if (!parseRailToken(railArg, rail) || !isControllableRail(rail)) {
+        Serial.println("[CL] Unknown/unsupported rail. Use 5V, 3V3, ADJ or ALL");
+        return;
+      }
+      clearCurrentLimitTrip(rail, true);
+      Serial.printf("[CL] Cleared trip latch for %s\n", hatTelemetry.mapping(rail).railName);
+      return;
+    }
+    Serial.println("[CL] Usage: CLCLEAR <rail|ALL>");
+    return;
+  }
+
   if (command == "CFGSHOW") {
     Serial.printf("[CFG] AUTORANGE   : %s\n", autoRangeEnabled ? "ON" : "OFF");
     Serial.printf("[CFG] RTHR        : low=%.1f mA  high=%.1f mA\n", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
     hatTelemetry.printShuntConfig(Serial);
     hatTelemetry.printCalibration(Serial);
+    printCurrentLimitStatus();
     return;
   }
 
@@ -2022,7 +2455,7 @@ static void handleSerialCommands() {
   }
 
   if (command == "HELP") {
-    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, SHUNT <rail> <range> <ohms>, SHUNTSHOW, CFGSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
+    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, SHUNT <rail> <range> <ohms>, SHUNTSHOW, CLENABLE <rail> <ON|OFF>, CLSET <rail> <iset_mA> <icut_mA> [hyst_mA], CLMODE <rail> <LATCH|HICCUP|MONITOR>, CLDELAY <rail> <trip_ms> <retry_ms>, CLSTAT, CLCLEAR <rail|ALL>, CFGSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
     return;
   }
 
@@ -2206,10 +2639,27 @@ void setup() {
   pinMode(MCP4231_CS_PIN, OUTPUT);
   digitalWrite(MCP4231_CS_PIN, HIGH);
 
+  if (RAIL5V_ENABLE_PIN >= 0) {
+    pinMode(RAIL5V_ENABLE_PIN, OUTPUT);
+  }
+  if (RAIL3V3_ENABLE_PIN >= 0) {
+    pinMode(RAIL3V3_ENABLE_PIN, OUTPUT);
+  }
+  if (RAILADJ_ENABLE_PIN >= 0) {
+    pinMode(RAILADJ_ENABLE_PIN, OUTPUT);
+  }
+
+  resetCurrentLimitDefaults();
+  clearCurrentLimitRuntime();
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
   if (!loadPersistentConfig(true)) {
+    resetPersistentConfigDefaults();
     savePersistentConfig();
   }
+
+  setRailOutputEnabled(HatRail::Rail5V, true, false);
+  setRailOutputEnabled(HatRail::Rail3V3, true, false);
+  setRailOutputEnabled(HatRail::RailAdj, true, false);
 
   if (BOOT_LOG_VERBOSE) {
     printSpiPinMap();
@@ -2241,6 +2691,7 @@ void loop() {
   handleSerialCommands();
 
   const uint32_t now = millis();
+  updateCurrentLimitProtection(now);
   if (now - lastFrameMs >= 500) {
     lastFrameMs = now;
     loopCounter++;
@@ -2257,17 +2708,25 @@ void loop() {
         const RailMeasurement rail5v = readRailMeasurement(HatRail::Rail5V);
         const RailMeasurement railAdj = readRailMeasurement(HatRail::RailAdj);
         const RailMeasurement railIn = readRailMeasurement(HatRail::RailIncoming12V);
-        Serial.printf("HB=%u loop=%lu 5V=%.3fV/%.1fmA(%s) ADJ=%.3fV/%.1fmA(%s) IN12=%.3fV/%.1fmA\n",
+        const RailCurrentLimitState& cl5 = railCurrentState[static_cast<size_t>(HatRail::Rail5V)];
+        const RailCurrentLimitState& cl3 = railCurrentState[static_cast<size_t>(HatRail::Rail3V3)];
+        const RailCurrentLimitState& cla = railCurrentState[static_cast<size_t>(HatRail::RailAdj)];
+        Serial.printf("HB=%u loop=%lu 5V=%.3fV/%.1fmA(%s)%s ADJ=%.3fV/%.1fmA(%s)%s IN12=%.3fV/%.1fmA CL[5:%s 3:%s A:%s]\n",
                       ledState ? 1 : 0,
                       loopCounter,
                       rail5v.busVoltageV,
                       rail5v.currentmA,
                       HatPowerTelemetry::rangeName(rail5v.usedRange),
+                      cl5.tripped ? "[TRIP]" : (cl5.inCc ? "[CC]" : ""),
                       railAdj.busVoltageV,
                       railAdj.currentmA,
                       HatPowerTelemetry::rangeName(railAdj.usedRange),
+                      cla.tripped ? "[TRIP]" : (cla.inCc ? "[CC]" : ""),
                       railIn.busVoltageV,
-                      railIn.currentmA);
+                      railIn.currentmA,
+                      cl5.tripped ? "T" : (cl5.inCc ? "C" : "-"),
+                      cl3.tripped ? "T" : (cl3.inCc ? "C" : "-"),
+                      cla.tripped ? "T" : (cla.inCc ? "C" : "-"));
       } else {
         Serial.printf("HB=%u loop=%lu INA=offline\n", ledState ? 1 : 0, loopCounter);
       }
