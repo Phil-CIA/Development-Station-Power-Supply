@@ -106,7 +106,7 @@ bool autoRangeEnabled = true;
 float autoRangeLowThresholdmA = 250.0f;
 float autoRangeHighThresholdmA = 900.0f;
 
-constexpr uint32_t PERSIST_VERSION = 1;
+constexpr uint32_t PERSIST_VERSION = 2;
 constexpr const char* PERSIST_NAMESPACE = "hatpsu";
 constexpr size_t PERSIST_RAIL_COUNT = static_cast<size_t>(HatRail::Count);
 constexpr size_t PERSIST_RANGE_COUNT = 3;
@@ -117,6 +117,7 @@ struct PersistentConfig {
   float lowThresholdmA;
   float highThresholdmA;
   RailCalibration cal[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
+  float shuntOhms[PERSIST_RAIL_COUNT][PERSIST_RANGE_COUNT];
 };
 
 #if defined(TFT_WIDTH)
@@ -205,6 +206,7 @@ static void savePersistentConfig() {
   for (size_t rail = 0; rail < PERSIST_RAIL_COUNT; rail++) {
     for (size_t range = 0; range < PERSIST_RANGE_COUNT; range++) {
       cfg.cal[rail][range] = hatTelemetry.calibration(static_cast<HatRail>(rail), static_cast<HatRange>(range));
+      cfg.shuntOhms[rail][range] = hatTelemetry.shuntOhms(static_cast<HatRail>(rail), static_cast<HatRange>(range));
     }
   }
 
@@ -265,6 +267,10 @@ static bool loadPersistentConfig(bool verbose) {
         continue;
       }
       hatTelemetry.setCalibration(static_cast<HatRail>(rail), r, cfg.cal[rail][range]);
+      const float ohms = cfg.shuntOhms[rail][range];
+      if (ohms > 0.0f && ohms <= 10.0f) {
+        hatTelemetry.setShuntOhms(static_cast<HatRail>(rail), r, ohms);
+      }
     }
   }
 
@@ -280,6 +286,7 @@ static void resetPersistentConfigDefaults() {
   autoRangeHighThresholdmA = 900.0f;
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
   hatTelemetry.resetCalibration();
+  hatTelemetry.setInaAddresses(0x40, 0x41, 0x42);  // Restores default shunt resistor values.
 }
 
 static void erasePersistentConfig() {
@@ -1952,13 +1959,70 @@ static void handleSerialCommands() {
     return;
   }
 
+  if (command == "CFGSHOW") {
+    Serial.printf("[CFG] AUTORANGE   : %s\n", autoRangeEnabled ? "ON" : "OFF");
+    Serial.printf("[CFG] RTHR        : low=%.1f mA  high=%.1f mA\n", autoRangeLowThresholdmA, autoRangeHighThresholdmA);
+    hatTelemetry.printShuntConfig(Serial);
+    hatTelemetry.printCalibration(Serial);
+    return;
+  }
+
+  if (command == "SHUNTSHOW") {
+    hatTelemetry.printShuntConfig(Serial);
+    return;
+  }
+
+  if (command.startsWith("SHUNT ")) {
+    char railToken[16] = {0};
+    char rangeToken[16] = {0};
+    float ohms = 0.0f;
+    if (sscanf(command.c_str(), "SHUNT %15s %15s %f", railToken, rangeToken, &ohms) == 3) {
+      HatRail rail;
+      HatRange range;
+      String railArg(railToken);
+      String rangeArg(rangeToken);
+      railArg.toUpperCase();
+      rangeArg.toUpperCase();
+      if (!parseRailToken(railArg, rail)) {
+        Serial.println("[SHUNT] Unknown rail. Use 5V, 3V3, ADJ, IN12");
+        return;
+      }
+      if (!parseRangeToken(rangeArg, range)) {
+        Serial.println("[SHUNT] Unknown range. Use HIGH, LOW, SINGLE");
+        return;
+      }
+      const RailMapping& map = hatTelemetry.mapping(rail);
+      if (!map.hasDualRange && range != HatRange::Single) {
+        Serial.println("[SHUNT] Incoming 12V rail is SINGLE range only");
+        return;
+      }
+      if (map.hasDualRange && range == HatRange::Single) {
+        Serial.println("[SHUNT] Use HIGH or LOW for dual-range rails");
+        return;
+      }
+      if (ohms <= 0.0f || ohms > 10.0f) {
+        Serial.println("[SHUNT] Invalid ohms. Range: 0.0001 to 10.0");
+        return;
+      }
+      hatTelemetry.setShuntOhms(rail, range, ohms);
+      Serial.printf("[SHUNT] %s %s = %.6f Ohm\n",
+                    map.railName,
+                    HatPowerTelemetry::rangeName(range),
+                    ohms);
+      savePersistentConfig();
+    } else {
+      Serial.println("[SHUNT] Usage: SHUNT <rail> <range> <ohms>  e.g. SHUNT 5V HIGH 0.100");
+    }
+    return;
+  }
+
   if (command == "RAILSNAP") {
     printLogicalRailSnapshot();
     return;
   }
 
   if (command == "HELP") {
-    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
+    Serial.println("Commands: P0 <0-255>, P1 <0-255>, MCPTEST, MCPPATTERN, CALRAMP (P1), CALRAMP0, CALRAMP1, VSET <V> (uses P1), VSET0 <V>, VSET1 <V>, CH3SCALE, CH3VSCALE <f>, CH3ISCALE <f>, HWMAP, RAILSNAP, AUTORANGE <ON|OFF>, RTHR <low_mA> <high_mA>, RCAL <rail> <range> <vgain> <voff> <igain> <ioff>, RCALSHOW, SHUNT <rail> <range> <ohms>, SHUNTSHOW, CFGSHOW, CFGSAVE, CFGLOAD, CFGRESET, CFGERASE, BOOTTEST, STATUS, TFTINIT, TFTTEST, TFTPROBE, TFTWAKE, TFTCLEAR, I2CSCAN, I2CRECOVER, TOUCHRAW, TOUCHTEST, TOUCHBUS, TOUCHSCAN, TOUCHCMD <hex>, TOUCHMOSI, TFTMOSI, SPIPINS, SPIRAW, PINTEST");
     return;
   }
 

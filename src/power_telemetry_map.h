@@ -20,7 +20,8 @@ enum class HatRange : uint8_t {
 
 struct InaTap {
   uint8_t address;
-  uint8_t channel;  // INA3221 channels are 1..3.
+  uint8_t channel;    // INA3221 channels are 1..3.
+  float shuntOhms;    // Physical shunt resistor in Ohms — used to convert shunt voltage to current.
 };
 
 struct RailMapping {
@@ -56,24 +57,26 @@ class HatPowerTelemetry {
   }
 
   void setInaAddresses(uint8_t addr5V, uint8_t addr3V3, uint8_t addrAdj) {
-    // U1 = 5V rails, U2 = 3.3V rails + incoming 12V at CH3, U3 = adjustable rails.
+    // U1 = 5V rails, U2 = 3.3V + incoming 12V at CH3, U3 = adjustable rails.
+    // Shunt defaults: HIGH=0.100 Ohm, LOW=0.010 Ohm, Incoming12V=0.010 Ohm (R44 schematic).
+    // Confirm actual PCB values with a DMM then update via SHUNT command + CFGSAVE.
     map_[static_cast<size_t>(HatRail::Rail5V)] = {
-      "5V rail", {addr5V, 1}, {addr5V, 2}, {addr5V, 1}, true,
+      "5V rail", {addr5V, 1, 0.100f}, {addr5V, 2, 0.010f}, {addr5V, 1, 0.100f}, true,
       "Feedback 5V", "ISET_MPU_5V", "+5V_Control"
     };
 
     map_[static_cast<size_t>(HatRail::Rail3V3)] = {
-      "3.3V rail", {addr3V3, 1}, {addr3V3, 2}, {addr3V3, 1}, true,
+      "3.3V rail", {addr3V3, 1, 0.100f}, {addr3V3, 2, 0.010f}, {addr3V3, 1, 0.100f}, true,
       "Feedback 3.3", "ISET_MPU_3V3", "(none)"
     };
 
     map_[static_cast<size_t>(HatRail::RailAdj)] = {
-      "Adjustable rail", {addrAdj, 1}, {addrAdj, 2}, {addrAdj, 1}, true,
+      "Adjustable rail", {addrAdj, 1, 0.100f}, {addrAdj, 2, 0.010f}, {addrAdj, 1, 0.100f}, true,
       "Feedback Adj Channel", "ISET_MPU_Channel_3", "3.3_Select"
     };
 
     map_[static_cast<size_t>(HatRail::RailIncoming12V)] = {
-      "Incoming 12V", {addr3V3, 3}, {addr3V3, 3}, {addr3V3, 3}, false,
+      "Incoming 12V", {addr3V3, 3, 0.010f}, {addr3V3, 3, 0.010f}, {addr3V3, 3, 0.010f}, false,
       "Incoming (+/-)", "(none)", "(none)"
     };
   }
@@ -105,6 +108,17 @@ class HatPowerTelemetry {
         cal_[rail][idx] = unity;
       }
     }
+  }
+
+  void setShuntOhms(HatRail rail, HatRange range, float ohms) {
+    tapRef(rail, range).shuntOhms = ohms;
+  }
+
+  float shuntOhms(HatRail rail, HatRange range) const {
+    const RailMapping& m = map_[static_cast<size_t>(rail)];
+    if (range == HatRange::Low)  return m.lowRange.shuntOhms;
+    if (range == HatRange::High) return m.highRange.shuntOhms;
+    return m.singleRange.shuntOhms;
   }
 
   RailMeasurement read(HatRail rail, HatRange preferredRange = HatRange::High) {
@@ -201,6 +215,19 @@ class HatPowerTelemetry {
     }
   }
 
+  void printShuntConfig(Stream& out) const {
+    out.println("[SHUNT] rail,range,shuntOhms");
+    for (size_t i = 0; i < static_cast<size_t>(HatRail::Count); i++) {
+      const RailMapping& cfg = map_[i];
+      if (cfg.hasDualRange) {
+        out.printf("[SHUNT] %s,HIGH,%.6f\n", cfg.railName, cfg.highRange.shuntOhms);
+        out.printf("[SHUNT] %s,LOW,%.6f\n",  cfg.railName, cfg.lowRange.shuntOhms);
+      } else {
+        out.printf("[SHUNT] %s,SINGLE,%.6f\n", cfg.railName, cfg.singleRange.shuntOhms);
+      }
+    }
+  }
+
   static const char* rangeName(HatRange range) {
     switch (range) {
       case HatRange::High: return "HIGH";
@@ -212,6 +239,13 @@ class HatPowerTelemetry {
  private:
   static size_t rangeIndex(HatRange range) {
     return static_cast<size_t>(range);
+  }
+
+  InaTap& tapRef(HatRail rail, HatRange range) {
+    RailMapping& m = map_[static_cast<size_t>(rail)];
+    if (range == HatRange::Low)  return m.lowRange;
+    if (range == HatRange::High) return m.highRange;
+    return m.singleRange;
   }
 
   void applyCalibration(HatRail rail, RailMeasurement& reading) const {
@@ -227,7 +261,10 @@ class HatPowerTelemetry {
 
   float readCurrentmA(const InaTap& tap) {
     selectAddress(tap.address);
-    return ina_.getCurrent_mA(static_cast<int>(tap.channel));
+    // Compute current from shunt voltage using the tap-specific shunt resistance.
+    // This keeps each channel's shunt value independent without mutating shared library state.
+    const float shuntmV = ina_.getShuntVoltage_mV(static_cast<int>(tap.channel));
+    return shuntmV / tap.shuntOhms;
   }
 
   void selectAddress(uint8_t address) {
