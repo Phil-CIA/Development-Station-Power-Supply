@@ -1,0 +1,1876 @@
+{
+    "$schema": "https://schemas.kicad.org/erc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-04-12T09:31:32-0500",
+    "kicad_version": "9.0.7",
+    "sheets": [
+        {
+            "path": "/",
+            "uuid_path": "/835427d9-8a3f-4fbe-a29c-9153a4d7fb57",
+            "violations": [
+                {
+                    "description": "Input Power pin not driven by any Output Power pins",
+                    "items": [
+                        {
+                            "description": "Symbol U3 Pin 2 [OUT, Power input, Line]",
+                            "pos": {
+                                "x": 0.6731,
+                                "y": 0.4953
+                            },
+                            "uuid": "7f1a715f-3eb5-49bc-adb2-f6412c87d8e3"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "power_pin_not_driven"
+                },
+                {
+                    "description": "Input Power pin not driven by any Output Power pins",
+                    "items": [
+                        {
+                            "description": "Symbol J1 Pin 1 [VBUS, Power input, Line]",
+                            "pos": {
+                                "x": 0.4572,
+                                "y": 1.1176
+                            },
+                            "uuid": "95272a64-0ba8-48f2-ba15-7d86e9b455d9"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "power_pin_not_driven"
+                },
+                {
+                    "description": "Input Power pin not driven by any Output Power pins",
+                    "items": [
+                        {
+                            "description": "Symbol U1 Pin 4 [VS, Power input, Line]",
+                            "pos": {
+                                "x": 0.4318,
+                                "y": 2.286
+                            },
+                            "uuid": "13505873-ca0b-4626-a0ff-c81d505b74e9"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "power_pin_not_driven"
+                },
+                {
+                    "description": "Input Power pin not driven by any Output Power pins",
+                    "items": [
+                        {
+                            "description": "Symbol J3 Pin 1 [VBUS, Power input, Line]",
+                            "pos": {
+                                "x": 0.7239,
+                                "y": 2.4257
+                            },
+                            "uuid": "ac347664-27d0-4294-8d0f-b7a935ac7d6f"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "power_pin_not_driven"
+                },
+                {
+                    "description": "Input Power pin not driven by any Output Power pins",
+                    "items": [
+                        {
+                            "description": "Symbol #PWR01 Pin 1 [Power input, Line]",
+                            "pos": {
+                                "x": 1.3716,
+                                "y": 2.2098
+                            },
+                            "uuid": "b1e6a54a-02d3-46f8-b314-d985befc9999"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "power_pin_not_driven"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C1 [1206,100uF]",
+                            "pos": {
+                                "x": 0.3429,
+                                "y": 0.5334
+                            },
+                            "uuid": "745306b5-07a3-4e35-9a86-2b95e00dc365"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "Pins of type Unspecified and Power input are connected",
+                    "items": [
+                        {
+                            "description": "Symbol U3 Pin 5 [ON#/OFF, Unspecified, Line]",
+                            "pos": {
+                                "x": 0.4191,
+                                "y": 0.5207
+                            },
+                            "uuid": "95135746-f4ac-4be5-8142-35b3e6724c48"
+                        },
+                        {
+                            "description": "Symbol U3 Pin 3 [GND, Power input, Line]",
+                            "pos": {
+                                "x": 0.4191,
+                                "y": 0.5461
+                            },
+                            "uuid": "f26c314d-a320-4019-83d8-b795e3633eb1"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "pin_to_pin"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol U3 [DC-DC, Buck, 4-40VIN, 3A, 5VOUT, (1)]",
+                            "pos": {
+                                "x": 0.5461,
+                                "y": 0.5207
+                            },
+                            "uuid": "03ed9a7e-66a1-4c29-b815-67198190311a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Power'",
+                    "items": [
+                        {
+                            "description": "Symbol U3 [DC-DC, Buck, 4-40VIN, 3A, 5VOUT, (1)]",
+                            "pos": {
+                                "x": 0.5461,
+                                "y": 0.5207
+                            },
+                            "uuid": "03ed9a7e-66a1-4c29-b815-67198190311a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "Pins of type Unspecified and Passive are connected",
+                    "items": [
+                        {
+                            "description": "Symbol U3 Pin 4 [FB, Unspecified, Line]",
+                            "pos": {
+                                "x": 0.6731,
+                                "y": 0.5207
+                            },
+                            "uuid": "203605c7-898a-465c-b3ab-21de1a3f86e6"
+                        },
+                        {
+                            "description": "Symbol L1 Pin 1 [Passive, Line]",
+                            "pos": {
+                                "x": 0.7874,
+                                "y": 0.4953
+                            },
+                            "uuid": "1bdec9d5-ed7c-4736-978c-54e4364cc39c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "pin_to_pin"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol D1 [MBR340]",
+                            "pos": {
+                                "x": 0.6985,
+                                "y": 0.5588
+                            },
+                            "uuid": "5ea9880d-59b4-4121-92b1-2add827d7dcc"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Inductors'",
+                    "items": [
+                        {
+                            "description": "Symbol L1 [100uH,2mA]",
+                            "pos": {
+                                "x": 0.7493,
+                                "y": 0.4953
+                            },
+                            "uuid": "11e6304b-417d-47a2-abc2-e6cb63933a8f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C3 [CASE-A-3216-18(mm),10uF]",
+                            "pos": {
+                                "x": 0.8001,
+                                "y": 0.5334
+                            },
+                            "uuid": "dd4004a2-1267-40ca-89e2-f44474d7d599"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R24 [0805,330Ω]",
+                            "pos": {
+                                "x": 0.8509,
+                                "y": 0.4953
+                            },
+                            "uuid": "b7cec074-72cf-419c-8921-0bfd1c5d2c37"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R24 [0805,330Ω]",
+                            "pos": {
+                                "x": 0.8509,
+                                "y": 0.4953
+                            },
+                            "uuid": "b7cec074-72cf-419c-8921-0bfd1c5d2c37"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol D2 [LED,0805,Green]",
+                            "pos": {
+                                "x": 0.889,
+                                "y": 0.5588
+                            },
+                            "uuid": "43609c6a-9419-4318-a83f-8e7b221a8c8e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Diodes'",
+                    "items": [
+                        {
+                            "description": "Symbol D2 [LED,0805,Green]",
+                            "pos": {
+                                "x": 0.889,
+                                "y": 0.5588
+                            },
+                            "uuid": "43609c6a-9419-4318-a83f-8e7b221a8c8e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "Symbol 'USBLC6-2SC6' doesn't match copy in library 'Power_Protection'",
+                    "items": [
+                        {
+                            "description": "Symbol U2 [USBLC6-2SC6]",
+                            "pos": {
+                                "x": 0.5334,
+                                "y": 1.1684
+                            },
+                            "uuid": "79c99c7c-1cb0-47a6-a26e-4332c7e1d862"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_mismatch"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C4 [1206,47uF]",
+                            "pos": {
+                                "x": 1.397,
+                                "y": 0.5461
+                            },
+                            "uuid": "7e7164b6-ba1c-4289-b3c1-3501ad51cc11"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C4 [1206,47uF]",
+                            "pos": {
+                                "x": 1.397,
+                                "y": 0.5461
+                            },
+                            "uuid": "7e7164b6-ba1c-4289-b3c1-3501ad51cc11"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C5 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.4986,
+                                "y": 0.5461
+                            },
+                            "uuid": "df41e10f-1a27-4202-9929-ed680324131b"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C5 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.4986,
+                                "y": 0.5461
+                            },
+                            "uuid": "df41e10f-1a27-4202-9929-ed680324131b"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R25 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 0.6858,
+                                "y": 1.6637
+                            },
+                            "uuid": "86c4d807-eaeb-4ed7-a7bf-827103f2f79e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R25 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 0.6858,
+                                "y": 1.6637
+                            },
+                            "uuid": "86c4d807-eaeb-4ed7-a7bf-827103f2f79e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R26 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 0.6858,
+                                "y": 1.6891
+                            },
+                            "uuid": "de118efc-00bc-4dd7-9a81-b2f351488a83"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R26 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 0.6858,
+                                "y": 1.6891
+                            },
+                            "uuid": "de118efc-00bc-4dd7-9a81-b2f351488a83"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Extended'",
+                    "items": [
+                        {
+                            "description": "Symbol J2 [Connector, USB-TYPE-C-16P]",
+                            "pos": {
+                                "x": 0.4953,
+                                "y": 1.7653
+                            },
+                            "uuid": "8f46f23c-e7be-4ceb-8771-11eb9059fefe"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C16 [1206,47uF]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 0.5461
+                            },
+                            "uuid": "447d858c-ae47-4ba7-851a-6bedaf3fcbbf"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C16 [1206,47uF]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 0.5461
+                            },
+                            "uuid": "447d858c-ae47-4ba7-851a-6bedaf3fcbbf"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C7 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.6256,
+                                "y": 1.0795
+                            },
+                            "uuid": "19662486-6c02-43ff-a1b1-ed9b80170489"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C7 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.6256,
+                                "y": 1.0795
+                            },
+                            "uuid": "19662486-6c02-43ff-a1b1-ed9b80170489"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library '1My_parts - Connectors'",
+                    "items": [
+                        {
+                            "description": "Symbol J5 [Connector,_USB-TYPE-C-16P]",
+                            "pos": {
+                                "x": 1.2954,
+                                "y": 1.5113
+                            },
+                            "uuid": "79afdf7b-f7ac-43dc-bdc8-eb206999dfdf"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R3 [0805,2Ω]",
+                            "pos": {
+                                "x": 1.6256,
+                                "y": 1.1557
+                            },
+                            "uuid": "5afe8978-d0f9-4aaf-bad5-d898d64b85d6"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R3 [0805,2Ω]",
+                            "pos": {
+                                "x": 1.6256,
+                                "y": 1.1557
+                            },
+                            "uuid": "5afe8978-d0f9-4aaf-bad5-d898d64b85d6"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C18 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.9304,
+                                "y": 0.5461
+                            },
+                            "uuid": "b8a466bb-1201-4dd7-9e4e-1d7b9f44c1f0"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C18 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.9304,
+                                "y": 0.5461
+                            },
+                            "uuid": "b8a466bb-1201-4dd7-9e4e-1d7b9f44c1f0"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C10 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7145,
+                                "y": 1.1176
+                            },
+                            "uuid": "88812001-d488-4db6-b98d-e19917078cd2"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C10 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7145,
+                                "y": 1.1176
+                            },
+                            "uuid": "88812001-d488-4db6-b98d-e19917078cd2"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C9 [0805,22uF]",
+                            "pos": {
+                                "x": 1.6891,
+                                "y": 1.1938
+                            },
+                            "uuid": "c4c17ca9-8a73-4d7a-94c2-1f56be38fb4a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C9 [0805,22uF]",
+                            "pos": {
+                                "x": 1.6891,
+                                "y": 1.1938
+                            },
+                            "uuid": "c4c17ca9-8a73-4d7a-94c2-1f56be38fb4a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R2 [0805,100Ω]",
+                            "pos": {
+                                "x": 1.5621,
+                                "y": 1.3589
+                            },
+                            "uuid": "f811b654-62a3-42b7-960a-c28b28cf759c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R2 [0805,100Ω]",
+                            "pos": {
+                                "x": 1.5621,
+                                "y": 1.3589
+                            },
+                            "uuid": "f811b654-62a3-42b7-960a-c28b28cf759c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C14 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7907,
+                                "y": 1.1176
+                            },
+                            "uuid": "474b638d-19d5-4c25-84ff-4138018c79be"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C14 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7907,
+                                "y": 1.1176
+                            },
+                            "uuid": "474b638d-19d5-4c25-84ff-4138018c79be"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C12 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7526,
+                                "y": 1.1938
+                            },
+                            "uuid": "d2a63084-a377-420a-b946-9064356132f0"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C12 [0805,22uF]",
+                            "pos": {
+                                "x": 1.7526,
+                                "y": 1.1938
+                            },
+                            "uuid": "d2a63084-a377-420a-b946-9064356132f0"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C11 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.7145,
+                                "y": 1.27
+                            },
+                            "uuid": "3ccfb464-0c0d-4b51-bcdf-e623832d049a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C11 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.7145,
+                                "y": 1.27
+                            },
+                            "uuid": "3ccfb464-0c0d-4b51-bcdf-e623832d049a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C15 [0805,22uF]",
+                            "pos": {
+                                "x": 1.8161,
+                                "y": 1.1938
+                            },
+                            "uuid": "0a20538c-4cd5-44e2-8582-4125014cd777"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C15 [0805,22uF]",
+                            "pos": {
+                                "x": 1.8161,
+                                "y": 1.1938
+                            },
+                            "uuid": "0a20538c-4cd5-44e2-8582-4125014cd777"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C6 [0805,220nF]",
+                            "pos": {
+                                "x": 1.6129,
+                                "y": 1.4605
+                            },
+                            "uuid": "b1fd703f-4207-4e22-b2f5-813ddd001536"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C6 [0805,220nF]",
+                            "pos": {
+                                "x": 1.6129,
+                                "y": 1.4605
+                            },
+                            "uuid": "b1fd703f-4207-4e22-b2f5-813ddd001536"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C8 [0805,220nF]",
+                            "pos": {
+                                "x": 1.6764,
+                                "y": 1.4986
+                            },
+                            "uuid": "9f1d09ee-0bf5-4031-9ba3-3767f1d68db9"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C8 [0805,220nF]",
+                            "pos": {
+                                "x": 1.6764,
+                                "y": 1.4986
+                            },
+                            "uuid": "9f1d09ee-0bf5-4031-9ba3-3767f1d68db9"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R8 [0805,300Ω]",
+                            "pos": {
+                                "x": 1.8796,
+                                "y": 1.2446
+                            },
+                            "uuid": "0922d572-557e-448c-a916-aa974b763680"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R8 [0805,300Ω]",
+                            "pos": {
+                                "x": 1.8796,
+                                "y": 1.2446
+                            },
+                            "uuid": "0922d572-557e-448c-a916-aa974b763680"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C19 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.9812,
+                                "y": 1.1049
+                            },
+                            "uuid": "ffbf3bee-f751-458e-bd42-4ea7bf462114"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C19 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.9812,
+                                "y": 1.1049
+                            },
+                            "uuid": "ffbf3bee-f751-458e-bd42-4ea7bf462114"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C13 [0805,220nF]",
+                            "pos": {
+                                "x": 1.7526,
+                                "y": 1.4986
+                            },
+                            "uuid": "6b9475b7-ccc0-4871-95c8-77afa9508cbf"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C13 [0805,220nF]",
+                            "pos": {
+                                "x": 1.7526,
+                                "y": 1.4986
+                            },
+                            "uuid": "6b9475b7-ccc0-4871-95c8-77afa9508cbf"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C2 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 0.3429,
+                                "y": 2.3114
+                            },
+                            "uuid": "cf1044dd-b2f8-4450-a28a-8993b04bdc10"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C2 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 0.3429,
+                                "y": 2.3114
+                            },
+                            "uuid": "cf1044dd-b2f8-4450-a28a-8993b04bdc10"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R5 [0805,2.7kΩ]",
+                            "pos": {
+                                "x": 1.8161,
+                                "y": 1.5621
+                            },
+                            "uuid": "5679b405-c911-493d-8fd5-5668e5640107"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R5 [0805,2.7kΩ]",
+                            "pos": {
+                                "x": 1.8161,
+                                "y": 1.5621
+                            },
+                            "uuid": "5679b405-c911-493d-8fd5-5668e5640107"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R4 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.778,
+                                "y": 1.6256
+                            },
+                            "uuid": "2b0a93db-7b63-4393-aa2a-31f5ab1a4c9c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R4 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.778,
+                                "y": 1.6256
+                            },
+                            "uuid": "2b0a93db-7b63-4393-aa2a-31f5ab1a4c9c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R1 [0805,2Ω]",
+                            "pos": {
+                                "x": 0.6477,
+                                "y": 2.3368
+                            },
+                            "uuid": "01037142-7fc1-4be4-9f08-5d99e024dc37"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R1 [0805,2Ω]",
+                            "pos": {
+                                "x": 0.6477,
+                                "y": 2.3368
+                            },
+                            "uuid": "01037142-7fc1-4be4-9f08-5d99e024dc37"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C17 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.8796,
+                                "y": 1.6129
+                            },
+                            "uuid": "353b0d0f-2c43-4802-9f5a-c765f0b24a38"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C17 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 1.8796,
+                                "y": 1.6129
+                            },
+                            "uuid": "353b0d0f-2c43-4802-9f5a-c765f0b24a38"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R6 [0805,1.8kΩ]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 1.6891
+                            },
+                            "uuid": "45e37811-c3ce-4d41-9a0a-b97884482739"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R6 [0805,1.8kΩ]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 1.6891
+                            },
+                            "uuid": "45e37811-c3ce-4d41-9a0a-b97884482739"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R7 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 1.7526
+                            },
+                            "uuid": "4f7af564-e992-4e9c-bc50-d2b62e5c3a99"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R7 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.8415,
+                                "y": 1.7526
+                            },
+                            "uuid": "4f7af564-e992-4e9c-bc50-d2b62e5c3a99"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R9 [0805,1.8kΩ]",
+                            "pos": {
+                                "x": 1.9177,
+                                "y": 1.6891
+                            },
+                            "uuid": "1f1fffb1-a5c5-466a-a7ee-2f8ba16d0e90"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R9 [0805,1.8kΩ]",
+                            "pos": {
+                                "x": 1.9177,
+                                "y": 1.6891
+                            },
+                            "uuid": "1f1fffb1-a5c5-466a-a7ee-2f8ba16d0e90"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R10 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.9177,
+                                "y": 1.7526
+                            },
+                            "uuid": "e15ab685-9185-4201-a6bf-c57fbeab7d3f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R10 [0805,10kΩ]",
+                            "pos": {
+                                "x": 1.9177,
+                                "y": 1.7526
+                            },
+                            "uuid": "e15ab685-9185-4201-a6bf-c57fbeab7d3f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "Symbol 'B4B-XH-A_LF__SN_' doesn't match copy in library 'dk_Rectangular-Connectors-Headers-Male-Pins'",
+                    "items": [
+                        {
+                            "description": "Symbol J7 [B4B-XH-A_LF__SN_]",
+                            "pos": {
+                                "x": 2.5654,
+                                "y": 0.5588
+                            },
+                            "uuid": "d6187775-ae92-4009-b351-d51dbabe72d1"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_mismatch"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library ''.",
+                    "items": [
+                        {
+                            "description": "Symbol U8 [TPS25830AQCWRHBRQ1]",
+                            "pos": {
+                                "x": 2.4892,
+                                "y": 1.1049
+                            },
+                            "uuid": "3430e627-99b8-4a36-95e5-2ec68ae7e33b"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R11 [0805,20kΩ]",
+                            "pos": {
+                                "x": 2.5146,
+                                "y": 1.1938
+                            },
+                            "uuid": "bd4f929d-bfd5-4309-9563-3a13b25db039"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R11 [0805,20kΩ]",
+                            "pos": {
+                                "x": 2.5146,
+                                "y": 1.1938
+                            },
+                            "uuid": "bd4f929d-bfd5-4309-9563-3a13b25db039"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C21 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 2.5527,
+                                "y": 1.1938
+                            },
+                            "uuid": "4cb6d13b-1b8d-4f45-8908-67307979020c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C21 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 2.5527,
+                                "y": 1.1938
+                            },
+                            "uuid": "4cb6d13b-1b8d-4f45-8908-67307979020c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'adafruit  334F'.",
+                    "items": [
+                        {
+                            "description": "Symbol U7 [ADA_Fruit_CH334F]",
+                            "pos": {
+                                "x": 1.5113,
+                                "y": 2.3876
+                            },
+                            "uuid": "97c2dc4e-34e8-4a73-9a8f-470659cf58fd"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "Symbol 'ADA_Fruit_CH334F' doesn't match copy in library '1 - Phil's global lib'",
+                    "items": [
+                        {
+                            "description": "Symbol U7 [ADA_Fruit_CH334F]",
+                            "pos": {
+                                "x": 1.5113,
+                                "y": 2.3876
+                            },
+                            "uuid": "97c2dc4e-34e8-4a73-9a8f-470659cf58fd"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_mismatch"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R13 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 2.5527,
+                                "y": 1.2827
+                            },
+                            "uuid": "0238b6d5-8f09-48b8-a6ea-d33183d8c8ac"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R13 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 2.5527,
+                                "y": 1.2827
+                            },
+                            "uuid": "0238b6d5-8f09-48b8-a6ea-d33183d8c8ac"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C23 [0805,10uF]",
+                            "pos": {
+                                "x": 2.6416,
+                                "y": 1.1938
+                            },
+                            "uuid": "6c541d26-02cb-4159-aaa7-0f6da7921070"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C23 [0805,10uF]",
+                            "pos": {
+                                "x": 2.6416,
+                                "y": 1.1938
+                            },
+                            "uuid": "6c541d26-02cb-4159-aaa7-0f6da7921070"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R14 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.3335
+                            },
+                            "uuid": "100f0049-977d-4aea-9d43-3bf36103d721"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R14 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.3335
+                            },
+                            "uuid": "100f0049-977d-4aea-9d43-3bf36103d721"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R12 [0805,49.9kΩ]",
+                            "pos": {
+                                "x": 2.5273,
+                                "y": 1.4351
+                            },
+                            "uuid": "5da4e43d-40e8-48d7-a936-864f2490e7db"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R12 [0805,49.9kΩ]",
+                            "pos": {
+                                "x": 2.5273,
+                                "y": 1.4351
+                            },
+                            "uuid": "5da4e43d-40e8-48d7-a936-864f2490e7db"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R15 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.3589
+                            },
+                            "uuid": "609e20c3-09b2-4ec5-bf6d-d1fde5f0fdb9"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R15 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.3589
+                            },
+                            "uuid": "609e20c3-09b2-4ec5-bf6d-d1fde5f0fdb9"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C25 [1206,100uF]",
+                            "pos": {
+                                "x": 2.8956,
+                                "y": 0.5969
+                            },
+                            "uuid": "94a73511-06b0-45cf-bf08-bac710a85ac6"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C25 [1206,100uF]",
+                            "pos": {
+                                "x": 2.8956,
+                                "y": 0.5969
+                            },
+                            "uuid": "94a73511-06b0-45cf-bf08-bac710a85ac6"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C24 [0805,2.2nF]",
+                            "pos": {
+                                "x": 2.7178,
+                                "y": 1.1938
+                            },
+                            "uuid": "84aa8911-0b4a-420b-b382-eba5fd36f477"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C24 [0805,2.2nF]",
+                            "pos": {
+                                "x": 2.7178,
+                                "y": 1.1938
+                            },
+                            "uuid": "84aa8911-0b4a-420b-b382-eba5fd36f477"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R16 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.4859
+                            },
+                            "uuid": "fdb94796-f9f1-4350-972b-c48e0188573c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R16 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.4859
+                            },
+                            "uuid": "fdb94796-f9f1-4350-972b-c48e0188573c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R17 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.5367
+                            },
+                            "uuid": "91f5790c-3efd-4e65-ad15-219b6d579f2f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R17 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.5367
+                            },
+                            "uuid": "91f5790c-3efd-4e65-ad15-219b6d579f2f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R18 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.5875
+                            },
+                            "uuid": "776d2181-b51f-45cc-ba0c-dccd879bac03"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R18 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.5875
+                            },
+                            "uuid": "776d2181-b51f-45cc-ba0c-dccd879bac03"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R19 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.6383
+                            },
+                            "uuid": "9f09b2d1-6811-4080-91fa-ad1c51683e69"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R19 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.6383
+                            },
+                            "uuid": "9f09b2d1-6811-4080-91fa-ad1c51683e69"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R20 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.6637
+                            },
+                            "uuid": "7b287619-0d6f-4263-8eb4-2fbe318b8093"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R20 [0805,100kΩ]",
+                            "pos": {
+                                "x": 2.5781,
+                                "y": 1.6637
+                            },
+                            "uuid": "7b287619-0d6f-4263-8eb4-2fbe318b8093"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C20 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 2.4892,
+                                "y": 1.8161
+                            },
+                            "uuid": "66e63fe2-efea-4332-a4d2-1b5111a060ff"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C20 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 2.4892,
+                                "y": 1.8161
+                            },
+                            "uuid": "66e63fe2-efea-4332-a4d2-1b5111a060ff"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C22 [0805,2.2uF]",
+                            "pos": {
+                                "x": 2.5908,
+                                "y": 1.8161
+                            },
+                            "uuid": "2ac7938a-dfb8-4ce5-bc12-f15958af2816"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C22 [0805,2.2uF]",
+                            "pos": {
+                                "x": 2.5908,
+                                "y": 1.8161
+                            },
+                            "uuid": "2ac7938a-dfb8-4ce5-bc12-f15958af2816"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library '1My_parts - Connectors'",
+                    "items": [
+                        {
+                            "description": "Symbol J10 [Connector,_USB-TYPE-C-16P]",
+                            "pos": {
+                                "x": 3.2766,
+                                "y": 1.27
+                            },
+                            "uuid": "f896e339-d0d9-46c5-835a-585998018c3a"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol C26 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 3.2639,
+                                "y": 1.524
+                            },
+                            "uuid": "bb008eeb-a81a-4be6-93ca-834ca4f60d1c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'",
+                    "items": [
+                        {
+                            "description": "Symbol C26 [0805,100nF,(2)]",
+                            "pos": {
+                                "x": 3.2639,
+                                "y": 1.524
+                            },
+                            "uuid": "bb008eeb-a81a-4be6-93ca-834ca4f60d1c"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R21 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 3.4671,
+                                "y": 1.3462
+                            },
+                            "uuid": "218cafa4-5911-45f1-8975-a0901dfed7af"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R21 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 3.4671,
+                                "y": 1.3462
+                            },
+                            "uuid": "218cafa4-5911-45f1-8975-a0901dfed7af"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R22 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 3.4671,
+                                "y": 1.3716
+                            },
+                            "uuid": "67fa4625-2814-4eab-81b7-255fe5cb3807"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R22 [0805,5.1kΩ]",
+                            "pos": {
+                                "x": 3.4671,
+                                "y": 1.3716
+                            },
+                            "uuid": "67fa4625-2814-4eab-81b7-255fe5cb3807"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                },
+                {
+                    "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+                    "items": [
+                        {
+                            "description": "Symbol R23 [0805,2Ω]",
+                            "pos": {
+                                "x": 3.556,
+                                "y": 1.4224
+                            },
+                            "uuid": "9a572541-749e-4089-ae86-3fa78ce5682f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "footprint_link_issues"
+                },
+                {
+                    "description": "The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'",
+                    "items": [
+                        {
+                            "description": "Symbol R23 [0805,2Ω]",
+                            "pos": {
+                                "x": 3.556,
+                                "y": 1.4224
+                            },
+                            "uuid": "9a572541-749e-4089-ae86-3fa78ce5682f"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "lib_symbol_issues"
+                }
+            ]
+        }
+    ],
+    "source": "USB Hub Next Iter.kicad_sch"
+}
