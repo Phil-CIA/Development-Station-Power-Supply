@@ -18,11 +18,12 @@
 ## Schematic Changes
 
 ### SCH-001 — Net alias conflict: `VCC_12V` vs `+12V`
-**Status:** 🔴 Open  
+**Status:** 🟢 Resolved in next-iter files  
 **Severity:** Low (cosmetic/ERC noise)  
 **Found by:** KiCad ERC — `multiple_net_names`  
 **Description:** Two global labels (`+12V` and `VCC_12V`) are attached to the same net. KiCad resolves to `+12V` in the netlist but the duplicate alias causes confusion and ERC noise on every run.  
-**Fix:** Rename all `VCC_12V` labels to `+12V` in the schematic.
+**Fix:** Rename all `VCC_12V` labels to `+12V` in the schematic.  
+**Progress:** Done in `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_sch`; ERC dropped from 124 to 123 by removing the `multiple_net_names` violation.
 
 ---
 
@@ -118,4 +119,5 @@
 ## Revision History
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-04-12 | SCH-001 completed | Isolated next-iteration workspace created at `hardware/kicad/usb-hub-next-iter`; net-label alias cleanup verified by ERC rerun. |
 | 2026-04-12 | All items added | Initial capture from ERC/DRC runs on Rev 1 files. Board is assembled/ready — all fixes deferred to next PCB revision. |
