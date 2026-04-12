@@ -1,4 +1,0 @@
-(fp_lib_table
-  (version 7)
-  (lib (name "adafruit  334F")(type "KiCad")(uri "${KIPRJMOD}/adafruit  334F.pretty")(options "")(descr ""))
-)
