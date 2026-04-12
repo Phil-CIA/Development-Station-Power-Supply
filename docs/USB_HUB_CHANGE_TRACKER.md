@@ -28,12 +28,13 @@
 ---
 
 ### SCH-002 — Missing PWR_FLAG on 5 power rails
-**Status:** 🔴 Open  
+**Status:** 🟢 Resolved in next-iter files  
 **Severity:** Low (ERC housekeeping)  
 **Found by:** KiCad ERC — `power_pin_not_driven` × 5  
 **Affected nets:** U3/OUT, J1 VBUS, J3 VBUS, U1/VS, #PWR01  
 **Description:** ERC cannot confirm these rails are driven because no `PWR_FLAG` symbol is present. Not an electrical fault — the rails are driven — but causes 5 ERC errors on every run.  
 **Fix:** Add a `PWR_FLAG` symbol to each of the 5 nets listed above.
+**Progress:** Done in `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_sch`; `power_pin_not_driven` is now 0.
 
 ---
 
@@ -71,7 +72,7 @@
 ## PCB Changes
 
 ### PCB-001 — Silkscreen clipped by solder mask (3 locations)
-**Status:** 🔴 Open  
+**Status:** 🟢 Resolved in next-iter files  
 **Severity:** Low (cosmetic, does not affect assembly)  
 **Found by:** KiCad DRC — `silk_over_copper`  
 **Locations:**
@@ -79,6 +80,7 @@
 - `J9` B.Silkscreen rectangle @ (160.06, 80.04)
 - `U8` designator text @ (129.7584, 84.1226)  
 **Fix:** Nudge the affected silkscreen elements inward so they clear the solder mask boundary.
+**Progress:** Done in `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_pcb`; `silk_over_copper` is now 0.
 
 ---
 
@@ -119,5 +121,7 @@
 ## Revision History
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-04-12 | SCH-002 completed | Added PWR_FLAG coverage in next-iter schematic; ERC now down to non-electrical library mismatch/link warnings only. |
+| 2026-04-12 | PCB-001 completed | Cleared all 3 silkscreen-over-copper warnings in next-iter PCB; DRC now shows footprint-library mismatch items only. |
 | 2026-04-12 | SCH-001 completed | Isolated next-iteration workspace created at `hardware/kicad/usb-hub-next-iter`; net-label alias cleanup verified by ERC rerun. |
 | 2026-04-12 | All items added | Initial capture from ERC/DRC runs on Rev 1 files. Board is assembled/ready — all fixes deferred to next PCB revision. |

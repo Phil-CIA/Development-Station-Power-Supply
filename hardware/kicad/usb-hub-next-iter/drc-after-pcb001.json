@@ -1,0 +1,221 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-04-12T13:57:20-0500",
+    "kicad_version": "9.0.7",
+    "schematic_parity": [],
+    "source": "USB Hub Next Iter.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "Footprint 'SOT65P280X145-8N' does not match copy in library '1My_Parts_ ICs'.",
+            "items": [
+                {
+                    "description": "Footprint U1",
+                    "pos": {
+                        "x": 128.68,
+                        "y": 78.3575
+                    },
+                    "uuid": "066ab135-4f3c-4614-a286-f23592f97b82"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U5",
+                    "pos": {
+                        "x": 128.0225,
+                        "y": 100.38
+                    },
+                    "uuid": "196baad5-2e21-40aa-903d-6bad31c4bfc2"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J10",
+                    "pos": {
+                        "x": 110.78,
+                        "y": 91.61
+                    },
+                    "uuid": "3b8e904a-b9c7-4466-8be7-250b9bc58fb0"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB-A-SMD_916-261B2115S30200' does not match copy in library '1My_Parts_ Connectors'.",
+            "items": [
+                {
+                    "description": "Footprint J4",
+                    "pos": {
+                        "x": 163.0325,
+                        "y": 91.61
+                    },
+                    "uuid": "4c78b0b5-8c63-4b2b-89de-b62152dae977"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT65P280X145-8N' does not match copy in library '1My_Parts_ ICs'.",
+            "items": [
+                {
+                    "description": "Footprint U9",
+                    "pos": {
+                        "x": 120.6,
+                        "y": 78.4775
+                    },
+                    "uuid": "a006ab66-34a1-46e3-a7f2-482eea03084c"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J5",
+                    "pos": {
+                        "x": 141.1,
+                        "y": 91.74
+                    },
+                    "uuid": "a9e665a3-7b21-4bef-a18e-8eb46190a27d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U2",
+                    "pos": {
+                        "x": 175.86,
+                        "y": 74.31
+                    },
+                    "uuid": "aafc1973-a1b4-42c5-a9e3-6bcbadd73395"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U4",
+                    "pos": {
+                        "x": 152.1125,
+                        "y": 100.575
+                    },
+                    "uuid": "bf6ebbeb-7ce2-4958-80f2-b757eec85e3b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U6",
+                    "pos": {
+                        "x": 147.225,
+                        "y": 100.6
+                    },
+                    "uuid": "daf3744e-0cbe-4c85-ab83-f42cfeb64133"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U10",
+                    "pos": {
+                        "x": 115.3125,
+                        "y": 100.6
+                    },
+                    "uuid": "ebd06499-c694-4fb3-8333-076452f7508d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'JST_XH_B6B-XH-AM_1x06_P2.50mm_Vertical' does not match copy in library 'Connector_JST'.",
+            "items": [
+                {
+                    "description": "Footprint J9",
+                    "pos": {
+                        "x": 157.5,
+                        "y": 82.5
+                    },
+                    "uuid": "1fc3687b-ea89-4d31-a02e-7b0dee58442b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'Adafruit CH334' does not match copy in library 'adafruit  334F'.",
+            "items": [
+                {
+                    "description": "Footprint U7",
+                    "pos": {
+                        "x": 178.27,
+                        "y": 95.03
+                    },
+                    "uuid": "4dc14de1-441b-4408-a3f6-d82b158d0434"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J2",
+                    "pos": {
+                        "x": 152.08,
+                        "y": 91.61
+                    },
+                    "uuid": "58bbbd77-d0a1-42f5-9cc9-06bf308ccc15"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical' does not match copy in library 'Connector_JST'.",
+            "items": [
+                {
+                    "description": "Footprint J7",
+                    "pos": {
+                        "x": 196.25,
+                        "y": 110.0
+                    },
+                    "uuid": "69befe69-5baa-4c47-a16d-65855ff8b056"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        }
+    ]
+}

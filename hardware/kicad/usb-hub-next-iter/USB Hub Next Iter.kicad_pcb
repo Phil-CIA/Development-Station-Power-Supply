@@ -4621,7 +4621,7 @@
 				(width 0.25)
 				(type solid)
 			)
-			(layer "F.SilkS")
+			(layer "F.Fab")
 			(uuid "b87af041-dcde-4968-ada6-40a1bfa46de1")
 		)
 		(fp_line
@@ -14482,7 +14482,7 @@
 				(type solid)
 			)
 			(fill no)
-			(layer "B.SilkS")
+			(layer "B.Fab")
 			(uuid "9e0ffc1d-941a-445b-9f0c-1d9416379206")
 		)
 		(fp_rect
@@ -18089,7 +18089,7 @@
 		(fp_text user "Designator853"
 			(at -3.7084 4.7244 0)
 			(unlocked yes)
-			(layer "B.SilkS")
+			(layer "B.Fab")
 			(uuid "0568fda1-363d-4003-a270-0b2a82f07416")
 			(effects
 				(font
