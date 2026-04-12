@@ -1,0 +1,1031 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-04-12T06:28:09-0500",
+    "kicad_version": "9.0.7",
+    "schematic_parity": [],
+    "source": "USB Hub.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C26",
+                    "pos": {
+                        "x": 112.94,
+                        "y": 78.2275
+                    },
+                    "uuid": "049c93ba-c4b7-455a-8c7e-d58832d24b9f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'SOT65P280X145-8N' does not match copy in library '1My_Parts_ ICs'.",
+            "items": [
+                {
+                    "description": "Footprint U1",
+                    "pos": {
+                        "x": 128.68,
+                        "y": 78.3575
+                    },
+                    "uuid": "066ab135-4f3c-4614-a286-f23592f97b82"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U5",
+                    "pos": {
+                        "x": 128.0225,
+                        "y": 100.38
+                    },
+                    "uuid": "196baad5-2e21-40aa-903d-6bad31c4bfc2"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C18",
+                    "pos": {
+                        "x": 162.0,
+                        "y": 81.45
+                    },
+                    "uuid": "321f94a5-c17c-4ea0-8da3-b5593b00923b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C25",
+                    "pos": {
+                        "x": 112.95,
+                        "y": 75.05
+                    },
+                    "uuid": "362c3061-6e47-436d-a600-d4dc5fc399ab"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J10",
+                    "pos": {
+                        "x": 110.78,
+                        "y": 91.61
+                    },
+                    "uuid": "3b8e904a-b9c7-4466-8be7-250b9bc58fb0"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C4",
+                    "pos": {
+                        "x": 169.1083,
+                        "y": 74.3
+                    },
+                    "uuid": "5a2cb028-5a59-4357-becd-a45bd78617fb"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R23",
+                    "pos": {
+                        "x": 116.98,
+                        "y": 82.38
+                    },
+                    "uuid": "6232641a-491d-4de5-88ef-3b96e7fa0c4d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R21",
+                    "pos": {
+                        "x": 105.28,
+                        "y": 90.98
+                    },
+                    "uuid": "662afd9c-f67a-424e-90a9-e299bbdc834b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R1",
+                    "pos": {
+                        "x": 121.29,
+                        "y": 82.99
+                    },
+                    "uuid": "66a9edb2-9d50-4f97-bc8a-9fac3c4ad0c5"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C12",
+                    "pos": {
+                        "x": 140.875,
+                        "y": 100.66
+                    },
+                    "uuid": "69cea174-9939-4f5b-962c-6858662f34b4"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R22",
+                    "pos": {
+                        "x": 116.34,
+                        "y": 87.67
+                    },
+                    "uuid": "722946ae-0dcc-4d5e-bf36-5799b0b92558"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C10",
+                    "pos": {
+                        "x": 138.375,
+                        "y": 100.58
+                    },
+                    "uuid": "990df7ff-dbd8-40e7-8764-cb732cfc69db"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'SOT65P280X145-8N' does not match copy in library '1My_Parts_ ICs'.",
+            "items": [
+                {
+                    "description": "Footprint U9",
+                    "pos": {
+                        "x": 120.6,
+                        "y": 78.4775
+                    },
+                    "uuid": "a006ab66-34a1-46e3-a7f2-482eea03084c"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J5",
+                    "pos": {
+                        "x": 141.1,
+                        "y": 91.74
+                    },
+                    "uuid": "a9e665a3-7b21-4bef-a18e-8eb46190a27d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U2",
+                    "pos": {
+                        "x": 175.86,
+                        "y": 74.31
+                    },
+                    "uuid": "aafc1973-a1b4-42c5-a9e3-6bcbadd73395"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C5",
+                    "pos": {
+                        "x": 176.95,
+                        "y": 91.58
+                    },
+                    "uuid": "ac4ebd4c-dddf-48e1-91df-524c8738fb32"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U4",
+                    "pos": {
+                        "x": 152.1125,
+                        "y": 100.575
+                    },
+                    "uuid": "bf6ebbeb-7ce2-4958-80f2-b757eec85e3b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C2",
+                    "pos": {
+                        "x": 117.04,
+                        "y": 78.6175
+                    },
+                    "uuid": "d42ff0dc-b677-4f81-87a6-ef9b4ef8bde4"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C14",
+                    "pos": {
+                        "x": 143.175,
+                        "y": 100.7
+                    },
+                    "uuid": "d74ef874-7109-4fa7-a0ef-7e35b9829815"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U6",
+                    "pos": {
+                        "x": 147.225,
+                        "y": 100.6
+                    },
+                    "uuid": "daf3744e-0cbe-4c85-ab83-f42cfeb64133"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'SOT-23-6' does not match copy in library 'Package_TO_SOT_SMD'.",
+            "items": [
+                {
+                    "description": "Footprint U10",
+                    "pos": {
+                        "x": 115.3125,
+                        "y": 100.6
+                    },
+                    "uuid": "ebd06499-c694-4fb3-8333-076452f7508d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C16",
+                    "pos": {
+                        "x": 163.42,
+                        "y": 76.66
+                    },
+                    "uuid": "f3f6ef9e-51eb-4d4a-9a14-c6b89aa8cf41"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C6",
+                    "pos": {
+                        "x": 116.0229,
+                        "y": 103.665
+                    },
+                    "uuid": "11398d39-03c3-4164-b411-3f47e073d24d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C15",
+                    "pos": {
+                        "x": 118.175,
+                        "y": 98.125
+                    },
+                    "uuid": "11ebbd9c-6894-4c4b-9a60-1678eb9e9bad"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R9",
+                    "pos": {
+                        "x": 125.0767,
+                        "y": 103.665
+                    },
+                    "uuid": "137fc14c-f1aa-404a-a7b6-fed258135502"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R16",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 80.39
+                    },
+                    "uuid": "233767c3-583a-40ca-8575-4f4b7fb92f86"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C17",
+                    "pos": {
+                        "x": 130.9478,
+                        "y": 97.96
+                    },
+                    "uuid": "3562f323-6f1c-46c6-a9af-21a9abf66fe3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C21",
+                    "pos": {
+                        "x": 128.07,
+                        "y": 79.33
+                    },
+                    "uuid": "46b4dab4-b4c6-438e-90a0-467923aca6ec"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R11",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 77.0917
+                    },
+                    "uuid": "4b8378b2-56d8-495c-b736-7c69386e211d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'adafruit  334F'.",
+            "items": [
+                {
+                    "description": "Footprint U7",
+                    "pos": {
+                        "x": 178.27,
+                        "y": 95.03
+                    },
+                    "uuid": "4dc14de1-441b-4408-a3f6-d82b158d0434"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C7",
+                    "pos": {
+                        "x": 128.4957,
+                        "y": 97.96
+                    },
+                    "uuid": "5499803d-d680-4504-b36d-14c0296d65d3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'USB_C_Receptacle_G-Switch_GT-USB-7051x' does not match copy in library 'Connector_USB'.",
+            "items": [
+                {
+                    "description": "Footprint J2",
+                    "pos": {
+                        "x": 152.08,
+                        "y": 91.61
+                    },
+                    "uuid": "58bbbd77-d0a1-42f5-9cc9-06bf308ccc15"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R5",
+                    "pos": {
+                        "x": 133.35,
+                        "y": 97.96
+                    },
+                    "uuid": "5a8699ac-459a-4d5c-9043-2be8445f887e"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R24",
+                    "pos": {
+                        "x": 131.63,
+                        "y": 115.14
+                    },
+                    "uuid": "5f768cb8-c49c-4f69-a5fc-6d0366a3ad28"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint 'JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical' does not match copy in library 'Connector_JST'.",
+            "items": [
+                {
+                    "description": "Footprint J7",
+                    "pos": {
+                        "x": 196.25,
+                        "y": 110.0
+                    },
+                    "uuid": "69befe69-5baa-4c47-a16d-65855ff8b056"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C24",
+                    "pos": {
+                        "x": 125.92,
+                        "y": 79.27
+                    },
+                    "uuid": "6daac9db-162a-4d62-b0ae-0d9dca1fa7d1"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint D2",
+                    "pos": {
+                        "x": 128.62,
+                        "y": 115.08
+                    },
+                    "uuid": "73430e3e-ecda-4e25-b2e3-0f50f6edc7c9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C19",
+                    "pos": {
+                        "x": 123.65,
+                        "y": 79.26
+                    },
+                    "uuid": "75b45a51-1ec3-4045-8e0b-c7f5c546b47c"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R2",
+                    "pos": {
+                        "x": 118.2988,
+                        "y": 103.665
+                    },
+                    "uuid": "83de36a4-9950-4a4f-a7e7-76bf5b4ae73f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R7",
+                    "pos": {
+                        "x": 133.9804,
+                        "y": 103.665
+                    },
+                    "uuid": "8a7cc899-e02a-4bd4-895e-6c68ac449db1"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R17",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 82.462
+                    },
+                    "uuid": "8a9c6046-0c48-4b04-8164-c78e34d49946"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C23",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 74.8
+                    },
+                    "uuid": "8c3bbe59-abfa-4a32-b66f-7d153fcd405e"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint U3",
+                    "pos": {
+                        "x": 157.6,
+                        "y": 109.85
+                    },
+                    "uuid": "8e6199fe-b7f4-49d3-9c7e-a5c01004ffab"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R8",
+                    "pos": {
+                        "x": 126.0935,
+                        "y": 97.96
+                    },
+                    "uuid": "9aa28edb-5a3d-45bb-af14-9b1e337c0fa9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R10",
+                    "pos": {
+                        "x": 127.3026,
+                        "y": 103.665
+                    },
+                    "uuid": "a1fe130d-a76b-4405-8913-39e6f655aa17"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R6",
+                    "pos": {
+                        "x": 129.5285,
+                        "y": 103.665
+                    },
+                    "uuid": "a75a3401-70ae-4ea6-8768-e985218bfd24"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R20",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 86.0583
+                    },
+                    "uuid": "ad0e2d01-aafd-47d0-ad7a-01ae5d6ed3e7"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R3",
+                    "pos": {
+                        "x": 120.5248,
+                        "y": 103.665
+                    },
+                    "uuid": "b22475bd-c260-4d26-88a7-cc65a5219df2"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R26",
+                    "pos": {
+                        "x": 134.3,
+                        "y": 92.25
+                    },
+                    "uuid": "b7d9fd0b-1d3d-4f12-a83a-26270e7a9810"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R18",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 86.706
+                    },
+                    "uuid": "c3f69eb5-0c91-47e7-90b1-1684810507c6"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C11",
+                    "pos": {
+                        "x": 122.8007,
+                        "y": 103.665
+                    },
+                    "uuid": "c4927a5d-075d-4590-9153-b9209f953cf3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint D1",
+                    "pos": {
+                        "x": 185.12,
+                        "y": 89.29
+                    },
+                    "uuid": "cdfd763e-cd1e-44d5-ae1a-0edfd0c8c57c"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R13",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 79.3333
+                    },
+                    "uuid": "ce3b50ec-7551-426b-a6dc-b09089f636c6"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C22",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 84.584
+                    },
+                    "uuid": "cefb1f20-7428-4c7f-a385-333038883df1"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C13",
+                    "pos": {
+                        "x": 115.7228,
+                        "y": 98.125
+                    },
+                    "uuid": "d2fb6d62-4a0d-4155-882e-3203aee53e2d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R15",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 83.8167
+                    },
+                    "uuid": "d4b2fb31-689f-417a-9b33-f04638ed93cf"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R19",
+                    "pos": {
+                        "x": 134.28,
+                        "y": 88.14
+                    },
+                    "uuid": "d830121e-90fa-4006-928f-f5a779421efc"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R4",
+                    "pos": {
+                        "x": 131.7545,
+                        "y": 103.665
+                    },
+                    "uuid": "db985de3-9706-45b0-9817-4497e0503e59"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C20",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 88.828
+                    },
+                    "uuid": "e02a7dba-82fc-4b4f-9281-f0623c681383"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R25",
+                    "pos": {
+                        "x": 134.3,
+                        "y": 90.175
+                    },
+                    "uuid": "e04f43c0-1fd2-4f1a-9868-92d93fe28302"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C9",
+                    "pos": {
+                        "x": 123.6914,
+                        "y": 97.96
+                    },
+                    "uuid": "e23828d4-da73-474f-9f15-b3e637c7c754"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R14",
+                    "pos": {
+                        "x": 134.29,
+                        "y": 81.575
+                    },
+                    "uuid": "ee8d9520-141d-4eb2-a588-02eebee2ef7b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint R12",
+                    "pos": {
+                        "x": 135.7021,
+                        "y": 97.96
+                    },
+                    "uuid": "f462ff4f-fe09-4239-aee4-4307589bc3e3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'PCM_JLCPCB'.",
+            "items": [
+                {
+                    "description": "Footprint C8",
+                    "pos": {
+                        "x": 116.4,
+                        "y": 91.0
+                    },
+                    "uuid": "fc732207-cdf8-4385-852d-44483d7086b0"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Segment of J4 on F.Silkscreen",
+                    "pos": {
+                        "x": 159.8025,
+                        "y": 85.18
+                    },
+                    "uuid": "b87af041-dcde-4968-ada6-40a1bfa46de1"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Rectangle of J9 on B.Silkscreen",
+                    "pos": {
+                        "x": 160.06,
+                        "y": 80.04
+                    },
+                    "uuid": "9e0ffc1d-941a-445b-9f0c-1d9416379206"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Footprint text of U8 (Designator853)",
+                    "pos": {
+                        "x": 129.7584,
+                        "y": 84.1226
+                    },
+                    "uuid": "0568fda1-363d-4003-a270-0b2a82f07416"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        }
+    ]
+}
