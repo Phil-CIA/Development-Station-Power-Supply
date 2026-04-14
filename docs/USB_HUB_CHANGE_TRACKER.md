@@ -34,7 +34,7 @@
 **Affected nets:** U3/OUT, J1 VBUS, J3 VBUS, U1/VS, #PWR01  
 **Description:** ERC cannot confirm these rails are driven because no `PWR_FLAG` symbol is present. Not an electrical fault — the rails are driven — but causes 5 ERC errors on every run.  
 **Fix:** Add a `PWR_FLAG` symbol to each of the 5 nets listed above.
-**Progress:** Done in `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_sch`; `power_pin_not_driven` is now 0.
+**Progress:** Done in `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_sch`; `power_pin_not_driven` is now 0. Remaining ERC: **118 violations** (58 lib_symbol_issues + 55 footprint_link_issues + 3 lib_symbol_mismatch + 2 pin_to_pin). No `erc-after-sch002.json` capture on file — counts derived from `erc-after-sch001.json` minus the 5 removed violations.
 
 ---
 
@@ -85,19 +85,21 @@
 ---
 
 ### PCB-002 — Missing footprint library: `PCM_JLCPCB` (54 DRC warnings)
-**Status:** 🔴 Open  
+**Status:** � Resolved in next-iter files  
 **Severity:** Low (library housekeeping — footprints are embedded and board files are correct)  
 **Found by:** KiCad DRC — `lib_footprint_issues` (54)  
-**Description:** The `PCM_JLCPCB` footprint library is not registered in the project `fp-lib-table`. Affects decoupling caps, resistors, and many passives. Footprints in the PCB file are intact; this is a library-path-portability issue only.  
-**Fix:** Add `PCM_JLCPCB` to the project-local `fp-lib-table`, or copy all used footprints into a project-local `.pretty` folder.
+**Description:** The `PCM_JLCPCB` footprint library was not registered in the project `fp-lib-table`. Affects decoupling caps, resistors, and many passives. Footprints in the PCB file are intact; this is a library-path-portability issue only.  
+**Fix:** Set `KICAD9_3RD_PARTY` environment variable and add the `PCM_JLCPCB` entry to the project `fp-lib-table` in the next-iter workspace.  
+**Progress:** Done — `lib_footprint_issues` dropped from 54 → **0** in `drc-after-pcb001.json`. Side effect: with the library now linked, KiCad can compare footprints and `lib_footprint_mismatch` count increased (see PCB-003).
 
 ---
 
-### PCB-003 — Footprint mismatch vs. library: 11 components
+### PCB-003 — Footprint mismatch vs. library: 14 components
 **Status:** 🔴 Open  
 **Severity:** Low (footprints in PCB are what was used to fabricate — the issue is library drift)  
-**Found by:** KiCad DRC — `lib_footprint_mismatch` (11)  
-**Affected parts:**  
+**Found by:** KiCad DRC — `lib_footprint_mismatch` (baseline: 11; current: **14** after PCM_JLCPCB was linked)  
+**Note on count change:** Baseline showed 11 because PCM_JLCPCB was missing — KiCad could not compare those footprints. Once the library was linked (PCB-002 fix), 3 additional mismatches became detectable. All 14 remain open.  
+**Affected parts (baseline):**  
 | Ref | Footprint | Library |
 |-----|-----------|---------|
 | U1, U9 | SOT65P280X145-8N | 1My_Parts_ ICs |
@@ -121,7 +123,9 @@
 ## Revision History
 | Date | Item | Notes |
 |------|------|-------|
-| 2026-04-12 | SCH-002 completed | Added PWR_FLAG coverage in next-iter schematic; ERC now down to non-electrical library mismatch/link warnings only. |
-| 2026-04-12 | PCB-001 completed | Cleared all 3 silkscreen-over-copper warnings in next-iter PCB; DRC now shows footprint-library mismatch items only. |
-| 2026-04-12 | SCH-001 completed | Isolated next-iteration workspace created at `hardware/kicad/usb-hub-next-iter`; net-label alias cleanup verified by ERC rerun. |
-| 2026-04-12 | All items added | Initial capture from ERC/DRC runs on Rev 1 files. Board is assembled/ready — all fixes deferred to next PCB revision. |
+| 2026-04-14 | PCB-002 resolved; PCB-003 count corrected | Tracker updated to reflect actual JSON report state. PCB-002 lib_footprint_issues confirmed 0 in drc-after-pcb001.json. PCB-003 count corrected 11→14. |
+| 2026-04-12 | SCH-002 completed | Added PWR_FLAG coverage in next-iter schematic; `power_pin_not_driven` now 0; remaining ERC: 118 (library/link warnings only). |
+| 2026-04-12 | PCB-002 resolved (library path fix) | Set `KICAD9_3RD_PARTY` env var and wired `PCM_JLCPCB` into project `fp-lib-table`; `lib_footprint_issues` dropped 54→0. DRC at 17 before PCB-001 silk fix. |
+| 2026-04-12 | PCB-001 completed | Cleared all 3 silkscreen-over-copper warnings in next-iter PCB; DRC final: **14** (`lib_footprint_mismatch` only). Snapshot saved as `drc-after-pcb001.json`. |
+| 2026-04-12 | SCH-001 completed | Isolated next-iteration workspace created at `hardware/kicad/usb-hub-next-iter`; net-label alias cleanup verified by ERC rerun (124→123). Snapshot saved as `erc-after-sch001.json`. |
+| 2026-04-12 | All items added | Initial capture from ERC/DRC runs on Rev 1 files. Board is assembled/ready — all fixes deferred to next PCB revision. Baseline snapshots: `erc-baseline.json` (124), `drc-baseline.json` (68). |
