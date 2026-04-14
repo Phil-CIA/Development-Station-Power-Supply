@@ -1,8 +1,7 @@
 # USB Hub Board — Change Tracker
 
-**Current State:** Rev 1 board built and in service. **Full redesign planned with different components — this revision is superseded.**  
-**Purpose of this doc:** Historical reference only. All items below are moot given the planned redesign.  
-**Next step:** Start a new tracker when the redesign begins.
+**Current State:** Rev 1 board built. `usb-hub-next-iter` files are the **starting point for the redesign** and the reference for the upcoming PCB bring-up (power supply, ~2026-04-17).  
+**Purpose of this doc:** Historical ERC/DRC baseline. All open items below are pre-existing library/housekeeping noise — not electrical faults. Full redesign with new components planned; new tracker will be started at that time.
 
 ---
 
