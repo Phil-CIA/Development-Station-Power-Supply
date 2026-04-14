@@ -1,8 +1,8 @@
 # USB Hub Board — Change Tracker
 
-**Current State:** Rev 1 board built and in inventory, ready for assembly testing.  
+**Current State:** Rev 1 board built and in service. `usb-hub-next-iter` files are the **as-built** schematic and PCB — no further changes planned on this revision.  
 **Purpose of this doc:** Track all known issues and planned changes so nothing is lost between sessions.  
-**Workflow:** All items below are scoped to the **next PCB revision**. Do not modify the current Rev 1 files until a new revision branch/folder is started.
+**Workflow:** Remaining open items below are library/housekeeping noise on a fabricated board. They are marked Won't Fix. Any real changes go in a new revision folder.
 
 ---
 
@@ -11,7 +11,8 @@
 |--------|---------|
 | 🔴 | Open — not yet addressed |
 | 🟡 | In progress / needs decision |
-| 🟢 | Resolved — pending next rev commit |
+| 🟢 | Resolved — change committed to next-iter files |
+| 🔵 | Won't Fix — not applicable to built board |
 
 ---
 
@@ -39,33 +40,31 @@
 ---
 
 ### SCH-003 — Symbol library link cleanup (58 issues)
-**Status:** 🔴 Open  
+**Status:** � Won't Fix — board is already fabricated  
 **Severity:** Low (library housekeeping)  
 **Found by:** KiCad ERC — `lib_symbol_issues` (58) + `lib_symbol_mismatch` (3)  
-**Description:** Many schematic symbols reference libraries that are not configured in the project `sym-lib-table`. Symbols still work (they are embedded in the schematic) but ERC flags every instance and the project is not portable.  
-**Fix (next rev):**
-- Audit `sym-lib-table` and add any missing libraries, OR
-- For custom/one-off symbols, copy them into a project-local symbol library (`USB-Hub.kicad_sym`) and re-link all symbols to it.
+**Description:** Many schematic symbols reference libraries not configured in the project `sym-lib-table`. Symbols are embedded in the schematic and work correctly; this is a portability/ERC-noise issue only.  
+**Disposition:** No action. If a new revision is started, do a full library cleanup pass at that time.
 
 ---
 
 ### SCH-004 — Footprint link inconsistency (55 issues)
-**Status:** 🔴 Open  
+**Status:** � Won't Fix — board is already fabricated  
 **Severity:** Low (library housekeeping)  
 **Found by:** KiCad ERC — `footprint_link_issues` (55)  
 **Description:** Symbol footprint fields reference libraries not present in the project `fp-lib-table`. Same root cause as SCH-003 — project libraries are not self-contained.  
-**Fix:** Resolved together with SCH-003 / PCB-002 cleanup pass.
+**Disposition:** No action. Same cleanup pass as SCH-003 if a new revision is started.
 
 ---
 
 ### SCH-005 — U3 pin type warnings (ON#/OFF tied to GND; FB to inductor)
-**Status:** 🟡 Confirm intentional  
+**Status:** � Won't Fix — connections confirmed intentional  
 **Severity:** Informational  
 **Found by:** KiCad ERC — `pin_to_pin` (2)  
 **Description:**  
-- `U3 Pin 5 (ON#/OFF, Unspecified)` connected to `GND` — typical enable tie-down, ERC confused by Unspecified pin type.  
+- `U3 Pin 5 (ON#/OFF, Unspecified)` connected to `GND` — intentional enable tie-down.  
 - `U3 Pin 4 (FB, Unspecified)` connected to `L1 Pin 1 (Passive)` — normal feedback node in boost/buck topology.  
-**Fix:** Either change the pin types in the U3 symbol to resolve ERC warnings, or add a schematic note confirming these connections are intentional. Decide at next rev.
+**Disposition:** Both connections are correct. ERC noise is a consequence of the U3 symbol using `Unspecified` pin types. No change needed.
 
 ---
 
@@ -95,11 +94,11 @@
 ---
 
 ### PCB-003 — Footprint mismatch vs. library: 14 components
-**Status:** 🔴 Open  
+**Status:** � Won't Fix — PCB footprints are the as-fabricated authority  
 **Severity:** Low (footprints in PCB are what was used to fabricate — the issue is library drift)  
 **Found by:** KiCad DRC — `lib_footprint_mismatch` (baseline: 11; current: **14** after PCM_JLCPCB was linked)  
-**Note on count change:** Baseline showed 11 because PCM_JLCPCB was missing — KiCad could not compare those footprints. Once the library was linked (PCB-002 fix), 3 additional mismatches became detectable. All 14 remain open.  
-**Affected parts (baseline):**  
+**Note on count change:** Baseline showed 11 because PCM_JLCPCB was missing. Once linked (PCB-002), 3 more became detectable.  
+**Affected parts:**  
 | Ref | Footprint | Library |
 |-----|-----------|---------|
 | U1, U9 | SOT65P280X145-8N | 1My_Parts_ ICs |
@@ -107,22 +106,23 @@
 | J2, J5, J10 | USB_C_Receptacle_G-Switch_GT-USB-7051x | Connector_USB |
 | J7 | JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical | Connector_JST |  
 
-**Fix:** Decide for each: update PCB footprint from library (if library is the authority) or update library from PCB (if PCB is the correct version). Do this as part of the library cleanup pass.
+**Disposition:** The PCB file is the fabricated truth. Library drift is a known issue; resolve in a new revision if/when the board is redesigned.
 
 ---
 
 ## Future / Nice-to-Have
 
 ### FUT-001 — J4 and J6 are power-only USB-A ports
-**Status:** 🟡 Intentional — document clearly  
-**Description:** `J4` and `J6` D+/D- pins are explicitly no-connected. These connectors provide 5V power only, not data. Currently there is no silkscreen or BOM note distinguishing them from data ports.  
-**Action:** Add a silkscreen label or assembly note marking J4/J6 as `5V POWER ONLY` to prevent confusion during use.
+**Status:** � Won't Fix on this revision — noted for next board spin  
+**Description:** `J4` and `J6` D+/D- pins are explicitly no-connected. These connectors provide 5V power only, not data. No silkscreen label distinguishes them from data ports.  
+**Disposition:** Intentional and correct for the current design. Add `5V POWER ONLY` silkscreen labels if the board is revised.
 
 ---
 
 ## Revision History
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-04-14 | Tracker closed out | All remaining open items marked Won't Fix. Board is as-built; next-iter files are the fabricated state. No further changes on this revision. |
 | 2026-04-14 | PCB-002 resolved; PCB-003 count corrected | Tracker updated to reflect actual JSON report state. PCB-002 lib_footprint_issues confirmed 0 in drc-after-pcb001.json. PCB-003 count corrected 11→14. |
 | 2026-04-12 | SCH-002 completed | Added PWR_FLAG coverage in next-iter schematic; `power_pin_not_driven` now 0; remaining ERC: 118 (library/link warnings only). |
 | 2026-04-12 | PCB-002 resolved (library path fix) | Set `KICAD9_3RD_PARTY` env var and wired `PCM_JLCPCB` into project `fp-lib-table`; `lib_footprint_issues` dropped 54→0. DRC at 17 before PCB-001 silk fix. |
