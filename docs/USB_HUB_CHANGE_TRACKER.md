@@ -1,8 +1,8 @@
 # USB Hub Board — Change Tracker
 
-**Current State:** Rev 1 board built and in service. `usb-hub-next-iter` files are the **as-built** schematic and PCB — no further changes planned on this revision.  
-**Purpose of this doc:** Track all known issues and planned changes so nothing is lost between sessions.  
-**Workflow:** Remaining open items below are library/housekeeping noise on a fabricated board. They are marked Won't Fix. Any real changes go in a new revision folder.
+**Current State:** Rev 1 board built and in service. **Full redesign planned with different components — this revision is superseded.**  
+**Purpose of this doc:** Historical reference only. All items below are moot given the planned redesign.  
+**Next step:** Start a new tracker when the redesign begins.
 
 ---
 
