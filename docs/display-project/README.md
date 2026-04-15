@@ -1,8 +1,13 @@
 # Display Project Reference
 
-This folder captures the current starting point for the display direction being evaluated for the Development Station Power Supply front panel.
+This folder captures the current starting point for the front-panel display direction inside the Development Station Power Supply project.
 
-## Current candidate
+## Current direction
+The display effort has pivoted back into this repo and is now proceeding on **two parallel paths**:
+- Bring up and learn from the existing custom front-panel hardware already built
+- Evaluate the Elecrow CrowPanel Advance 4.3 inch HMI board as a fast-track display option
+
+## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display
 - 800x480 IPS panel
 - Capacitive touch
@@ -31,6 +36,9 @@ This folder captures the current starting point for the display direction being 
   - https://www.espressif.com/en/support/documents/technical-documents
 
 ## Notes
-- This is the practical off-the-shelf path for UI bring-up while the existing custom hardware is still used as the system baseline and learning platform.
+- No standalone custom display redesign is planned right now.
+- The old separate TTF display repo is now reference-only and no longer the active implementation path.
+- The front-panel work now lives back under the main Development Station Power Supply project.
+- The practical plan is to use the existing custom board as the learning baseline while also testing the Elecrow unit as an off-the-shelf UI option.
 - When the physical board arrives, confirm the exact board revision against the Elecrow wiki version notes before selecting example code.
 - The wiki indicates 5V input, LVGL support, and external interfaces for UART, I2C, audio, battery, and storage.
