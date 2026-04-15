@@ -42,3 +42,13 @@ The display effort has pivoted back into this repo and is now proceeding on **tw
 - The practical plan is to use the existing custom board as the learning baseline while also testing the Elecrow unit as an off-the-shelf UI option.
 - When the physical board arrives, confirm the exact board revision against the Elecrow wiki version notes before selecting example code.
 - The wiki indicates 5V input, LVGL support, and external interfaces for UART, I2C, audio, battery, and storage.
+
+## Interface direction
+The goal is not identical hardware. The goal is a common front-panel interface so either display path can be used from the host perspective.
+
+Recommended minimum host-to-display contract:
+- 5V
+- GND
+- UART TX
+- UART RX
+- optional reset or status line

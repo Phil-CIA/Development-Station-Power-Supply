@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# KiCad temporary and backup clutter
+*.kicad_pcb.lck
+*.kicad_sch.lck
+**/*-backups/

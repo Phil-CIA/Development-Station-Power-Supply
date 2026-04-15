@@ -1,81 +1,58 @@
 # Development-Station-Power-Supply
-3 channel bench supply with current and voltage plotting.
 
-## Current architecture status
+Integrated hardware and firmware repository for the development-station bench supply, its control electronics, front-panel display path, and supporting boards.
 
-Hardware topology now tracked as:
+## What this repo actually contains
 
-- External supply (12V) -> Regulator board -> Hat board -> auxiliary boards (display and USB hub)
-- Regulator board performs buck conversion for:
-  - 5V rail
-  - 3.3V rail
-  - Adjustable rail (relay-selected 3.3V or 5V)
-- Hat board performs measurement/control:
-  - Voltage and current measurement for all rails
-  - Incoming 12V measurement path
-  - High/low range shunt paths
-  - Feedback and current-limit control signaling to regulator board
+This is the active working repo for the full bench-supply platform, not just a single firmware target. It currently includes:
 
-## Firmware stopping point (March 28, 2026)
+- ESP32 control firmware
+- DSP regulator board design
+- DSP regulator HAT / measurement-control board design
+- original front-panel display board files
+- USB hub board files and next-iter reference cleanup
+- bring-up notes, pin maps, and display evaluation references
 
-This repository is paused at a stable checkpoint.
+## Current direction (2026-04-15)
 
-Completed and pushed to main:
+The project has shifted to a bring-up-first path.
 
-- Added logical rail mapping layer for hat telemetry in src/power_telemetry_map.h
-- Added runtime topology and rail snapshot commands
-- Added automatic range selection (high/low) with hysteresis
-- Added per-rail/per-range calibration support
-- Added persistent storage (NVS) for:
-  - autorange enabled state
-  - range thresholds
-  - calibration values
+Current plan:
+1. Use the hardware already built as the learning and validation baseline
+2. Bring up the power-supply control path on the bench
+3. Continue front-panel work inside this repo
+4. Evaluate two display paths in parallel:
+   - the existing custom front-panel hardware already designed
+   - the Elecrow CrowPanel Advance 4.3 inch HMI display
+5. Avoid any new display redesign until bench results show it is needed
 
-Latest commits on main:
+## Hardware scope in this repo
 
-- 9590dbe Persist rail auto-range and calibration config in NVS
-- fcad256 Add hat rail auto-range and calibration controls
+- External supply 12V feeds the regulator and HAT control stack
+- Regulator board generates the main rails
+- HAT board handles measurement, feedback, and control behavior
+- Front-panel display path is now treated as a system integration problem, not a redesign-first task
+- USB hub files are retained as reference and redesign starting point where needed
 
-## Runtime command quick reference
+## Firmware status
 
-Telemetry and mapping:
+Current firmware work in this repo includes:
 
-- HWMAP
-- RAILSNAP
-- RCALSHOW
+- logical rail telemetry mapping
+- automatic range selection support
+- per-rail calibration and persistent configuration storage
+- current-limit operating modes
+- TFT front-panel support hooks
 
-Range control:
+## Current bench priorities
 
-- AUTORANGE ON
-- AUTORANGE OFF
-- RTHR <low_mA> <high_mA>
+- safe first power-up and validation of the built boards
+- confirm regulator and HAT behavior on the bench
+- resume front-panel display bring-up
+- map the existing front-panel connector to the smart-display interface as needed
 
-Calibration:
+## Useful project references
 
-- RCAL <rail> <range> <vgain> <voff> <igain> <ioff>
-- Rail options: 5V, 3V3, ADJ, IN12
-- Range options: HIGH, LOW, SINGLE
-
-Persistent config:
-
-- CFGSAVE
-- CFGLOAD
-- CFGRESET
-- CFGERASE
-
-## Resume checklist
-
-When returning to work:
-
-1. Build firmware: platformio run
-2. Flash board: platformio run -t upload
-3. Verify mapping: HWMAP
-4. Verify live readings: RAILSNAP
-5. Tune thresholds and calibration as needed:
-   - RTHR 250 900
-   - RCAL ...
-   - CFGSAVE
-
-## Display board note
-
-Display-board details and pinout references remain in docs/GPIO_PINOUT.md.
+- docs/display-project/README.md
+- docs/GPIO_PINOUT.md
+- docs/USB_HUB_CHANGE_TRACKER.md
