@@ -1,70 +1,76 @@
-# WorkStation ESP32 Bring-up Handoff
+# WorkStation ESP32-C6 Display Board Handoff
 
-Date: 2026-03-03
-Project: WorkStation (PlatformIO, ESP32 Arduino)
+Date: 2026-04-19
+Project: WorkStation front display board bring-up (PlatformIO, ESP32-C6, Arduino_GFX)
 
 ## Current Objective
-Stabilize TFT bring-up for a 4" 480x320 SPI display while keeping firmware responsive (serial + heartbeat LED), then continue INA3221 and MCP4231 validation.
+Pause the current Hosyond MSP4022 module investigation at a clean breakpoint and continue later on the alternative display board path unless this module is explicitly revisited.
 
 ## Hardware/Connection Context
-- MCU: ESP32 dev board
-- USB serial: COM4
-- TFT SPI control lines active in firmware
-- INA3221 on I2C (not currently discovered)
-- MCP4231 on SPI CS pin 5
+- MCU: ESP32-C6-DevKitM-1 style bring-up path on COM9
+- Display module family: Hosyond MSP4022 4" SPI TFT with touch + SD on shared SPI bus
+- Current direct C6 TFT map used in firmware:
+	- TFT_CS = 10
+	- TFT_DC = 18
+	- TFT_RST = 19
+	- TFT_SCLK = 12
+	- TFT_MISO = 11
+	- TFT_MOSI = 13
+	- TFT_BL/PWM = 20
+	- TOUCH_CS = 22
+	- SD_CS = 15
+- User also tested direct wiring off-board to isolate the module from PCB routing.
 
-## Key Config/Pins in Firmware
-- TFT_CS = 4
-- TFT_DC = 16
-- TFT_RST = 17
-- SPI bus: SCLK=18, MISO=19, MOSI=23
-- I2C bus: SDA=21, SCL=22
-- Status LED: GPIO2
+## What Was Implemented
+- Added `src/display_main.cpp` as the standalone ESP32-C6 display-board bring-up entrypoint.
+- Switched the C6 path away from TFT_eSPI to Arduino_GFX because TFT_eSPI was not viable on this C6 setup.
+- Added low-level legacy raw-SPI helpers:
+	- hardware reset
+	- SWRESET / SLPOUT / COLMOD / MADCTL / DISPON sequencing
+	- raw address-window writes and full-screen fills
+- Added touch/SD isolation by forcing their CS pins HIGH during TFT-only tests.
+- Added minimal TFT-only mode controlled by `MINIMAL_TFT_ONLY` build flag.
+- Added A/B pixel-format test in minimal mode:
+	- MODE A: RGB565 (`0x3A=0x55`)
+	- MODE B: 18-bit (`0x3A=0x66`)
 
-## Current Boot Behavior (Most Important)
-Serial output reaches:
-- [SYS] Reset reason: POWERON (1)
-- [SPI] pin map
-- [SPI] Running raw SPI burst test (0xAA/0x55)
-- [SPI] Raw SPI burst complete
-- [TFT] Auto-init enabled
-- [TFT] Init start
+## Most Important Findings
+- Full-library init paths could execute and print clean serial logs, but visible panel behavior remained unreliable.
+- The decisive breakthrough came from the minimal legacy write-only path:
+	- the panel produced visible static/pixelation
+	- this proves the module is not completely dead
+	- this also proves the C6 path can reach the panel electrically well enough to wake it partially
+- However, intended framebuffer writes never became clearly correct or stable.
+- User’s best interpretation at stop point is likely correct: the module appears bad, marginal, or otherwise not worth more time right now.
 
-After `[TFT] Init start`, system hangs inside `display.init()`:
-- No further serial output
-- No LED heartbeat
-- Boot appears stalled
+## Current Flashed/Tested State
+`platformio.ini` for `env:display_board` currently enables:
+- `-DPANEL_CONTROLLER=PANEL_CTRL_ILI9488`
+- `-DUSE_LEGACY_WRITE_ONLY_WAKE=1`
+- `-DENABLE_AUTO_LEGACY_FALLBACK=0`
+- `-DMINIMAL_TFT_ONLY=1`
 
-## Logic Analyzer Findings
-- CS/DC/RST transitions are visible.
-- Very limited SCK/MOSI activity appears before hang.
-- EN line remains high in this failure mode (not the earlier CH340 EN-pull issue).
+`src/display_main.cpp` minimal mode currently does:
+1. isolate touch/SD
+2. backlight handling
+3. hardware reset + SWRESET
+4. alternating A/B pixel-format tests forever
 
-## Resolved/Previously Addressed
-- Upload pipeline works for WorkStation.
-- Manual and task-based uploads have succeeded.
-- Earlier CH340 handshake reset behavior was identified and mitigated in monitor settings.
-- Multiple TFT driver variants were tested (ST7796/ILI9488/ILI9486 and pin-swap/no-reset variants).
+## Operational Notes
+- COM9 is frequently locked by monitor sessions after flashing; all monitors may need to be closed before upload.
+- User often had to unplug/replug USB, then press reset, to observe panel behavior after reflashing.
+- Build output log artifacts were created during bring-up and should not be committed.
 
-## Open Problems
-1. `TFT_eSPI display.init()` appears to block/hard-fault in current hardware/driver combination.
-2. INA3221 is still not found on I2C scan (0 devices found).
+## Recommended Next Direction
+1. Treat the Hosyond module as paused/suspect.
+2. Continue on the alternative display board path.
+3. Preserve the current C6 minimal TFT baseline in case this module is revisited later.
 
-## Next Implementation Step (Priority)
-Implement guarded TFT initialization so setup always survives:
-- Run TFT init in a bounded task/guarded path.
-- If init does not return within timeout, mark TFT failed and continue setup.
-- Keep serial command console and GPIO2 heartbeat alive regardless of TFT state.
-
-## Secondary Debug Steps
-- Add a minimal low-level TFT command probe (single known command with explicit CS/DC transitions).
-- Verify TFT backlight enable line and module power rail under init attempt.
-- Re-check RST polarity/timing for panel module.
-- Continue I2C hardware continuity checks for INA3221 separately from TFT issue.
-
-## Current Files of Interest
-- `src/main.cpp`
+## Files Of Interest
 - `platformio.ini`
+- `src/display_main.cpp`
+- `HANDOFF.md`
+- `NEW_CHAT_HANDOFF_SHORT.rmd`
 
-## Suggested Prompt for New Chat
-"Continue WorkStation ESP32 bring-up. Current firmware hangs inside `display.init()` right after `[TFT] Init start`. Please modify `src/main.cpp` to use a guarded/timeout TFT init path so boot continues with serial and LED heartbeat even if TFT init blocks. Preserve existing serial diagnostic commands and keep changes minimal. Then build for current env and report results."
+## Suggested Prompt For New Chat
+Continue from the WorkStation display-board breakpoint. The ESP32-C6 `display_board` env on COM9 now has a known low-level baseline in `src/display_main.cpp`: legacy raw-SPI wake, touch/SD isolation, and `MINIMAL_TFT_ONLY` A/B pixel-format testing. The Hosyond module showed visible static/pixelation on the minimal legacy path, proving partial life, but never accepted intended framebuffer updates cleanly. Current plan is to stop investing in this module and continue on the alternative display board path. Preserve the current baseline and avoid reopening broad TFT experimentation unless explicitly requested.

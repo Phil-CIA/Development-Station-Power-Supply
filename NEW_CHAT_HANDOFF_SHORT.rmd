@@ -1,19 +1,27 @@
 # WorkStation Quick Handoff
 
-- Project: WorkStation (ESP32, PlatformIO, Arduino)
-- Port: COM4
-- Main blocker: boot hangs in TFT init
-- Last serial lines:
-  - [TFT] Auto-init enabled
-  - [TFT] Init start
-  - then no LED heartbeat and no further serial output
-- Current TFT pins: CS=4, DC=16, RST=17, SCLK=18, MISO=19, MOSI=23
-- I2C pins: SDA=21, SCL=22
-- INA3221 status: not detected on scan
-- Logic analyzer: CS/DC/RST toggle seen; minimal SCK/MOSI before hang; EN stays high
-- Goal: add guarded timeout-based TFT init so setup continues even if display.init() blocks
-- Keep existing serial diagnostics and heartbeat path intact
-- Files: src/main.cpp, platformio.ini
+- Project: WorkStation front display board bring-up (ESP32-C6, PlatformIO, Arduino_GFX)
+- Active env: `display_board`
+- Port: COM9
+- Display module under test: Hosyond MSP4022 4" SPI TFT family
+- Current TFT pin map in use on C6 path: CS=10, DC=18, RST=19, SCLK=12, MISO=11, MOSI=13, BL/PWM=20
+- Shared SPI devices: Touch CS=22, SD CS=15, both forced HIGH during TFT-only tests
+- Current firmware state:
+  - `src/display_main.cpp` includes legacy raw-SPI wake/fill helpers
+  - minimal TFT-only mode is enabled in `platformio.ini`
+  - current minimal loop alternates pixel format assumptions:
+    - MODE A: RGB565 / `0x3A=0x55`
+    - MODE B: 18-bit / `0x3A=0x66`
+- Most important result:
+  - panel is not fully dead
+  - minimal legacy write-only path produced visible static/pixelation
+  - panel wake is real, but intended framebuffer updates are not clearly accepted
+- Working hypothesis at stop point:
+  - module is bad, marginal, or otherwise not worth more time right now
+  - continue on the alternative display board path instead of further firmware tuning on this module
+- Operational notes:
+  - COM9 often needs all monitors closed before upload
+  - user often must unplug/replug USB, then reset after flashing to observe panel behavior
 
 ## Paste Prompt
-Continue WorkStation ESP32 bring-up. Current firmware hangs inside display.init() right after [TFT] Init start. Modify src/main.cpp to run TFT init in a guarded timeout path so boot still reaches serial command loop and GPIO2 heartbeat even when TFT init blocks. Keep changes minimal and preserve existing diagnostics commands. Then build and report results.
+Continue from the WorkStation display-board breakpoint. The ESP32-C6 `display_board` env on COM9 now has a known baseline in `src/display_main.cpp`: legacy raw-SPI wake, touch/SD isolation, and `MINIMAL_TFT_ONLY` A/B pixel-format testing. The Hosyond module showed visible static/pixelation on the minimal legacy path, proving partial life, but did not clearly accept intended image data. Current decision is to pause this module as likely bad/marginal and continue on the alternative display board path. Preserve the current baseline and do not reopen broad TFT experimentation unless explicitly requested.

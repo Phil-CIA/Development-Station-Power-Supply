@@ -58,6 +58,27 @@ CFGSAVE
 
 ---
 
+## Display Board Bring-up Status (2026-04-19)
+
+- Active env for the front display board is `display_board` on COM9 using ESP32-C6 + Arduino_GFX.
+- `src/display_main.cpp` now contains a low-level legacy SPI path, shared-bus isolation for touch/SD, and a minimal TFT-only test mode.
+- Full-library init paths ran and reported success, but did not produce trustworthy visible output on the Hosyond module.
+- The decisive breakthrough came from the minimal legacy write-only path: the panel produced visible pixelation/static, proving the module is at least partially alive and the C6 pin map can reach it.
+- Current flashed/tested state alternates pixel-format assumptions in minimal mode:
+	- Mode A: RGB565 / `COLMOD=0x55`
+	- Mode B: 18-bit / `COLMOD=0x66`
+- User observation at stop point: panel wake/pixelation is static and does not clearly accept intended image data; strongest current suspicion is a bad or marginal module.
+- Practical next direction: pause further time on this Hosyond module and continue on the alternative display board path.
+
+## Display Bring-up Notes
+
+- Keep touch and SD isolated during TFT-only work.
+- COM9 often remains locked after monitor/upload activity; a full unplug/replug or closing all monitors may be required before reflashing.
+- Manual power-cycle plus reset can be needed to observe panel behavior after flashing.
+- If this module is revisited later, resume from `display_board` with `MINIMAL_TFT_ONLY=1` and the current `src/display_main.cpp` legacy path as the known baseline.
+
+---
+
 ## NVS Config Version History
 
 | Version | Change |
