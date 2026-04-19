@@ -95,7 +95,11 @@ TaskHandle_t tftInitTaskHandle = nullptr;
 constexpr bool AUTO_TFT_INIT = true;
 constexpr bool AUTO_TFT_WRITE_ONLY = true;
 constexpr bool TFT_WRITE_ONLY_ROTATE_90 = true;
+#if defined(TFT_VERBOSE_BOOT)
+constexpr bool BOOT_LOG_VERBOSE = true;
+#else
 constexpr bool BOOT_LOG_VERBOSE = false;
+#endif
 constexpr const char* PROJECT_PATH = "c:/Users/user/Esp32 projects VScode/WorkStation";
 constexpr const char* PROJECT_ENV = "esp32dev";
 
