@@ -172,6 +172,11 @@ constexpr bool RAIL5V_ENABLE_ACTIVE_HIGH = true;
 constexpr bool RAIL3V3_ENABLE_ACTIVE_HIGH = true;
 constexpr bool RAILADJ_ENABLE_ACTIVE_HIGH = true;
 
+// HMI UART state: per-rail software enable tracking and RailAdj voltage selection.
+// These mirror intended hardware state when GPIO pins are not yet assigned.
+static bool hmiRailEnabled[3] = {false, false, false};
+static bool hmiRailAdjIs5V = true;  // true = 5V selected, false = 3V3 selected
+
 #if defined(TFT_WIDTH)
 constexpr uint16_t TFT_PANEL_WIDTH = TFT_WIDTH;
 #else
@@ -2121,6 +2126,184 @@ static void drawRuntimeDashboard(uint32_t nowMs) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// HMI UART command handler — CMD:<ACTION> key=value ... protocol
+// Called from handleSerialCommands() when a CMD: prefix is detected.
+// The input string is already trimmed and uppercased.
+// ---------------------------------------------------------------------------
+
+static const char* hmiRailName(HatRail rail) {
+  switch (rail) {
+    case HatRail::Rail5V:          return "Rail5V";
+    case HatRail::Rail3V3:         return "Rail3V3";
+    case HatRail::RailAdj:         return "RailAdj";
+    case HatRail::RailIncoming12V: return "RailIn12V";
+    default:                       return "Unknown";
+  }
+}
+
+// Extract the value for a given UPPERCASE key from an already-uppercased CMD frame.
+static String hmiGetValue(const String& frame, const char* key) {
+  String search = " ";
+  search += key;
+  search += "=";
+  const int pos = frame.indexOf(search);
+  if (pos < 0) {
+    return String();
+  }
+  const int start = pos + search.length();
+  const int end = frame.indexOf(' ', start);
+  return (end < 0) ? frame.substring(start) : frame.substring(start, end);
+}
+
+static const char* hmiStateStr() {
+  for (size_t i = 0; i < 3; i++) {
+    if (railCurrentState[i].tripped) {
+      return "FAULT";
+    }
+  }
+  const bool anyOn = hmiRailEnabled[0] || hmiRailEnabled[1] || hmiRailEnabled[2];
+  return anyOn ? "ACTIVE" : "SAFE_IDLE";
+}
+
+static void handleHmiCommand(const String& command) {
+  // command is already trimmed and uppercased; starts with "CMD:"
+  const int spacePos = command.indexOf(' ', 4);
+  const String action = (spacePos < 0) ? command.substring(4) : command.substring(4, spacePos);
+
+  if (action == "READ_STATUS") {
+    const RailMeasurement m0  = readRailMeasurement(HatRail::Rail5V);
+    const RailMeasurement m1  = readRailMeasurement(HatRail::Rail3V3);
+    const RailMeasurement m2  = readRailMeasurement(HatRail::RailAdj);
+    const RailMeasurement mIn = readRailMeasurement(HatRail::RailIncoming12V);
+
+    const char* faultCode = nullptr;
+    if      (railCurrentState[0].tripped) { faultCode = "OC_R0"; }
+    else if (railCurrentState[1].tripped) { faultCode = "OC_R1"; }
+    else if (railCurrentState[2].tripped) { faultCode = "OC_R2"; }
+
+    Serial.printf("ACK:READ_STATUS state=%s mode=%s r0=%.2f/%.3f r1=%.2f/%.3f r2=%.2f/%.3f in=%.2f/%.3f r2_sel=%s",
+                  hmiStateStr(),
+                  operationModeName(operationMode),
+                  m0.busVoltageV,  m0.currentmA  / 1000.0f,
+                  m1.busVoltageV,  m1.currentmA  / 1000.0f,
+                  m2.busVoltageV,  m2.currentmA  / 1000.0f,
+                  mIn.busVoltageV, mIn.currentmA / 1000.0f,
+                  hmiRailAdjIs5V ? "5V" : "3V3");
+    if (!hmiRailEnabled[0]) { Serial.print(" r0_en=0"); }
+    if (!hmiRailEnabled[1]) { Serial.print(" r1_en=0"); }
+    if (!hmiRailEnabled[2]) { Serial.print(" r2_en=0"); }
+    if (faultCode)          { Serial.printf(" fault=%s", faultCode); }
+    Serial.print("\r\n");
+    return;
+  }
+
+  if (action == "RAIL_ENABLE") {
+    String railTok  = hmiGetValue(command, "RAIL");
+    const String stateTok = hmiGetValue(command, "STATE");
+    if (railTok.isEmpty() || stateTok.isEmpty()) {
+      Serial.print("ERR:PARSE_ERROR Missing rail or state key\r\n");
+      return;
+    }
+    HatRail rail;
+    if (!parseRailToken(railTok, rail)) {
+      Serial.print("ERR:RAIL_UNKNOWN Unknown rail id\r\n");
+      return;
+    }
+    if (rail == HatRail::RailIncoming12V) {
+      Serial.print("ERR:RAIL_READONLY Rail is monitor-only, cannot be controlled\r\n");
+      return;
+    }
+    const size_t idx = static_cast<size_t>(rail);
+    if (railCurrentState[idx].tripped && stateTok == "1") {
+      Serial.print("ERR:RAIL_FAULT Rail is in fault state; send CMD:RESET first\r\n");
+      return;
+    }
+    const bool enable = (stateTok == "1");
+    hmiRailEnabled[idx] = enable;
+    setRailOutputEnabled(rail, enable, false);
+    Serial.printf("ACK:RAIL_ENABLE rail=%s state=%d\r\n", hmiRailName(rail), enable ? 1 : 0);
+    return;
+  }
+
+  if (action == "RAIL_VOLT_SEL") {
+    String railTok = hmiGetValue(command, "RAIL");
+    String voltTok = hmiGetValue(command, "VOLT");
+    if (railTok.isEmpty() || voltTok.isEmpty()) {
+      Serial.print("ERR:PARSE_ERROR Missing rail or volt key\r\n");
+      return;
+    }
+    HatRail rail;
+    if (!parseRailToken(railTok, rail)) {
+      Serial.print("ERR:RAIL_UNKNOWN Unknown rail id\r\n");
+      return;
+    }
+    if (rail != HatRail::RailAdj) {
+      Serial.print("ERR:RAIL_FIXED Rail voltage is hardware-fixed, cannot be selected\r\n");
+      return;
+    }
+    if (hmiRailEnabled[static_cast<size_t>(HatRail::RailAdj)]) {
+      Serial.print("ERR:RAIL_ACTIVE Rail must be disabled before changing voltage selection\r\n");
+      return;
+    }
+    if (voltTok != "5V" && voltTok != "3V3") {
+      Serial.print("ERR:VOLT_INVALID Voltage value not valid for this rail\r\n");
+      return;
+    }
+    hmiRailAdjIs5V = (voltTok == "5V");
+    // TODO: assert relay GPIO when expander is wired (RAILADJ_VOLT_SEL_PIN)
+    Serial.printf("ACK:RAIL_VOLT_SEL rail=RailAdj volt=%s\r\n", hmiRailAdjIs5V ? "5V" : "3V3");
+    return;
+  }
+
+  if (action == "SET_MODE") {
+    const String modeTok = hmiGetValue(command, "MODE");
+    if (modeTok.isEmpty()) {
+      Serial.print("ERR:PARSE_ERROR Missing mode key\r\n");
+      return;
+    }
+    OperationMode newMode;
+    if (modeTok == "NORMAL" || modeTok == "NORM") {
+      newMode = OperationMode::Normal;
+    } else if (modeTok == "CURRENT_LIMIT" || modeTok == "CL" || modeTok == "CURRENT") {
+      newMode = OperationMode::CurrentLimit;
+    } else {
+      Serial.print("ERR:MODE_INVALID Unknown mode token\r\n");
+      return;
+    }
+    applyOperationMode(newMode, false);
+    Serial.printf("ACK:SET_MODE mode=%s\r\n", operationModeName(operationMode));
+    return;
+  }
+
+  if (action == "RESET") {
+    bool anyTripped = false;
+    for (size_t i = 0; i < 3; i++) {
+      if (railCurrentState[i].tripped) { anyTripped = true; break; }
+    }
+    if (!anyTripped) {
+      Serial.print("ERR:RESET_DENIED Not in fault state\r\n");
+      return;
+    }
+    clearCurrentLimitTrip(HatRail::Rail5V,  false);
+    clearCurrentLimitTrip(HatRail::Rail3V3, false);
+    clearCurrentLimitTrip(HatRail::RailAdj, false);
+    Serial.print("ACK:RESET state=SAFE_IDLE\r\n");
+    return;
+  }
+
+  if (action == "ABORT") {
+    for (size_t i = 0; i < 3; i++) { hmiRailEnabled[i] = false; }
+    setRailOutputEnabled(HatRail::Rail5V,  false, false);
+    setRailOutputEnabled(HatRail::Rail3V3, false, false);
+    setRailOutputEnabled(HatRail::RailAdj, false, false);
+    Serial.print("ACK:ABORT state=SAFE_IDLE\r\n");
+    return;
+  }
+
+  Serial.print("ERR:UNKNOWN_CMD Unrecognized CMD action\r\n");
+}
+
 static void handleSerialCommands() {
   if (!Serial.available()) {
     return;
@@ -2129,6 +2312,11 @@ static void handleSerialCommands() {
   String command = Serial.readStringUntil('\n');
   command.trim();
   command.toUpperCase();
+
+  if (command.startsWith("CMD:")) {
+    handleHmiCommand(command);
+    return;
+  }
 
   if (command.startsWith("P0 ") || command.startsWith("P1 ")) {
     const uint8_t wiper = command.charAt(1) - '0';
