@@ -63,12 +63,12 @@ CFGSAVE
 - Active env for the front display board is `display_board` on COM9 using ESP32-C6 + Arduino_GFX.
 - `src/display_main.cpp` now contains a low-level legacy SPI path, shared-bus isolation for touch/SD, and a minimal TFT-only test mode.
 - Full-library init paths ran and reported success, but did not produce trustworthy visible output on the Hosyond module.
-- The decisive breakthrough came from the minimal legacy write-only path: the panel produced visible pixelation/static, proving the module is at least partially alive and the C6 pin map can reach it.
+- A possible breakthrough was suspected from a one-off visual event (pixelation/static and black/white pattern), but it did not become repeatable or actionable.
 - Current flashed/tested state alternates pixel-format assumptions in minimal mode:
 	- Mode A: RGB565 / `COLMOD=0x55`
 	- Mode B: 18-bit / `COLMOD=0x66`
-- User observation at stop point: panel wake/pixelation is static and does not clearly accept intended image data; strongest current suspicion is a bad or marginal module.
-- Practical next direction: pause further time on this Hosyond module and continue on the alternative display board path.
+- User observation at stop point: panel behavior remained unstable and did not clearly accept intended image data.
+- Final call for this session: no confirmed progress on this module; likely marginal/faulty behavior (possible ESD-related). Stop this path for now and move to alternative display direction.
 
 ## Display Bring-up Notes
 

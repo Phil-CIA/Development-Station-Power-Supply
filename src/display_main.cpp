@@ -12,6 +12,21 @@
 #include <Arduino_GFX_Library.h>
 #include <SPI.h>
 
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+// Polarity diagnostic flags (only one should be enabled):
+// DIAG_INVERT_CS=1     → invert CS polarity (CS=HIGH for active, CS=LOW for idle)
+// DIAG_INVERT_DC=1     → invert DC polarity (DC=LOW for data, DC=HIGH for command)
+// DIAG_SWAP_BYTES=1    → swap byte order in 16-bit color writes (lo byte first, then hi)
+#ifndef DIAG_INVERT_CS
+#define DIAG_INVERT_CS 0
+#endif
+#ifndef DIAG_INVERT_DC
+#define DIAG_INVERT_DC 0
+#endif
+#ifndef DIAG_SWAP_BYTES
+#define DIAG_SWAP_BYTES 0
+#endif
+
 // ── Pins ──────────────────────────────────────────────────────────────────────
 // Pin mapping can be selected at compile time:
 // USE_DEVBOARD_PINS=1  → legacy dev-board mapping (CS=4, DC=16, RST=17, etc)
@@ -81,6 +96,13 @@ constexpr uint16_t TFT_RAW_HEIGHT = 320;
 #define MINIMAL_TFT_ONLY 0
 #endif
 
+#define PROBE_PROFILE_ILI9488 1
+#define PROBE_PROFILE_ST7796  2
+
+#ifndef MINIMAL_PROBE_PROFILE
+#define MINIMAL_PROBE_PROFILE PROBE_PROFILE_ST7796
+#endif
+
 // GFX_NOT_DEFINED for RST so begin() does NOT hardware-reset (we manage it)
 #if TFT_BUS_MODE == TFT_BUS_HW
 static Arduino_DataBus* tftBus = new Arduino_ESP32SPI(
@@ -108,6 +130,11 @@ static Arduino_GFX* tft = new Arduino_ILI9486(tftBus, GFX_NOT_DEFINED, 0, false)
 static void setBacklight(bool on) {
     pinMode(BL_PIN, OUTPUT);
     digitalWrite(BL_PIN, on ? HIGH : LOW);
+}
+
+static void setBacklightPWM(uint8_t brightness) {
+    // brightness: 0 (off) to 255 (full)
+    analogWrite(BL_PIN, brightness);
 }
 
 static void initHandshake() {
@@ -201,6 +228,23 @@ static void tftSetAddressWindowRaw(uint16_t x0, uint16_t y0, uint16_t x1, uint16
     tftBus->endWrite();
 }
 
+// Diagnostic polarity wrappers
+static inline void diagSetCS(bool active) {
+#if DIAG_INVERT_CS
+    digitalWrite(TFT_CS_PIN, active ? HIGH : LOW);
+#else
+    digitalWrite(TFT_CS_PIN, active ? LOW : HIGH);
+#endif
+}
+
+static inline void diagSetDC(bool dataMode) {
+#if DIAG_INVERT_DC
+    digitalWrite(TFT_DC_PIN, dataMode ? LOW : HIGH);
+#else
+    digitalWrite(TFT_DC_PIN, dataMode ? HIGH : LOW);
+#endif
+}
+
 static void legacySpiBegin() {
     SPI.begin(TFT_SCLK_PIN, TFT_MISO_PIN, TFT_MOSI_PIN);
     SPI.beginTransaction(SPISettings(LEGACY_SPI_HZ, MSBFIRST, SPI_MODE0));
@@ -208,17 +252,26 @@ static void legacySpiBegin() {
 }
 
 static void legacyWriteCommand(uint8_t cmd) {
-    digitalWrite(TFT_CS_PIN, LOW);
-    digitalWrite(TFT_DC_PIN, LOW);
+    diagSetCS(true);
+    diagSetDC(false);
     SPI.transfer(cmd);
-    digitalWrite(TFT_CS_PIN, HIGH);
+    diagSetCS(false);
 }
 
 static void legacyWriteData8(uint8_t data) {
-    digitalWrite(TFT_CS_PIN, LOW);
-    digitalWrite(TFT_DC_PIN, HIGH);
+    diagSetCS(true);
+    diagSetDC(true);
     SPI.transfer(data);
-    digitalWrite(TFT_CS_PIN, HIGH);
+    diagSetCS(false);
+}
+
+static void legacyWriteDataN(const uint8_t* data, size_t len) {
+    diagSetCS(true);
+    diagSetDC(true);
+    for (size_t i = 0; i < len; ++i) {
+        SPI.transfer(data[i]);
+    }
+    diagSetCS(false);
 }
 
 static void legacyWriteData16(uint16_t data) {
@@ -349,6 +402,122 @@ static void runLegacyRawColorTest() {
     Serial.println("[legacy] BLACK");
 }
 
+static void legacyFillScreenRaw565(uint16_t width, uint16_t height, uint16_t color) {
+    legacySetAddressWindow(0, 0,
+        static_cast<uint16_t>(width - 1),
+        static_cast<uint16_t>(height - 1));
+
+    digitalWrite(TFT_CS_PIN, LOW);
+    digitalWrite(TFT_DC_PIN, HIGH);
+    const uint8_t hi = static_cast<uint8_t>(color >> 8);
+    const uint8_t lo = static_cast<uint8_t>(color & 0xFF);
+    const uint32_t px = static_cast<uint32_t>(width) * height;
+    for (uint32_t i = 0; i < px; ++i) {
+#if DIAG_SWAP_BYTES
+        SPI.transfer(lo);
+        SPI.transfer(hi);
+#else
+        SPI.transfer(hi);
+        SPI.transfer(lo);
+#endif
+    }
+    digitalWrite(TFT_CS_PIN, HIGH);
+}
+
+static void legacyFillScreenRaw666(uint16_t width, uint16_t height, uint8_t r, uint8_t g, uint8_t b) {
+    legacySetAddressWindow(0, 0,
+        static_cast<uint16_t>(width - 1),
+        static_cast<uint16_t>(height - 1));
+
+    digitalWrite(TFT_CS_PIN, LOW);
+    digitalWrite(TFT_DC_PIN, HIGH);
+    const uint32_t px = static_cast<uint32_t>(width) * height;
+    for (uint32_t i = 0; i < px; ++i) {
+        SPI.transfer(r);
+        SPI.transfer(g);
+        SPI.transfer(b);
+    }
+    digitalWrite(TFT_CS_PIN, HIGH);
+}
+
+static void runProbeInitIli9488() {
+    static const uint8_t e0[] = {
+        0x00, 0x03, 0x09, 0x08, 0x16, 0x0A, 0x3F, 0x78,
+        0x4C, 0x09, 0x0A, 0x08, 0x16, 0x1A, 0x0F
+    };
+    static const uint8_t e1[] = {
+        0x00, 0x16, 0x19, 0x03, 0x0F, 0x05, 0x32, 0x45,
+        0x46, 0x04, 0x0E, 0x0D, 0x35, 0x37, 0x0F
+    };
+    static const uint8_t f7[] = {0xA9, 0x51, 0x2C, 0x82};
+
+    Serial.println("[probe/ili9488] SWRESET");
+    legacyWriteCommand(0x01);
+    delay(150);
+
+    Serial.println("[probe/ili9488] gamma + power table");
+    legacyWriteCommand(0xE0); legacyWriteDataN(e0, sizeof(e0));
+    legacyWriteCommand(0xE1); legacyWriteDataN(e1, sizeof(e1));
+    legacyWriteCommand(0xC0); legacyWriteData8(0x17); legacyWriteData8(0x15);
+    legacyWriteCommand(0xC1); legacyWriteData8(0x41);
+    legacyWriteCommand(0xC5); legacyWriteData8(0x00); legacyWriteData8(0x12); legacyWriteData8(0x80);
+
+    // MX + BGR, rotation baseline used by common ILI9488 setups.
+    legacyWriteCommand(0x36); legacyWriteData8(0x48);
+
+    // SPI path for ILI9488 uses 18-bit pixel transfer.
+    legacyWriteCommand(0x3A); legacyWriteData8(0x66);
+    legacyWriteCommand(0xB0); legacyWriteData8(0x00);
+    legacyWriteCommand(0xB1); legacyWriteData8(0xA0);
+    legacyWriteCommand(0xB4); legacyWriteData8(0x02);
+    legacyWriteCommand(0xB6); legacyWriteData8(0x02); legacyWriteData8(0x02);
+    legacyWriteCommand(0xB7); legacyWriteData8(0xC6);
+    legacyWriteCommand(0xF7); legacyWriteDataN(f7, sizeof(f7));
+
+    Serial.println("[probe/ili9488] SLPOUT");
+    legacyWriteCommand(0x11);
+    delay(120);
+
+    legacyWriteCommand(0x20); // INVOFF
+    legacyWriteCommand(0x29); // DISPON
+    delay(100);
+    Serial.println("[probe/ili9488] DISPON");
+}
+
+static void runProbeInitSt7796() {
+    static const uint8_t b6[] = {0x80, 0x22, 0x3B};
+    static const uint8_t e8[] = {0x40, 0x8A, 0x00, 0x00, 0x29, 0x19, 0xA5, 0x33};
+    static const uint8_t e0[] = {0xF0, 0x09, 0x0B, 0x06, 0x04, 0x15, 0x2F, 0x54, 0x42, 0x3C, 0x17, 0x14, 0x18, 0x1B};
+    static const uint8_t e1[] = {0xE0, 0x09, 0x0B, 0x06, 0x04, 0x03, 0x2B, 0x43, 0x42, 0x3B, 0x16, 0x14, 0x17, 0x1B};
+
+    Serial.println("[probe/st7796] SWRESET");
+    legacyWriteCommand(0x01);
+    delay(150);
+
+    Serial.println("[probe/st7796] extension + drive table");
+    legacyWriteCommand(0x11); // SLPOUT early in ST7796 path
+    delay(120);
+    legacyWriteCommand(0xF0); legacyWriteData8(0xC3);
+    legacyWriteCommand(0xF0); legacyWriteData8(0x96);
+    legacyWriteCommand(0x36); legacyWriteData8(0x48);
+    legacyWriteCommand(0x3A); legacyWriteData8(0x55);
+    legacyWriteCommand(0xB4); legacyWriteData8(0x01);
+    legacyWriteCommand(0xB6); legacyWriteDataN(b6, sizeof(b6));
+    legacyWriteCommand(0xE8); legacyWriteDataN(e8, sizeof(e8));
+    legacyWriteCommand(0xC1); legacyWriteData8(0x06);
+    legacyWriteCommand(0xC2); legacyWriteData8(0xA7);
+    legacyWriteCommand(0xC5); legacyWriteData8(0x18);
+    legacyWriteCommand(0xE0); legacyWriteDataN(e0, sizeof(e0));
+    legacyWriteCommand(0xE1); legacyWriteDataN(e1, sizeof(e1));
+    legacyWriteCommand(0xF0); legacyWriteData8(0x3C);
+    legacyWriteCommand(0xF0); legacyWriteData8(0x69);
+
+    legacyWriteCommand(0x20); // INVOFF
+    legacyWriteCommand(0x29); // DISPON
+    delay(100);
+    Serial.println("[probe/st7796] DISPON");
+}
+
 // Emits an unmistakable SPI signature for analyzer correlation:
 // 0x2A, 0x2B, 0x2C followed by a short RGB565 burst.
 static void rawRamwrSignature() {
@@ -421,7 +590,7 @@ static void runColorTest() {
 
 void setup() {
     Serial.begin(115200);
-    delay(200);
+    delay(500);  // let power rails settle after cold plug-in
     Serial.printf("[display] boot - Arduino_GFX %s probe\n", kPanelControllerName);
 #if TFT_BUS_MODE == TFT_BUS_HW
     Serial.println("[tft] bus = HW SPI");
@@ -452,23 +621,62 @@ void setup() {
 
     // Step 1: hardware reset (active-low pulse on GPIO19)
     hardwareReset();
+    // Keep original SWRESET behavior for non-minimal paths.
+#if !MINIMAL_TFT_ONLY
     // Step 2: software reset — TFT_eSPI does this at the top of its ST7796 init
     sendSwReset();
+#endif
 
 #if MINIMAL_TFT_ONLY
-    setBacklight(true);
-    digitalWrite(DISP_READY_PIN, HIGH);
-    Serial.println("[minimal] starting A/B pixel-format test");
-    while (true) {
-        Serial.println("[ab] MODE A: 565 (ST7796-style) -> RED");
-        runLegacyWriteOnlyWake();
-        legacyFillScreenRaw(COLOR_RED);
-        delay(2000);
+    Serial.println("[minimal] deterministic dual-profile probe mode");
+    Serial.println("[minimal] RULE: power-cycle before every test (unplug 5s, replug)");
 
-        Serial.println("[ab] MODE B: 666 (ILI9488-style) -> BLUE");
-        runLegacyWriteOnlyWake666();
-        legacyFillScreenRaw666(0x00, 0x00, 0xFF);
-        delay(2000);
+#if DIAG_INVERT_DC
+    Serial.println("[DIAGNOSTIC] DC polarity INVERTED (dataMode=LOW for data, HIGH for command)");
+#endif
+#if DIAG_INVERT_CS
+    Serial.println("[DIAGNOSTIC] CS polarity INVERTED (HIGH for active, LOW for idle)");
+#endif
+#if DIAG_SWAP_BYTES
+    Serial.println("[DIAGNOSTIC] 16-bit color byte order SWAPPED (lo byte first, then hi)");
+#endif
+
+    // Use one SPI mode for all probe commands/data (MODE0) for reproducibility.
+    legacySpiBegin();
+
+#if MINIMAL_PROBE_PROFILE == PROBE_PROFILE_ST7796
+    Serial.println("[minimal] profile = ST7796 (full table)");
+    runProbeInitSt7796();
+#else
+    Serial.println("[minimal] profile = ILI9488 (full table)");
+    runProbeInitIli9488();
+#endif
+
+    Serial.println("[minimal] ramping backlight 0->255 over 5 seconds...");
+    for (uint8_t bri = 0; bri <= 255; bri++) {
+        setBacklightPWM(bri);
+        delay(20);
+    }
+    Serial.println("[minimal] backlight at full brightness");
+
+#if MINIMAL_PROBE_PROFILE == PROBE_PROFILE_ST7796
+    Serial.println("[minimal] fill RED using RGB565 over 320x480");
+    legacyFillScreenRaw565(320, 480, COLOR_RED);
+#else
+    Serial.println("[minimal] fill RED using RGB666 over 320x480");
+    legacyFillScreenRaw666(320, 480, 0xFF, 0x00, 0x00);
+#endif
+
+    Serial.println("[done] probe complete; screen should be solid RED");
+    Serial.println("[diag] entering brightness diagnostic loop — observe at which level RED appears");
+    
+    // Diagnostic: hold at each brightness level for 3 seconds so user can observe
+    while (true) {
+        for (uint8_t level : {0, 50, 100, 150, 200, 255}) {
+            Serial.printf("[diag] brightness = %u (hold 3s)\n", level);
+            setBacklightPWM(level);
+            delay(3000);
+        }
     }
 #endif
 

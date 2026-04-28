@@ -1,0 +1,202 @@
+# Display Path Handoff — 2026-04-20
+
+Project: WorkStation Development Station Power Supply
+Repo: https://github.com/Phil-CIA/Development-Station-Power-Supply.git
+Branch: main
+
+---
+
+## Stop Decision Update (latest)
+
+- Display bring-up on the current Hosyond module is now stopped.
+- Net outcome for this phase: no confirmed forward progress.
+- A one-off visual event (black/white pattern) was observed but could not be reproduced as a stable, actionable breakthrough.
+- Working assumption is possible panel damage/marginality (for example ESD-related behavior), so further time on this exact unit is not justified.
+- Treat prior "breakthrough" interpretation as unconfirmed and close this loop.
+
+## Path priority (updated 2026-04-23)
+
+- **CrowPanel 4.3 is now the primary display path** — main development target.
+- Custom front-panel board (ESP32-C6 + Hosyond MSP4021) is a **secondary path**, retained and documented but paused.
+- Exact hardware specs for the Hosyond MSP4021 have been captured from lcdwiki.com and committed to `docs/display-project/hosyond-msp4021-st7796-reference.md`.
+  - Confirmed: ST7796S driver, 480×320 native, 16-bit RGB565, XPT2046 resistive touch, DC HIGH=data/LOW=command, SPI 4-wire.
+  - See that file for init sequence, resource links, and MOSI/MISO swap hypothesis notes from the diagnostic sessions.
+
+---
+
+## Session Summary
+
+This session had two phases:
+
+1. **CrowPanel investigation** — evaluated the Elecrow CrowPanel Advance 4.3 HMI as the off-the-shelf display option. Built a working PlatformIO scaffold with V1.2 pin mapping captured, board init sequence implemented, and UART/I2C baseline firmware verified building and linking cleanly. Display driver init was deferred because LovyanGFX (the required driver library) caused a build crash on this Windows machine.
+
+2. **Decision to pause CrowPanel** — user decided to stop CrowPanel work and return to the custom front-panel display board.
+
+---
+
+## Current Display Path Status
+
+### Custom Front-Panel Board (ESP32-C6 path) — ACTIVE, to be continued
+
+- MCU: ESP32-C6 (COM9)
+- PlatformIO env: `display_board` inside `WorkStation/platformio.ini`
+- Active source file: `WorkStation/src/display_main.cpp`
+- Module tested: Hosyond MSP4022 4" SPI TFT
+
+**Last known firmware state (what is flashed):**
+- `PANEL_CONTROLLER=PANEL_CTRL_ILI9488`
+- `USE_LEGACY_WRITE_ONLY_WAKE=1`
+- `ENABLE_AUTO_LEGACY_FALLBACK=0`
+- `MINIMAL_TFT_ONLY=1`
+
+**Last known firmware behavior:**
+1. Isolates touch CS and SD CS pins HIGH
+2. Controls backlight
+3. Issues hardware reset + SWRESET sequence
+4. Runs alternating MODE A / MODE B pixel-format test loop:
+   - MODE A: RGB565 (0x3A = 0x55)
+   - MODE B: 18-bit (0x3A = 0x66)
+
+**Pin map (C6 direct wiring used in bring-up):**
+
+| Signal   | GPIO |
+|----------|------|
+| TFT_CS   | 10   |
+| TFT_DC   | 18   |
+| TFT_RST  | 19   |
+| TFT_SCLK | 12   |
+| TFT_MISO | 11   |
+| TFT_MOSI | 13   |
+| TFT_BL   | 20   |
+| TOUCH_CS | 22   |
+| SD_CS    | 15   |
+
+**Library path:** Arduino_GFX (not TFT_eSPI — TFT_eSPI was abandoned early, Arduino_GFX is the active path)
+
+**Result at stop point:**
+- The minimal legacy write path occasionally produced visible static/pixelation and one random black/white event.
+- Intended framebuffer writes never became stable, repeatable, or correct.
+- Final interpretation for this session: no reliable breakthrough; module behavior is likely marginal/faulty. Work stopped on this unit.
+
+**Operational notes:**
+- COM9 is frequently locked by monitor after flashing; close all monitors before upload.
+- After reflash, often need to unplug/replug USB then press reset to observe panel.
+
+---
+
+### CrowPanel 4.3 (ESP32-S3 path) — SCAFFOLDED, PAUSED
+
+All work lives in `WorkStation/crowpanel-43-bringup/`.
+
+#### Hardware target
+- Elecrow CrowPanel Advance 4.3 inch HMI
+- ESP32-S3-WROOM-1-N16R8
+- 800x480 IPS, capacitive touch (GT911)
+- 16MB flash + 8MB PSRAM
+- USB-C for power and programming
+
+#### PlatformIO config (`crowpanel-43-bringup/platformio.ini`)
+```ini
+[platformio]
+default_envs = crowpanel43
+
+[env:crowpanel43]
+platform = espressif32
+board = esp32-s3-devkitc-1
+framework = arduino
+monitor_speed = 115200
+upload_speed = 921600
+build_flags =
+    -DARDUINO_USB_CDC_ON_BOOT=1
+    -DBOARD_HAS_PSRAM
+    -mfix-esp32-psram-cache-issue
+```
+
+NOTE: No `upload_port` is set. Set this to the correct COM port before upload.
+
+#### Build result (last verified)
+- Exit code 0
+- RAM: 7.2% of 327680 bytes
+- Flash: 10.7% of 1310720 bytes
+- Build time: ~5.3 seconds
+
+#### Current firmware (`crowpanel-43-bringup/src/main.cpp`)
+- `Wire.begin(15, 16)` — I2C on board controller and touch bus
+- Probes I2C 0x30 (board controller) and 0x5D (GT911 touch), reports ok/missing
+- `runBoardInitSequence()`: GPIO1 pulse LOW 120ms → send 0x19 → send 0x10 to 0x30
+- Serial command parser: HELP, PING, STATUS, CMD:LABEL text=..., CMD:COLOR r= g= b=
+- No display driver active — `drawLabel()` and `fillColor()` are Serial stubs only
+- Prints full RGB pin map to serial on boot for physical verification
+
+#### Display driver config (staged but NOT active)
+Captured in `crowpanel-43-bringup/include/CrowPanel43Display.h` — full LovyanGFX LGFX_Device subclass with Bus_RGB + Panel_RGB + Touch_GT911. NOT included in main.cpp yet.
+
+**V1.2 official RGB pin map (from Elecrow repo):**
+
+| Signal | GPIO |
+|--------|------|
+| D0     | 21   |
+| D1     | 47   |
+| D2     | 48   |
+| D3     | 45   |
+| D4     | 38   |
+| D5     | 9    |
+| D6     | 10   |
+| D7     | 11   |
+| D8     | 12   |
+| D9     | 13   |
+| D10    | 14   |
+| D11    | 7    |
+| D12    | 17   |
+| D13    | 18   |
+| D14    | 3    |
+| D15    | 46   |
+| DE     | 42   |
+| VSYNC  | 41   |
+| HSYNC  | 40   |
+| PCLK   | 39   |
+| Touch SDA | 15 |
+| Touch SCL | 16 |
+
+RGB timing: freq=21MHz, hsync/vsync front_porch=8, pulse_width=4, back_porch=8, pclk_idle_high=1
+
+#### Why display driver was deferred
+LovyanGFX as a PlatformIO `lib_deps` entry crashed the build on this Windows machine with Error 3221225786 across multiple LovyanGFX cpp files. Likely cause: Windows path length limit or compiler OOM on the large LovyanGFX codebase.
+
+**Options to unblock LovyanGFX when returning to CrowPanel:**
+- Try `lib_deps = lovyan03/LovyanGFX @ ^1.2.7` with `-j 1` build jobs in `extra_scripts` to prevent OOM
+- Try enabling Windows long path support (Group Policy or registry: `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1`)
+- Alternatively, use Arduino_GFX RGB panel driver instead (lighter compile weight, already proven on this machine from C6 work)
+
+---
+
+## Files To Know
+
+| File | Purpose |
+|------|---------|
+| `WorkStation/src/display_main.cpp` | Custom C6 display bring-up entrypoint |
+| `WorkStation/platformio.ini` | Contains `env:display_board` for C6 path |
+| `WorkStation/crowpanel-43-bringup/src/main.cpp` | CrowPanel UART/I2C baseline firmware |
+| `WorkStation/crowpanel-43-bringup/include/CrowPanel43Display.h` | LovyanGFX driver config (staged, not active) |
+| `WorkStation/crowpanel-43-bringup/platformio.ini` | CrowPanel PlatformIO env |
+| `WorkStation/crowpanel-43-bringup/README.md` | CrowPanel build/upload commands |
+| `WorkStation/docs/display-project/README.md` | Project-level display reference |
+| `WorkStation/NEW_CHAT_HANDOFF.rmd` | Earlier C6 display breakpoint notes |
+
+---
+
+## Recommended Next Chat Focus (Custom Display Board)
+
+The custom front-panel board bring-up was stopped with no confirmed progress on this Hosyond unit. The next session should:
+
+1. Decide whether to try a known-good substitute SPI display module on the same C6 wiring to rule out module fault vs. firmware fault.
+2. Or, if a replacement Hosyond unit is available, swap it in and re-test the `MINIMAL_TFT_ONLY` baseline.
+3. If the C6 + custom PCB path is being abandoned in favour of the CrowPanel, document that decision and move on to enabling the CrowPanel RGB display driver.
+
+The existing C6 minimal baseline in `src/display_main.cpp` is the correct starting point. Do not re-run the full library bring-up cycle — go straight to the raw legacy minimal path and A/B pixel format test.
+
+---
+
+## Suggested Prompt For Next Chat
+
+> Continue from DISPLAY_HANDOFF_2026-04-20.rmd in the WorkStation repo. The ESP32-C6 display_board env on COM9 has a known working low-level baseline in src/display_main.cpp: legacy raw-SPI wake, touch/SD isolation, and MINIMAL_TFT_ONLY A/B pixel-format testing. The Hosyond module showed visible static/pixelation but never accepted clean framebuffer writes. The CrowPanel 4.3 scaffold exists in crowpanel-43-bringup/ with all V1.2 pin data captured and a clean build verified, but display driver init is deferred because LovyanGFX failed to compile on this Windows machine. Returning focus to the custom front-panel board path. Read the handoff doc before doing anything.

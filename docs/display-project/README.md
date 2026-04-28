@@ -2,10 +2,17 @@
 
 This folder captures the current starting point for the front-panel display direction inside the Development Station Power Supply project.
 
+## Path priority
+
+| Priority | Path | Hardware | Status |
+|----------|------|----------|--------|
+| **Primary** | Elecrow CrowPanel 4.3 HMI | ESP32-S3, 800×480 IPS, capacitive touch | Active — main development target |
+| Secondary | Custom front-panel board + Hosyond MSP4021 | ESP32-C6, ST7796S SPI, 480×320 | Paused — revisit with replacement module |
+
 ## Current direction
-The display effort has pivoted back into this repo and is now proceeding on **two parallel paths**:
-- Bring up and learn from the existing custom front-panel hardware already built
-- Evaluate the Elecrow CrowPanel Advance 4.3 inch HMI board as a fast-track display option
+The display effort is now on **two paths with a defined priority**:
+- **Primary**: Elecrow CrowPanel Advance 4.3 inch HMI — main development target going forward
+- **Secondary**: Custom front-panel hardware with Hosyond MSP4021 (ST7796S SPI module) — retained as a documented path but paused pending a replacement module
 
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display
@@ -52,3 +59,13 @@ Recommended minimum host-to-display contract:
 - UART TX
 - UART RX
 - optional reset or status line
+
+## Local bring-up starter
+- Local PlatformIO starter path (CrowPanel):
+  - `crowpanel-43-bringup/`
+- Starter is based on official Elecrow V1.2 4.3-inch example pin mapping for RGB data bus and touch I2C.
+- Current scope is bench bring-up with a minimal serial command stub, not full LVGL UI firmware yet.
+
+## Hosyond MSP4021 (secondary path) reference
+- Hardware spec, confirmed pin map, DC polarity, init sequence, and official resource links:
+  - `docs/display-project/hosyond-msp4021-st7796-reference.md`
