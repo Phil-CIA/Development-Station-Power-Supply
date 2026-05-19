@@ -1,27 +1,33 @@
-# WorkStation Quick Handoff
+# Development Station Quick Handoff (2026-05-18)
 
-- Project: WorkStation front display board bring-up (ESP32-C6, PlatformIO, Arduino_GFX)
-- Active env: `display_board`
-- Port: COM9
-- Display module under test: Hosyond MSP4022 4" SPI TFT family
-- Current TFT pin map in use on C6 path: CS=10, DC=18, RST=19, SCLK=12, MISO=11, MOSI=13, BL/PWM=20
-- Shared SPI devices: Touch CS=22, SD CS=15, both forced HIGH during TFT-only tests
-- Current firmware state:
-  - `src/display_main.cpp` includes legacy raw-SPI wake/fill helpers
-  - minimal TFT-only mode is enabled in `platformio.ini`
-  - current minimal loop alternates pixel format assumptions:
-    - MODE A: RGB565 / `0x3A=0x55`
-    - MODE B: 18-bit / `0x3A=0x66`
-- Most important result:
-  - panel is not fully dead
-  - minimal legacy write-only path produced visible static/pixelation
-  - panel wake is real, but intended framebuffer updates are not clearly accepted
-- Working hypothesis at stop point:
-  - module is bad, marginal, or otherwise not worth more time right now
-  - continue on the alternative display board path instead of further firmware tuning on this module
-- Operational notes:
-  - COM9 often needs all monitors closed before upload
-  - user often must unplug/replug USB, then reset after flashing to observe panel behavior
+- Primary focus: hardware revision updates on regulator/HAT design.
+- Firmware feature work: intentionally paused until Rev1 board bring-up is complete.
+- Firmware code lane: scaffold-only (inversion/bring-up support), no new behavior changes for now.
+- Bench work: deferred for now.
+- Main source of truth: HANDOFF.md
 
-## Paste Prompt
-Continue from the WorkStation display-board breakpoint. The ESP32-C6 `display_board` env on COM9 now has a known baseline in `src/display_main.cpp`: legacy raw-SPI wake, touch/SD isolation, and `MINIMAL_TFT_ONLY` A/B pixel-format testing. The Hosyond module showed visible static/pixelation on the minimal legacy path, proving partial life, but did not clearly accept intended image data. Current decision is to pause this module as likely bad/marginal and continue on the alternative display board path. Preserve the current baseline and do not reopen broad TFT experimentation unless explicitly requested.
+What changed this session:
+- Re-validated fresh Rev-B regulator/HAT netlists after schematic updates.
+- Corrected and verified HAT Sense-B origins:
+	- 5V: R59/R60
+	- 3.3V: R61/R62
+	- Adj: R63/R64
+- Confirmed RB-001 topology is implemented on all three channels in regulator Rev-B netlist:
+	- U5/U6/U7 LMV358IDR buffers
+	- D4/D5/D6 BAT54C selector combine
+	- R31/R33/R35 = 100 ohm
+	- R32/R34/R36 = 33k
+- Finalized intent as remote-primary sensing plus slightly underbiased local fallback to minimize measurement handoff step while keeping startup fallback behavior.
+
+Rev1 segregation status:
+- Active firmware edits must stay in src/rev1/.
+- platformio.ini envs were redirected to src/rev1 sources.
+- Explicit source excludes were added to reduce accidental root-src builds.
+- Copied last-rev behavior is intentionally retained in Rev1 files for pending bring-up/testing.
+
+Next session first move:
+- Read HANDOFF.md and NEW_CHAT_HANDOFF.rmd, then verify U5/U6/U7, D4/D5/D6, and R31-R36 are still present in latest Rev-B netlist before further edits.
+- Continue schematic/netlist population while preserving the current 3-channel topology baseline and scaffold-only firmware freeze.
+
+Paste prompt:
+Continue Development Station hardware revision work from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. Keep scope on regulator/HAT Rev-B schematic and netlist updates only. Preserve the current 3-channel LMV358 plus BAT54C selector topology unless bring-up data drives value changes. Do not run bench steps unless explicitly requested. Keep firmware paused unless absolutely required, and if needed edit only src/rev1 files.

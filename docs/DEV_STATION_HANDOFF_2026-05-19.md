@@ -1,0 +1,77 @@
+# Development Station Handoff (2026-05-19)
+
+Purpose: carry forward today's schematic-first checkpoint with explicit firmware freeze and verified Rev-B netlist evidence.
+
+## Session Intent And Stop Call
+
+- Continue from the new handoff chain and stabilize documentation consistency.
+- Keep active scope on regulator/HAT Rev-B schematic and netlist population.
+- Keep firmware in scaffold-only mode for inversion/bring-up support.
+- Keep bench execution deferred unless explicitly requested.
+
+## What Was Completed
+
+1. Updated handoff chain to consistently describe scaffold-only firmware status:
+   - HANDOFF.md
+   - NEW_CHAT_HANDOFF.rmd
+   - NEW_CHAT_HANDOFF_SHORT.rmd
+2. Aligned RB-001 issue tracker wording to current reality:
+   - topology implemented and netlist-verified
+   - remaining work is bring-up validation and potential value retune
+3. Ran strict text verification pass on current Rev-B netlists and recorded a checkpoint in HANDOFF.md.
+
+## Verified Evidence (Today)
+
+Regulator Rev-B netlist:
+- U5/U6/U7 present with LMV358IDR values
+- D4/D5/D6 present with BAT54C,215 values
+- R31/R33/R35 = 100 ohm
+- R32/R34/R36 = 33k
+
+HAT Rev-B netlist:
+- Sense-B resistor groups present:
+  - 5V: R59/R60
+  - 3.3V: R61/R62
+  - Adj: R63/R64
+- Sense nets present:
+  - VSENSE_5V+/VSENSE_5V-
+  - VSENSE_3V3+/VSENSE_3V3-
+  - VSENSE_ADJ+/VSENSE_ADJ-
+- Feedback nets present:
+  - Feedback 5V
+  - Feedback 3.3
+  - Feedback Adj Channel
+
+## Current State At Stop
+
+- Hardware status: Rev-B selector topology is present in current netlists.
+- Documentation status: tracker and handoff wording are aligned with current implementation state.
+- Firmware status: scaffold-only freeze remains active.
+
+## Risks And Guardrails
+
+1. Do not introduce new topology changes before explicit bring-up evidence requires one.
+2. Do not expand firmware behavior while schematic/netlist population remains primary.
+3. If firmware is touched for blocker resolution, constrain to src/rev1 only and keep change minimal.
+
+## Source Of Truth Files
+
+- HANDOFF.md
+- NEW_CHAT_HANDOFF.rmd
+- NEW_CHAT_HANDOFF_SHORT.rmd
+- docs/PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md
+- docs/DEV_STATION_HANDOFF_2026-05-19.md
+
+## Priority Order Next Session
+
+1. Continue schematic/netlist population while preserving current 3-channel topology baseline.
+2. Capture each schematic/netlist delta in handoff docs at stop points.
+3. Only after explicit request, execute bring-up measurements for continuity/step behavior.
+
+## First Action Next Session
+
+Read HANDOFF.md and this file, then verify U5/U6/U7, D4/D5/D6, and R31-R36 are still present in the latest Rev-B netlist before any further topology edits.
+
+## Suggested New Chat Prompt
+
+Continue Development Station hardware revision work from HANDOFF.md and docs/DEV_STATION_HANDOFF_2026-05-19.md. Keep scope on regulator/HAT Rev-B schematic and netlist updates only. Preserve the current 3-channel LMV358 plus BAT54C selector topology unless bring-up data requires value retuning. Keep firmware in scaffold-only freeze mode unless a schematic-driven blocker requires a narrow src/rev1 update.
