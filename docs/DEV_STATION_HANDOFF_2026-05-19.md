@@ -97,3 +97,23 @@ Notes:
 - No baseline reference loss detected.
 - No topology changes introduced in this batch.
 - Next batch should be a single focused schematic edit group followed by immediate netlist re-export and targeted verification.
+
+Batch ID: B2 (RB-003 control-path pre-edit verification)
+
+Checks executed:
+1. Verified ON/OFF drain-net mapping:
+  - U2 pin 5 on Net-(Q2-D)
+  - U4 pin 5 on Net-(Q3-D)
+  - U3 pin 5 on Net-(Q16-D)
+2. Verified channel-select inputs into gate networks:
+  - ISET_MPU_Channel_3 -> R63 -> Net-(Q2-G)
+  - ISET_MPU_5V -> R24 -> Net-(Q3-G)
+  - ISET_MPU_3V3 -> R2 -> Net-(Q16-G)
+3. Verified default pulls are present in each path:
+  - ON/OFF pulls: R65, R5, R1 to +5V_Boot
+  - Gate pulls: R64, R4, R6 to GND
+
+Result: PASS (for one-to-one pin-5 drain mapping and input/pull presence)
+
+Finding recorded:
+- Current export shows Q2/Q3/Q16 source pins on GND; prior wording that referenced source-specific `Net-(Qx-S)` ties to +12V was stale and has been corrected in PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md.

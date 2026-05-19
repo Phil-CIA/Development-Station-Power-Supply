@@ -96,19 +96,22 @@ Each channel now uses two buffered sense paths combined through a BAT54C selecto
 	- Gate pull element: R6 (100k to GND)
 	- ON/OFF node pull element: R1 (100k to GND)
 	- LM2596 ON/OFF node: U3 pin 5 via net `Net-(Q16-D)`
-	- MOSFET source-side rail tie: R16 (0 ohm) to +12V path via `Net-(Q16-S)`
+	- Netlist observation: Q16 source (pin 2) is currently on `GND`
 - 5V channel control path:
 	- Gate drive input: `ISET_MPU_5V` -> R24 (100 ohm)
 	- Gate pull element: R4 (100k to GND)
 	- ON/OFF node pull element: R5 (100k to GND)
 	- LM2596 ON/OFF node: U4 pin 5 via net `Net-(Q3-D)`
-	- MOSFET source-side rail tie: R17 (0 ohm) to +12V path via `Net-(Q3-S)`
+	- Netlist observation: Q3 source (pin 2) is currently on `GND`
 - Adj channel control path:
 	- Gate drive input: `ISET_MPU_Channel_3` -> R63 (100 ohm)
 	- Gate pull element: R64 (100k to GND)
 	- ON/OFF node pull element: R65 (100k to GND)
 	- LM2596 ON/OFF node: U2 pin 5 via net `Net-(Q2-D)`
-	- MOSFET source-side rail tie: R3 (0 ohm) to +12V path via `Net-(Q2-S)`
+	- Netlist observation: Q2 source (pin 2) is currently on `GND`
+
+Additional current-export note:
+- R16/R17/R3 are present on the `+12V` net in the current export, but source-specific `Net-(Qx-S)` nets are not present in the same export.
 
 **RB-003 schematic checklist (execute in-order):**
 1. Confirm intended ON/OFF polarity and thresholds at the LM2596 pin for each channel.
