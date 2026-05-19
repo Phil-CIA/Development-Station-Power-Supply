@@ -117,3 +117,25 @@ Result: PASS (for one-to-one pin-5 drain mapping and input/pull presence)
 
 Finding recorded:
 - Current export shows Q2/Q3/Q16 source pins on GND; prior wording that referenced source-specific `Net-(Qx-S)` ties to +12V was stale and has been corrected in PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md.
+
+Batch ID: B3 (RB-003 pull-value baseline verification)
+
+Checks executed:
+1. Verified ON/OFF pull resistor values:
+   - R1 actual value in export: 10kΩ (documented as "100k")
+   - R5 actual value in export: 10kΩ (documented as "100k")
+   - R65 actual value in export: 10kΩ (documented as "100k")
+2. Verified gate-drive pull resistor values:
+   - R4 = 100kΩ (matches documented)
+   - R6 = 100kΩ (matches documented)
+   - R24 = 100kΩ (matches documented)
+   - R64 = 100kΩ (matches documented)
+
+Result: CRITICAL MISMATCH FOUND
+
+Finding: ON/OFF pull values are 10k in current export, not 100k as stated in PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md issue tracker wording.
+
+Impact and next action: 
+- This affects cold-start charge time for ON/OFF nodes.
+- Documentation in PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md must be corrected to state R1/R5/R65 = 10k.
+- Batch 3 has NOT introduced any schematic changes; this is a pre-edit baseline discovery that prevents future misalignment.

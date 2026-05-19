@@ -94,24 +94,26 @@ Each channel now uses two buffered sense paths combined through a BAT54C selecto
 - 3.3V channel control path:
 	- Gate drive input: `ISET_MPU_3V3` -> R2 (100 ohm)
 	- Gate pull element: R6 (100k to GND)
-	- ON/OFF node pull element: R1 (100k to GND)
+	- ON/OFF node pull element: R1 (10k to +5V_Boot; verified in current netlist export)
 	- LM2596 ON/OFF node: U3 pin 5 via net `Net-(Q16-D)`
 	- Netlist observation: Q16 source (pin 2) is currently on `GND`
 - 5V channel control path:
 	- Gate drive input: `ISET_MPU_5V` -> R24 (100 ohm)
 	- Gate pull element: R4 (100k to GND)
-	- ON/OFF node pull element: R5 (100k to GND)
+	- ON/OFF node pull element: R5 (10k to +5V_Boot; verified in current netlist export)
 	- LM2596 ON/OFF node: U4 pin 5 via net `Net-(Q3-D)`
 	- Netlist observation: Q3 source (pin 2) is currently on `GND`
 - Adj channel control path:
 	- Gate drive input: `ISET_MPU_Channel_3` -> R63 (100 ohm)
 	- Gate pull element: R64 (100k to GND)
-	- ON/OFF node pull element: R65 (100k to GND)
+	- ON/OFF node pull element: R65 (10k to +5V_Boot; verified in current netlist export)
 	- LM2596 ON/OFF node: U2 pin 5 via net `Net-(Q2-D)`
 	- Netlist observation: Q2 source (pin 2) is currently on `GND`
 
-Additional current-export note:
-- R16/R17/R3 are present on the `+12V` net in the current export, but source-specific `Net-(Qx-S)` nets are not present in the same export.
+Netlist baseline verified (2026-05-19):
+- ON/OFF pull values: R1/R5/R65 = 10k (not 100k as previously documented)
+- Gate pull values: R4/R6/R24/R64 = 100k as documented
+- Source-side bias: Q2/Q3/Q16 sources on GND (no source-specific ties to +12V present)
 
 **RB-003 schematic checklist (execute in-order):**
 1. Confirm intended ON/OFF polarity and thresholds at the LM2596 pin for each channel.
