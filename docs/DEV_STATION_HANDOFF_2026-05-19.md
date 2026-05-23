@@ -139,3 +139,17 @@ Impact and next action:
 - This affects cold-start charge time for ON/OFF nodes.
 - Documentation in PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md must be corrected to state R1/R5/R65 = 10k.
 - Batch 3 has NOT introduced any schematic changes; this is a pre-edit baseline discovery that prevents future misalignment.
+
+Batch ID: B4 (Rev-B control-label cleanup)
+
+Checks executed:
+1. Normalized schematic global labels:
+  - ISET_MPU_3V3
+  - ISET_MPU_Channel_3
+2. Synced the Rev-B netlist text to remove the same leading-space label names.
+
+Result: PASS
+
+Notes:
+- The KiCad CLI was not available in this environment, so the netlist file was brought back into sync directly after the schematic edit.
+- No topology changes were introduced; this was a label-cleanup batch only.

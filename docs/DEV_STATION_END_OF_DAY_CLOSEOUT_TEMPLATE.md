@@ -23,6 +23,13 @@ Current State At Stop:
 - Safe resume point: [one sentence]
 - Hardware left connected: [yes/no + summary]
 
+Memory Pool Update (60 Seconds):
+- active-baseline.md: [one bullet if baseline changed, else "no change"]
+- decision-log.md: [one bullet for any final decision made today, else "no change"]
+- open-loops.md: [add/remove blockers and next unresolved loops]
+- bench-log.md: [append one test entry if any bench work happened]
+- development-station-power-supply.md: [add one durable lesson learned only if it will matter again]
+
 Known-Good Checks:
 1. [check]
 2. [check]
@@ -49,8 +56,9 @@ First Action Next Session:
 
 Instructions For Next Chat:
 1. Read the handoff docs first.
-2. Stay on the current target until the blocking validation step is resolved.
-3. Prefer one focused test or one focused code change at a time.
-4. Preserve known-good checkpoints and note exact commands when they matter.
+2. Read /memories/repo/index.md, then active-baseline.md and open-loops.md before new changes.
+3. Stay on the current target until the blocking validation step is resolved.
+4. Prefer one focused test or one focused code change at a time.
+5. Preserve known-good checkpoints and note exact commands when they matter.
 
 DEV STATION CLOSEOUT END

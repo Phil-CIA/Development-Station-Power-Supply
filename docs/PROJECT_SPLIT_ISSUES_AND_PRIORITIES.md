@@ -66,29 +66,80 @@ Each channel now uses two buffered sense paths combined through a BAT54C selecto
 **Residual Impact of Bootstrap Fix**: +5V bootstrap regulator still shortens cold-start exposure, but RB-001 closure now depends on bring-up continuity data, not additional topology creation.  
 **Next Action**: Preserve current topology and execute bring-up validation; retune local attenuation values only if measured continuity/step error exceeds expectation.  
 **Tracker Alignment Note**: This item has moved from "topology creation" to "bring-up validation and possible value tuning."  
+**Control Ownership Rule**: Keep the output MOSFETs as the load-connect/load-isolate layer. Use LM2596 pin 5 as the authoritative hard-disable point for faults and short-circuit shutdown. A low-side pull-down stage can assert enable, but it cannot by itself implement a fault-off override.
+
+**Desired Rev-B control truth table**:
+
+| Load command | Fault critical | Output MOSFET state | LM2596 pin 5 state | Result |
+|--------------|----------------|---------------------|--------------------|--------|
+| Disable | Inactive | Off | High / disable | Rail off, load isolated |
+| Enable | Inactive | On | Low / enable | Rail on, load connected |
+| Disable | Active | Off | High / disable | Fault wins, rail off |
+| Enable | Active | Off | High / disable | Fault overrides command, rail off |
+
+**Schematic edit implication**: if a shutdown path currently shares a low-side BSS138 pull-down with the enable path, it must be inverted or moved to a disable-only node so that fault assertion forces the shutdown state instead of reinforcing enable.
+
 **Reference**: [HANDOFF.md](../HANDOFF.md) and [NEW_CHAT_HANDOFF.rmd](../NEW_CHAT_HANDOFF.rmd)
 
 ---
 
 ### 2. USB Vbus Backfeed: HAT/ESP32 USB 5V Fights Regulator 5V
-**Status**: 🟡 ✅ Workaround active | ⏳ On-hold pending board decision  
+**Status**: 🟢 On hold for current MPU path | ⏳ Re-open only if MPU changes to a design with board-exposed VBUS  
 **Path**: 📍 Redesign (long-term), 🔧 Bring-Up (avoid during testing)  
 **Priority**: High (current-limit during stacked test)  
 **Description**: When HAT is powered by 5V regulator output AND connected to USB, USB Vbus (~10V) back-drives the 5V rail, causing voltage sag and current limiting (observed 520mA @ 9.3V during first stacked test).  
 **Current Workaround**: Disconnect USB 5V or use data-only cable during bench testing  
 **Redesign Solution**: Add Schottky diode on Vbus on HAT PCB to isolate USB from 5V rail  
-**Board Change Note**: Potential migration to STM32F103C8T6 dev board in progress; Schottky isolation implementation deferred until board selection is finalized to avoid rework  
+**Board Change Note**: For the current architecture, boot-regulator power to MPU and non-exposed board VBUS make this a non-blocking item. Keep this issue parked unless MPU migration re-introduces direct VBUS exposure on-board.  
 **Bring-Up Impact**: No USB power during load testing; use serial-only debugging if needed  
+**Next component placement package (only if MPU migration requires VBUS handling)**:
+- 1 x series Schottky on USB VBUS path (recommended start: SS14 or SS24, anode at USB VBUS side, cathode at local +5V rail side).
+- 1 x optional resettable fuse on USB VBUS input before the Schottky (recommended start: 500mA hold) for cable/port fault limiting.
+- 1 x optional VBUS bleed resistor to GND on USB-side node (recommended start: 100k) to discharge cable-side float when unplugged.
+- 2 x test points: `TP_USB_VBUS_IN` (before diode) and `TP_USB_VBUS_OUT` (after diode) for bring-up verification.
 **Reference**: [HANDOFF.md](../HANDOFF.md) and [NEW_CHAT_HANDOFF.rmd](../NEW_CHAT_HANDOFF.rmd)
 
 ---
 
 ### 3. ON/OFF Pin Switching: MOSFET Gate Drive Circuit
-**Status**: 🔴 Under investigation  
+**Status**: 🟡 Topology implemented, validation pending  
 **Path**: 📍 Redesign (design review)  
 **Priority**: High (control reliability)  
 **Description**: LM2596 pin 5 (ON/OFF) uses N-channel MOSFET for low-side pull-down. Gate drive voltage, rise/fall time, debounce behavior not yet characterized under load transients.  
 **Next Step**: Scope gate voltage, drain voltage, and load response during ON → OFF → ON cycles  
+
+**Control contract for the Rev-B edits**:
+- The MOSFET pair that touches `~{ON}/OFF` is a load-enable path, not a fault-off path.
+- A fault signal must either drive a separate disable element or be inverted before it reaches the shutdown node.
+- If the same low-side pull-down polarity is used for both enable and fault, fault assertion can only reinforce enable, which is the wrong polarity for shutdown.
+- Use one fault-isolation diode per rail from `FAULT_CRITICAL_SUM` to each enable gate node instead of tying the three gate nets together. That preserves per-rail enable control while still letting fault pull the active gate low.
+
+**2026-05-19 implementation snapshot (netlist)**:
+- Fault fanout present: `FAULT_CRITICAL_SUM` -> `R37`, `R39`, `R45` (pin 1 on each resistor).
+- Per-rail diode isolation present: `D7`, `D8`, `D10` between each fault branch and each gate net (`Q1-G`, `Q4-G`, `Q5-G`).
+- Cross-coupled gate net condition is removed at the netlist level.
+
+**Bring-up instrumentation status (2026-05-19):**
+- Gate and fault test points added (3 on regulator path, 1 on HAT path).
+
+**Fault-conditioning component status (2026-05-19 netlist):**
+- Implemented: branch pull-ups (`R47`, `R48`, `R49`) to `+5V_Boot`.
+- Implemented: branch RC caps (`C14`, `C17`, `C23`) at the three fault-injection branches.
+- Implemented: connector entry series resistor (`R50`) between `J2 Pin_3` and `FAULT_CRITICAL_SUM`.
+
+**Next steps (validation, not new components):**
+- Scope `FAULT_CRITICAL_SUM` and each gate net (`Q1-G`, `Q4-G`, `Q5-G`) during injected fault pulses and verify no cross-coupled gate transitions.
+- Measure fault assert/release timing through `R50` and branch RC networks to confirm shutdown response stays within protection targets.
+- Run truth-table bench validation for all four states (Enable/Disable x Fault inactive/active) and record resulting `~ON/OFF` pin state per channel.
+
+**Desired shutdown truth table**:
+
+| MCU rail-enable | Fault critical | Expected `~{ON}/OFF` | Expected regulator state |
+|-----------------|----------------|----------------------|--------------------------|
+| 0 | 0 | High | Disabled |
+| 1 | 0 | Low | Enabled |
+| 0 | 1 | High | Disabled |
+| 1 | 1 | High | Disabled |
 
 **Current Rev-B netlist snapshot (for schematic review):**
 - 3.3V channel control path:
@@ -265,11 +316,11 @@ Netlist baseline verified (2026-05-19):
 ---
 
 ### 13. Short-Circuit Feedback Path: Protection Feedback Integration Missing
-**Status**: 🟢 Implemented on Rev-B (verification complete)  
+**Status**: 🟡 Digital fault path implemented on Rev-B; analog instantaneous OCP path pending  
 **Path**: 📍 Redesign (control/protection integration)  
 **Priority**: High (layout blocker for protection/control routing)  
-**Description**: Short-circuit behavior now has a dedicated fault feedback path in Rev-B. INA3221 alert outputs are summed into named nets and routed into control logic.  
-**Impact**: Layout blocker cleared for fault-feedback ownership and routing on Rev-B.  
+**Description**: Short-circuit behavior now has a dedicated digital fault feedback path in Rev-B via INA3221 alert outputs summed into named nets and routed into control logic. An analog instantaneous over-current path is still needed if sub-conversion-cycle protection response is required.  
+**Impact**: Digital fault ownership/routing blocker is cleared; fast analog trip capability remains an open integration item.  
 **Redesign Actions**:  
 - Define explicit short-circuit feedback signal path (source, sink, polarity, threshold intent)
 - Connect INA `CRITICAL`/`WARNING` outputs to named fault nets (wired-OR or per-rail scheme) and route to MCU/control domain with proper pull-up strategy
@@ -281,6 +332,84 @@ Netlist baseline verified (2026-05-19):
 - `FAULT_CRITICAL_SUM` includes U1/U2/U3 `CRITICAL` plus U7 `GPIO2`
 - `FAULT_WARNING_SUM` includes U1/U2/U3 `WARNING` plus U7 `GPIO22`
 - Prior `unconnected-(U*-CRITICAL/WARNING-Pad*)` nets are absent from the regenerated Rev-B HAT netlist
+
+**Next component placement package (analog instantaneous OCP)**:
+- 3 x fast current-sense front ends (one per rail, reusing existing shunt locations) feeding comparator inputs.
+- 1 x multi-channel comparator stage (3 channels + optional spare/latch) to generate per-rail fast-trip outputs.
+- 3 x threshold-set networks (divider/reference per channel, or shared reference with per-channel trim) for trip current setpoint.
+- 3 x blanking/filter RC networks at comparator inputs to avoid switch-edge false trips.
+- 3 x isolation/injection elements from comparator outputs into the existing fault-disable path so analog trip can force shutdown without cross-coupling rails.
+
+**5V channel first (pilot implementation order)**:
+- Use the existing 5V shunt path first (R13/R14 network) as the analog current source; do not use R42/R43/R44 (those are INA address-strap resistors).
+- Add one open-collector comparator channel for 5V fast-trip (starter: LMV393-family channel at 3.3V logic domain).
+- Add one 5V threshold network (starter: fixed divider plus trim option) to set instantaneous trip current.
+- Add one input blanking RC (starter: 1k series + 1nF to GND at comparator input) to suppress switching-edge false trips.
+- Add one comparator-output isolation/injection element into `FAULT_CRITICAL_SUM` so 5V analog trip can assert shutdown immediately without disturbing 3.3V/Adj enable domains.
+- Add two pilot test points: `TP_OCP_5V_SENSE` (comparator sense input) and `TP_OCP_5V_TRIP` (comparator output to fault path).
+
+**5V comparator slice wiring contract (place this one first)**:
+- Sense input: take the 5V current-sense differential from the existing R13/R14 shunt network.
+- Comparator channel: use only one channel of the quad comparator for this slice; leave the other three channels unplaced or DNP until the 5V slice passes.
+- Sense conditioning: place the 1k series resistor and 1nF blanking capacitor right at the comparator input.
+- Threshold reference: create a dedicated trip reference for this channel only; do not share the threshold node with the other rails yet.
+- Output path: wire the open-collector output to the existing fault net through the planned isolation/injection element, then let the existing fault pull-up define the idle state.
+- Verification: populate `TP_OCP_5V_SENSE` at the comparator input side of the blanking RC and `TP_OCP_5V_TRIP` at the comparator output side of the isolation element.
+
+**5V slice starter component set**:
+- 1 x quad comparator IC, but only channel A used for the first slice.
+- 1 x 1k input series resistor.
+- 1 x 1nF input blanking capacitor.
+- 1 x threshold divider/trimmer network for the 5V trip point.
+- 1 x output isolation element into `FAULT_CRITICAL_SUM`.
+- 2 x test points (`TP_OCP_5V_SENSE`, `TP_OCP_5V_TRIP`).
+
+**Current implementation snapshot (2026-05-20, HAT Rev-B)**:
+- Comparator IC placed (`TLV1704AIPWR`) and powered from +12V/GND.
+- Two comparator outputs (`OUT1`, `OUT2`) now assert `FAULT_CRITICAL_SUM` directly (global trip behavior confirmed).
+- Input blanking parts are present for first two channels (1k + 1nF per channel).
+- Threshold trim network parts are present for first two channels.
+
+**Next component placement batch (continue from here)**:
+- Add explicit output isolation options for comparator outputs into `FAULT_CRITICAL_SUM` (DNP-friendly):
+	- Starter option: one small-signal diode per comparator output to fault net.
+	- Alt option: one small series resistor per output if diode isolation is deferred.
+- Add dedicated pilot test points with final names:
+	- `TP_OCP_5V_SENSE` on the comparator-input side of the RC sense node.
+	- `TP_OCP_5V_TRIP` on the comparator-output/fault-injection node.
+- Park unused comparator channels (U8C/U8D) in a deterministic state:
+	- Tie each unused `+IN` and `-IN` to a quiet reference (GND preferred for now).
+	- Leave `OUT3`/`OUT4` not connected to fault net until those channels are intentionally used.
+
+**5V pilot pass criteria before cloning to 3.3V and Adj**:
+- Fast short/over-current event on 5V rail asserts shutdown path without cross-coupled gate behavior on other rails.
+- No false trips during expected load-step transients after RC blanking tuning.
+- Trip threshold is measurable and repeatable across bench temperature and supply variation.
+
+**Integration rule**:
+- Keep INA `CRITICAL/WARNING` as telemetry and slower supervisory path.
+- Add analog comparator trip as the instantaneous protection path that can assert disable immediately.
+
+**Protection policy decision (2026-05-20)**:
+- Instantaneous analog over-current trip is treated as a system-level critical event, not a single-channel local event.
+- Any rail asserting analog trip must drive `FAULT_CRITICAL_SUM` and force global shutdown.
+- Rationale: once current exceeds controllable behavior, fail-safe full shutdown is preferred over selective rail isolation.
+
+**Comparator selection shortlist (recommended order)**:
+- Option A (preferred): TLV1704 (quad, open-drain outputs, wide supply range, single IC covers 3 rails + 1 spare channel).
+- Option B: LM339 family (quad, open-collector outputs, common and widely available, good for wired-fault integration).
+- Option C: LMV339 family (quad, low-voltage focused, suitable when comparator domain is fixed at 3.3V).
+
+**Package decision guidance**:
+- Use one quad comparator IC for the whole board (3 active channels + 1 spare/latch channel).
+- If placement density is tight, choose TSSOP-14 or SOIC-14.
+- If hand rework is expected during bring-up, prefer SOIC-14 for easier probing and replacement.
+
+**Minimum electrical requirements for selected part**:
+- Open-drain or open-collector outputs (needed for safe OR/injection into fault path).
+- Input common-mode range that includes the sensed shunt-comparator operating range.
+- Propagation delay fast enough for intended instantaneous trip behavior.
+- Stable operation at chosen comparator supply rail (3.3V domain preferred for MCU/fault logic compatibility).
 
 ---
 
@@ -335,12 +464,12 @@ Netlist baseline verified (2026-05-19):
 | Issue | ID | Priority | Action |
 |-------|----|-----------|----|
 | Feedback divider before MOSFET | RB-001 | High | Topology implemented on Rev-B; validate handoff continuity and retune only if needed |
-| USB Vbus isolation on HAT | RB-002 | High | Add Schottky diode; update netlist/BOM |
+| USB Vbus isolation on HAT | RB-002 | High | On hold for current MPU path; re-open only if MPU migration exposes VBUS on-board |
 | TS5A3157 footprint correction | RB-009 | High | ✅ Locked to Package_TO_SOT_SMD:SOT-363_SC-70-6 on Rev-B |
 | MOSFET gate drive characterization | RB-003 | High | Scope transient; optimize pull-up/down resistors |
 | Rail protection (fuses/TVS) | RB-006 | Medium | Add SMD fuses and/or TVS diodes per output |
 | Bootstrap split net labels | 12 | High | Keep Rev-B baseline and remove conflicting naming claims until re-verified |
-| Short-circuit feedback path | 13 | High | Implemented on Rev-B: INA CRITICAL/WARNING summed and routed to GPIO2/GPIO22; keep pull-up behavior documented |
+| Short-circuit feedback path | 13 | High | Digital INA path implemented; add analog instantaneous OCP comparator path for fast trip |
 | Reference sensing architecture | 14 | High | Verified on Rev-B netlists; enforce Kelvin pair/return-locality rules during layout |
 | MPU change tracking | 15 | Medium | Defer migration, but keep pin/contract deltas tracked for next phase |
 | Terminal block labeling | RB-004 | Medium | Add silkscreen polarity + keyed connector |
@@ -355,7 +484,7 @@ Netlist baseline verified (2026-05-19):
 
 | Issue | ID | Priority | Action |
 |-------|----|-----------|----|
-| USB Vbus workaround validation | RB-002 | High | Document safe testing procedure (no USB Vbus during bench) |
+| USB Vbus workaround validation | RB-002 | High | Keep current safe testing procedure; no new hardware action unless MPU migration changes VBUS exposure |
 | RB-001 continuity and handoff-step validation | RB-001 | High | Measure remote/local handoff behavior across load and startup; retune local attenuation if needed |
 | INA current debug & mapping | 10 | High | Build truth table; meter shunt values; correlate channels to rails |
 | Adjustable rail feedback investigation | 11 | Medium | Check continuity; verify potentiometer; characterize output range |

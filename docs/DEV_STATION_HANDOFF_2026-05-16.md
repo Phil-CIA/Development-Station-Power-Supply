@@ -1,5 +1,7 @@
 # Development Station Handoff (2026-05-16)
 
+> Historical handoff snapshot. For active restart state, use HANDOFF.md first, then NEW_CHAT_HANDOFF.rmd and NEW_CHAT_HANDOFF_SHORT.rmd.
+
 Purpose: give another machine a clean starting point for the current Development Station Power Supply work without depending on one long chat thread.
 
 ## Current State
