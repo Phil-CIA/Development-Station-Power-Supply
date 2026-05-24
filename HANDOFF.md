@@ -28,6 +28,8 @@ Pass results:
 Scope outcome:
 - Tracker language is now aligned to "implemented topology + bring-up validation pending".
 - Firmware remains in scaffold-only freeze mode while schematic/netlist population stays primary.
+- Control policy is now explicit: output MOSFETs own load isolation, while LM2596 pin 5 owns hard fault shutdown.
+- Fault override rule: use a per-rail isolation element from `FAULT_CRITICAL_SUM` to each enable gate; do not tie the three gate nets together.
 
 Primary direction at stop:
 - Regulator/HAT Rev-B hardware revision work only.
@@ -41,6 +43,7 @@ What changed this session:
 	- 5V: R59/R60 -> VSENSE_5V+/VSENSE_5V-
 	- 3.3V: R61/R62 -> VSENSE_3V3+/VSENSE_3V3-
 	- Adj: R63/R64 -> VSENSE_ADJ+/VSENSE_ADJ-
+- Normalized the Rev-B control net labels for ISET_MPU_3V3 and ISET_MPU_Channel_3 to remove accidental leading spaces in both schematic and netlist text.
 - Implemented and verified 3-channel selector topology on regulator Rev-B netlist:
 	- U5/U6/U7 = LMV358IDR
 	- D4/D5/D6 = BAT54C (common-cathode combine)
@@ -49,6 +52,11 @@ What changed this session:
 - Finalized control intent for RB-001:
 	- Remote sense is primary in normal operation.
 	- Local path is a slightly underbiased fallback to avoid startup dead zones and reduce handoff step size in measured output.
+- Finalized control ownership for shutdown sequencing:
+	- output MOSFETs are for channel isolation and sequencing
+	- LM2596 pin 5 is the fault-stop control point
+	- fault assertion must override enable, not reinforce it
+	- per-rail fault override must stay electrically isolated between gates
 - Agreed that final handoff/continuity quality is a bring-up validation item, not a netlist-only closure.
 - Confirmed Rev1 firmware scaffolding remains intentional:
 	- inversion diagnostics and legacy display wake path are preserved for controlled bring-up triage

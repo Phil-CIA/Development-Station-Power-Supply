@@ -76,3 +76,56 @@ This document is the single source of truth for wiring and firmware pin definiti
 - This design uses **two separate SPI roles**:
   - ESP32-C6 as SPI **slave** on GPIO4–7 (host link)
   - ESP32-C6 as SPI **master** on GPIO10–13/etc (local peripherals)
+
+---
+
+## STM32 Migration Target (Draft, Hardware-Only)
+
+This section is the current hardware migration target for the HAT MCU path. It is a planning baseline, not a committed schematic change.
+
+### Target posture
+- First candidate: STM32F103C8T6 "Blue Pill"
+- If the pin budget or debug path fails, escalate to a larger STM32 family
+- Keep both UART and SWD available in hardware
+
+### Draft pin map A
+
+| Logical function | STM32 pin | Notes |
+|---|---:|---|
+| `ISET_MPU_5V` | PA0 | Rail-control output |
+| `ISET_MPU_3V3` | PA1 | Rail-control output |
+| `ISET_MPU_Channel_3` | PA2 | Rail-control output |
+| `FAULT_CRITICAL_SUM` | PA3 | Fault input; keep low-noise route |
+| I2C SCL | PB8 | Telemetry bus |
+| I2C SDA | PB9 | Telemetry bus |
+| UART TX | PA9 | Programming/debug |
+| UART RX | PA10 | Programming/debug |
+| SWDIO | PA13 | Reserved for debug only |
+| SWDCLK | PA14 | Reserved for debug only |
+| Status LED | PC13 | Optional indicator |
+| NRST | NRST | Reset access / test point |
+| BOOT0 | BOOT0 | Boot-mode strap / test access |
+
+### Draft pin map B
+
+| Logical function | STM32 pin | Notes |
+|---|---:|---|
+| `ISET_MPU_5V` | PB0 | Fallback rail-control output |
+| `ISET_MPU_3V3` | PB1 | Fallback rail-control output |
+| `ISET_MPU_Channel_3` | PB10 | Fallback rail-control output |
+| `FAULT_CRITICAL_SUM` | PB11 | Fallback fault input |
+| I2C SCL | PB6 | Fallback telemetry bus |
+| I2C SDA | PB7 | Fallback telemetry bus |
+| UART TX | PA9 | Programming/debug |
+| UART RX | PA10 | Programming/debug |
+| SWDIO | PA13 | Reserved for debug only |
+| SWDCLK | PA14 | Reserved for debug only |
+| Status LED | PC13 | Optional indicator |
+| NRST | NRST | Reset access / test point |
+| BOOT0 | BOOT0 | Boot-mode strap / test access |
+
+### Use rules
+1. Keep SWD pins dedicated and do not dual-assign them.
+2. Keep the fault input and I2C pair away from noisy connector fanout.
+3. Promote this draft to the schematic only after pin-conflict and reset-safety checks pass.
+4. If Draft A fails, try Draft B once before escalating MCU class.

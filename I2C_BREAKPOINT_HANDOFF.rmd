@@ -1,5 +1,7 @@
 # WorkStation Breakpoint Handoff (I2C Focus)
 
+> Historical breakpoint handoff. For current session scope and restart state, use HANDOFF.md and NEW_CHAT_HANDOFF.rmd.
+
 Date: 2026-03-04
 Project: WorkStation (ESP32 + PlatformIO)
 Primary focus at breakpoint: I2C bus bring-up and INA3221 detection
