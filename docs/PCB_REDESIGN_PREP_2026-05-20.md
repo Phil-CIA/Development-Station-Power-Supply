@@ -392,7 +392,7 @@ Purpose: decide what must be resolved before Rev-C order versus what is explicit
 | 12 | Bootstrap naming drift | Lock one naming contract across both schematics/docs | **Yes** | Decide now, then netlist re-export |
 | 13 | Analog OCP path implemented on HAT | Keep global-trip policy and comparator topology; finalize output isolation population policy | **Yes** | Decide D9/D10/D11 policy now |
 | 14 | VSENSE contract verified | Keep as locked routing contract | No | Layout rule enforcement |
-| 15 | MPU migration deferred | Keep deferred and tracked | No | Separate migration phase |
+| 15 | MPU migration deferred | **Promote to active: Rev-C must include STM32 footprint, SWD pads, and pin remap — see Phase 10** | **Yes** | Phase 10 migration baseline |
 
 \* If INA mismatch is traced to schematic routing or incorrect shunt value assumptions in BOM, promote to blocking immediately.
 
@@ -772,6 +772,202 @@ Required documentation outputs:
 
 ---
 
+## Phase 10: ESP32-C6 to STM32 Blue Pill Migration Baseline
+
+**Date added**: 2026-05-24
+**Scope**: HAT board MCU only. Target device is STM32F103C8T6 ("Blue Pill"). This section covers interface remaps, voltage compatibility, boot/program/debug path changes, firmware migration notes, and the blockers checklist. Connector architecture and power-path work are unaffected.
+
+---
+
+### 10.1 Migration Goals
+
+| Goal | Detail |
+|------|--------|
+| Replace ESP32-C6 (WROOM) with STM32F103C8T6 (Blue Pill) on HAT board | ESP32-C6 acts as display controller MCU; all roles map to STM32 |
+| Maintain same external interface contract | IDC-10 host link (SPI slave), local TFT/Touch/SD (SPI master), power via AMS1117-3.3 |
+| Keep 3.3V IO logic level throughout | Both devices are 3.3V IO; no level-shifter changes required |
+| Preserve bring-up baseline | Firmware must retain same host-link SPI protocol behavior |
+
+---
+
+### 10.2 Device Comparison
+
+| Parameter | ESP32-C6 (current) | STM32F103C8T6 Blue Pill (target) |
+|-----------|---------------------|----------------------------------|
+| Core | RISC-V (single-core, 160 MHz) | ARM Cortex-M3 (72 MHz) |
+| Flash | 4 MB (QSPI external) | 64 KB internal |
+| RAM | 512 KB SRAM | 20 KB SRAM |
+| IO voltage | 3.3 V | 3.3 V |
+| SPI peripherals | 2 (flexible GPIO assignment) | 2 (SPI1 + SPI2, fixed pins + remap) |
+| SPI slave support | Hardware (via dedicated SPI peripheral) | Hardware (SPI1 or SPI2 in slave mode via HAL/LL) |
+| PWM | Most GPIOs via LEDC | Timers TIM1–TIM4 on dedicated pins |
+| USB | USB-CDC (native) | USB-FS device (USB CDC via TinyUSB or CubeMX middleware) |
+| Programming | UART bootloader / USB-CDC | ST-Link SWD (preferred) or UART bootloader via BOOT0 |
+| Debug | JTAG / OpenOCD via USB | SWD via ST-Link (PA13/PA14) |
+| Framework | Arduino (ESP32 core) / ESP-IDF | STM32duino (Arduino core) / STM32 HAL/LL |
+| Wireless | WiFi 6 + BLE 5 | None |
+
+**Key constraint**: Flash and RAM are substantially smaller on STM32F103C8T6 (64 KB flash / 20 KB RAM vs ESP32-C6). Display firmware must be audited and trimmed before porting.
+
+---
+
+### 10.3 Interface Remap Table
+
+Source pinout: `docs/GPIO_PINOUT.md` (ESP32-C6 assignments).
+Target: STM32F103C8T6 default pin assignments (no AFIO remap unless noted).
+
+#### A) IDC-10 Host Link — SPI Slave (Host → Display)
+
+| Signal | ESP32-C6 GPIO | STM32 Pin | STM32 Peripheral | Notes |
+|--------|--------------|-----------|------------------|-------|
+| SPI_SCLK | GPIO4 | PA5 | SPI1 SCK | SPI1 default mapping |
+| SPI_MOSI (host→MCU) | GPIO5 | PA7 | SPI1 MOSI | SPI1 default mapping |
+| SPI_MISO (MCU→host) | GPIO6 | PA6 | SPI1 MISO | SPI1 default mapping |
+| SPI_CS | GPIO7 | PA4 | SPI1 NSS (HW) or GPIO | Use NSS input or GPIO polling |
+
+SPI1 slave mode requires STM32 HAL/LL — Arduino `SPI.begin()` does not configure slave mode on STM32. Use `HAL_SPI_Init()` with `SPI_MODE_SLAVE` or equivalent LL driver. Start clock at 1 MHz for bring-up, same as ESP32-C6 baseline.
+
+#### B) Local SPI Bus — SPI Master (TFT + Touch + SD)
+
+| Signal | ESP32-C6 GPIO | STM32 Pin | STM32 Peripheral | Notes |
+|--------|--------------|-----------|------------------|-------|
+| SPI SCLK | GPIO12 | PB13 | SPI2 SCK | SPI2 default mapping |
+| SPI MOSI | GPIO13 | PB15 | SPI2 MOSI | SPI2 default mapping |
+| SPI MISO | GPIO11 | PB14 | SPI2 MISO | SPI2 default mapping |
+| TFT CS (ST7796S) | GPIO10 | PB12 | GPIO (software CS) | SPI2 NSS or manual GPIO |
+| TFT D/C | GPIO18 | PB0 | GPIO | Any available GPIO |
+| TFT RST | GPIO19 | PB1 | GPIO | Any available GPIO |
+| Backlight PWM | GPIO20 | PA8 | TIM1 CH1 | PWM via Timer1 |
+| Touch IRQ (XPT2046) | GPIO21 | PA0 | GPIO / EXTI0 | Configure as interrupt input |
+| Touch CS (XPT2046) | GPIO22 | PA1 | GPIO | Software chip-select |
+| SD CS | GPIO15 | PA2 | GPIO | Software chip-select |
+
+SPI master mode is well-supported via STM32duino `SPI.begin()` / `SPI.beginTransaction()` or HAL `HAL_SPI_Transmit()`.
+
+#### C) Power Path — No Changes Required
+
+| Item | ESP32-C6 | STM32F103C8T6 | Action |
+|------|----------|---------------|--------|
+| Supply input | 5V_IN via IDC-10 → AMS1117-3.3 → 3.3V | Same supply path | No change |
+| MCU supply | 3.3V (from AMS1117) | 3.3V (from AMS1117) | No change |
+| IO voltage | 3.3V | 3.3V | No level shifters needed |
+
+---
+
+### 10.4 Voltage Compatibility Check
+
+| Interface | ESP32-C6 level | STM32F103C8T6 level | Compatible? | Notes |
+|-----------|---------------|---------------------|-------------|-------|
+| IDC-10 SPI lines (host ↔ MCU) | 3.3V | 3.3V | ✅ Yes | Direct connect; no translator |
+| TFT (ST7796S) interface | 3.3V | 3.3V | ✅ Yes | Direct connect |
+| Touch (XPT2046) interface | 3.3V | 3.3V | ✅ Yes | Direct connect |
+| SD card interface | 3.3V | 3.3V | ✅ Yes | Direct connect |
+| Backlight PWM | 3.3V logic | 3.3V logic | ✅ Yes | TIM1/PWM output direct |
+| Power supply (3.3V rail) | AMS1117-3.3 | AMS1117-3.3 | ✅ No change | Same regulator, same 5V input |
+
+**Result**: Full voltage compatibility. No level translation hardware changes required on HAT board.
+
+---
+
+### 10.5 Boot / Program / Debug Path Changes
+
+| Item | ESP32-C6 (current) | STM32F103C8T6 (target) | Action required |
+|------|--------------------|------------------------|-----------------|
+| Programming interface | UART bootloader (auto-reset via RTS/DTR) or USB-CDC | ST-Link SWD (PA13/PA14) preferred; UART bootloader via BOOT0 also available | Add ST-Link header (4-pin: SWDIO/SWDCLK/GND/3V3) or expose BOOT0 + UART1 pads |
+| Debug interface | OpenOCD via USB-JTAG | SWD via ST-Link (OpenOCD or STM32CubeProgrammer) | Expose PA13 (SWDIO) and PA14 (SWDCLK); do not connect these to other functions |
+| Bootloader entry | Auto via USB or GPIO strap | BOOT0 pin HIGH + reset to enter UART bootloader | Add BOOT0 test point; default BOOT0 = GND (flash boot) |
+| Reset | EN pin / software reset | NRST pin (hardware reset) | Add reset button or expose NRST test point |
+| Development toolchain | PlatformIO + ESP32 Arduino core | PlatformIO + STM32duino core or STM32CubeMX + HAL | Update `platformio.ini` board and framework entries |
+
+**SWD header recommendation** (add to HAT PCB Rev-C):
+- 4-pin 1.27 mm or 2.54 mm unpopulated pad row: `SWDIO (PA13)`, `SWDCLK (PA14)`, `GND`, `3V3`
+- Keep PA13/PA14 free of other functions in the footprint
+
+---
+
+### 10.6 Firmware Migration Notes
+
+| Item | ESP32-C6 | STM32F103C8T6 | Migration action |
+|------|----------|---------------|-----------------|
+| SPI slave mode | `arduino-esp32` SPI slave via `SPISlave.h` or raw IDF driver | No Arduino slave API on STM32duino — use STM32 HAL `HAL_SPI_Receive_IT()` or LL SPI | Rewrite host-link SPI slave handler in HAL/LL; keep same protocol |
+| SPI master mode | Arduino `SPI.begin()` + `SPI.transfer()` | Arduino `SPI.begin()` on STM32duino (maps to SPI2) | Minimal changes; verify SPI2 clock divider for 8–10 MHz target |
+| Timer/PWM | LEDC peripheral (`ledcSetup` / `ledcWrite`) | `analogWrite()` on STM32duino (maps to TIM1 CH1) or HAL TIM PWM | Replace LEDC calls with `analogWrite(PA8, value)` or HAL |
+| GPIO interrupt (touch IRQ) | `attachInterrupt(GPIO21, isr, FALLING)` | `attachInterrupt(PA0, isr, FALLING)` | Pin number only changes |
+| Flash storage | LittleFS / SPIFFS on 4 MB external flash | No external flash — 64 KB internal only | Remove SPIFFS/LittleFS; store config in internal flash (HAL FLASH) or eliminate |
+| Serial/UART debug | `Serial.begin()` on USB-CDC (default) | `Serial.begin()` on USART1 (PA9/PA10) | Change debug port; wire USART1 to USB-serial adapter if needed |
+| FreeRTOS | ESP-IDF FreeRTOS built-in | Not included in STM32duino by default; use CubeMX + FreeRTOS or bare-metal | Remove task-based code if present or port to STM32 FreeRTOS |
+
+**Critical firmware constraint**: 64 KB flash budget requires audit before porting. Display libraries (LovyanGFX, TFT_eSPI) may need trimming or replacement with STM32-optimized drivers.
+
+---
+
+### 10.7 Migration Impact Map (Rails / Logic / Boot Summary)
+
+| Domain | Impact level | Detail |
+|--------|-------------|--------|
+| Power rails | None | 3.3V supply path unchanged; AMS1117-3.3 unchanged |
+| Logic levels | None | 3.3V throughout; no level shifters required |
+| SPI slave (host link) | High | Requires HAL/LL driver rewrite; no Arduino slave API |
+| SPI master (local bus) | Low | STM32duino SPI compatible; minor pin changes |
+| PWM (backlight) | Low | Change LEDC to `analogWrite` or HAL TIM |
+| GPIO (CS, D/C, RST, IRQ) | Low | Pin renaming only; same electrical function |
+| Boot/program path | Medium | Add SWD pads to PCB; update toolchain config |
+| Flash/RAM headroom | High | 64 KB flash / 20 KB RAM — firmware must be lean |
+| Wireless | N/A | No wireless on Blue Pill; not needed for display role |
+| PCB footprint | Medium | ESP32-C6 WROOM footprint replaced with STM32F103C8T6 (LQFP-48) or Blue Pill module footprint |
+
+---
+
+### 10.8 Schematic Changes Required (HAT Board)
+
+| Item | Change | Blocking for Rev-C? |
+|------|--------|---------------------|
+| Replace U7 (ESP32-C6 WROOM module) with STM32F103C8T6 LQFP-48 or Blue Pill module footprint | Footprint + pin remap on schematic | **Yes** |
+| Reroute SPI slave lines to SPI1 pins (PA4–PA7) | Schematic net edit | **Yes** |
+| Reroute SPI master lines to SPI2 pins (PB12–PB15) | Schematic net edit | **Yes** |
+| Reroute TFT control GPIO (D/C, RST) to PB0/PB1 | Schematic net edit | **Yes** |
+| Reroute backlight PWM to PA8 (TIM1 CH1) | Schematic net edit | **Yes** |
+| Reroute Touch IRQ/CS to PA0/PA1; SD CS to PA2 | Schematic net edit | **Yes** |
+| Add SWD header pads (PA13, PA14, GND, 3V3) | New header / test pads | **Yes** (for programmability) |
+| Add BOOT0 test point (pull-down to GND for normal boot) | Test point + 10k pull-down | Recommended |
+| Remove/replace UART config (ESP32 UART0 → STM32 USART1 PA9/PA10) | Net relabel | Yes if debug UART is used |
+| Confirm NRST test point or reset button is accessible | Test point or button | Recommended |
+
+**Issue tracker entry**: Track all HAT schematic changes above as Issue 15 (MPU migration) — previously listed as deferred in pre-order triage. Promote to **active** for Rev-C.
+
+---
+
+### 10.9 Firmware Migration Checklist
+
+Use this checklist before any first bring-up attempt with STM32.
+
+- [ ] Update `platformio.ini`: change board to `bluepill_f103c8` (or `genericSTM32F103C8`), framework to `arduino` (STM32duino) or `stm32cube`
+- [ ] Verify SPI1 slave mode compiles and configures correctly (HAL or LL required — not Arduino `SPI.h` slave)
+- [ ] Verify SPI2 master mode: `SPI.begin()` on STM32duino and clock divider maps to 8–10 MHz
+- [ ] Port PWM from `ledcWrite(20, val)` to `analogWrite(PA8, val)` or HAL TIM
+- [ ] Port `attachInterrupt(GPIO21, ...)` to `attachInterrupt(PA0, ...)`
+- [ ] Remove or replace any SPIFFS/LittleFS usage (not available without external flash)
+- [ ] Audit total flash usage — target < 50 KB compiled to leave headroom
+- [ ] Audit heap usage — target < 12 KB peak to leave SRAM margin
+- [ ] Verify display SPI protocol (command/data framing) works identically with STM32 SPI2 master
+- [ ] Verify touch SPI reads on XPT2046 via SPI2 with manual CS
+- [ ] First bring-up target: SWD connection verified, LED blink, serial USART1 output
+
+---
+
+### 10.10 Open Blockers (Migration Gate)
+
+| Blocker ID | Description | Owner | Status |
+|------------|-------------|-------|--------|
+| MIG-01 | Measure ESP32-C6 WROOM module PCB footprint and confirm replacement footprint dimensions for STM32F103C8T6 LQFP-48 or equivalent module | Hardware | Open |
+| MIG-02 | Determine if Blue Pill module form factor or bare LQFP-48 is preferred for Rev-C (affects schematic footprint and placement) | Architecture | Open |
+| MIG-03 | Confirm SPI slave driver approach for STM32 host link (HAL vs LL vs CubeMX generated) — verify slave clock tolerance at 1 MHz and target speed | Firmware | Open |
+| MIG-04 | Audit current ESP32 firmware flash and RAM usage to establish migration headroom before porting | Firmware | Open |
+| MIG-05 | Add SWD header pad placement to HAT PCB layout and confirm it does not conflict with connector or component keepouts | Layout | Open |
+| MIG-06 | Update Issue 15 (MPU migration) in pre-order triage table from deferred to active/blocking for Rev-C | Documentation | Open |
+
+---
+
 ## Source Of Truth Files
 
 - `hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.kicad_sch` — HAT schematic
@@ -807,3 +1003,4 @@ Required documentation outputs:
 | 2026-05-23 | Added v0 candidate scoring matrix and provisional finalist connector pair pending mechanical/current/procurement closure |
 | 2026-05-23 | Added selected-PN datasheet validation ledger and recorded automated source-access blockers (HTTP 403/500) pending manual extraction |
 | 2026-05-23 | Re-ran connector-contract verification gate: baseline still 1 fail (bootstrap naming), reduced still 4 fails (3 feedback crossings + bootstrap naming) |
+| 2026-05-24 | Added Phase 10: ESP32-C6 to STM32 Blue Pill Migration Baseline — interface remap, voltage compatibility, boot/debug path changes, firmware delta, and blockers checklist |
