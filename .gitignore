@@ -11,3 +11,8 @@ pio_*.log
 *.kicad_pcb.lck
 *.kicad_sch.lck
 **/*-backups/
+/KiCad/
+**/fp-info-cache
+**/#auto_saved_files#/
+**/_autosave-*.kicad_pcb
+**/_autosave-*.kicad_sch

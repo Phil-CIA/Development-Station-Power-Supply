@@ -196,12 +196,12 @@ Netlist baseline verified (2026-05-19):
 ---
 
 ### 12. Bootstrap Rail Split Naming: Contract Cleanup Pending
-**Status**: 🟡 Open (contract and baseline wording cleanup)  
+**Status**: ✅ Resolved (Rev-B naming normalized and contract checks updated)  
 **Path**: 📍 Redesign (net-contract correction)  
 **Priority**: High (cross-board contract consistency)  
-**Description**: Bootstrap naming and ownership language has drifted across handoffs and analysis docs. The active requirement is to keep Rev-B as the source baseline and remove ambiguous naming claims from planning documents until fully re-verified in both schematic and netlist exports.  
-**Impact**: Ambiguous naming statements can misdirect routing and cross-board contract updates.  
-**Redesign Solution**: Keep Rev-B as active baseline for layout, and either align all docs to a single naming contract or explicitly archive conflicting legacy wording.  
+**Description**: Bootstrap naming and ownership language had drifted across handoffs and analysis docs. The requirement was to align Rev-B to a single naming contract and re-verify in both schematic and netlist exports.  
+**Impact**: Prior ambiguity could misdirect routing and cross-board contract updates.  
+**Resolution**: Rev-B exports are normalized to `+5V_Boot` only, and connector-contract verification now supports explicit baseline policy modes (`reduced-policy` default, `strict` audit mode) so redesign gating follows the active reduced-contract path while preserving strict baseline auditing when needed.  
 **Reference**: [HANDOFF.md](../HANDOFF.md) and [NEW_CHAT_HANDOFF_SHORT.rmd](../NEW_CHAT_HANDOFF_SHORT.rmd)
 
 ---
@@ -444,16 +444,55 @@ Netlist baseline verified (2026-05-19):
 
 ---
 
-### 15. MPU Change Plan: Device Migration Deferred but Must Be Tracked
-**Status**: 🟡 Planned (deferred)  
+### 15. MPU Change Plan: Active Migration Closure Workflow
+**Status**: 🟡 In Progress (active pre-freeze workflow)  
 **Path**: 📍 Redesign (platform transition planning)  
-**Priority**: Medium (future impact, low immediate layout risk if deferred)  
-**Description**: MPU change is planned, but not part of immediate pre-layout completion scope. It must remain visible as a tracked issue to avoid hidden downstream rework.  
-**Current Decision**: Complete current non-MPU blocking schematic/layout prerequisites first, then execute MPU migration as a separate controlled step.  
-**Redesign Actions**:  
-- Capture target MPU choice and key interface deltas
-- Record pin/function migration impacts on regulator/HAT connector contracts
-- Schedule migration after current blocking items are closed
+**Priority**: High (Rev-C pin-freeze dependency)  
+**Description**: MPU migration is now an active closure gate for Rev-C. Use STM32 Blue Pill as the initial target while keeping the plan non-constraining: escalate to a larger STM32 if objective closure gates fail.  
+**Current Decision**: Hardware-only migration planning is in scope now. Firmware rewrite remains out of scope for this document phase.  
+
+**Locked decisions (2026-05-24):**
+- Start with STM32 Blue Pill for mapping and footprint planning.
+- Keep migration non-constraining: permit scale-up to larger STM32 if required.
+- Include both UART and SWD paths in hardware.
+- Keep Arduino-style firmware direction for first software phase (tracked, not implemented here).
+
+**Required closure outputs before Rev-C pin freeze:**
+1. STM32 interface remap table from ESP32-C6 logical functions to candidate STM32 pins.
+2. Voltage-domain compatibility table for all migrated MCU-facing nets.
+3. Boot/program/debug contract with both UART and SWD connectivity.
+4. MCU-critical connector/net assignment rules aligned with mixed dual-connector policy.
+5. Explicit pin-freeze readiness decision: PASS, HOLD, or FAIL with rationale.
+
+**Scale-up trigger gates (Blue Pill -> larger STM32):**
+1. GPIO budget fails after assigning all must-have nets.
+2. Required peripheral placement conflicts cannot be resolved without high-risk pin reuse.
+3. Reset/default-safe state requirements for rail control and fault response are not met.
+4. UART+SWD debug/program path cannot be completed without conflicts.
+
+**Connector-pin assignment rules for MCU-critical nets:**
+1. Keep `FAULT_CRITICAL_SUM` on a low-noise route with adjacent reference ground and no long detours.
+2. Keep I2C pair and its quiet return grouped to preserve measurement integrity.
+3. Keep `ISET_MPU_*` control lines away from noisy power-switching regions at connector fanout.
+4. Reserve access for SWD and UART pins so they are not consumed by optional features.
+
+**Pin-freeze readiness checklist (Issue 15 closure):**
+1. All mandatory MCU logical functions are mapped and conflict-free.
+2. Voltage levels and pull ownership are valid at reset and fault conditions.
+3. UART and SWD paths are complete and test-accessible.
+4. MCU-critical net allocation fits connector policy and quiet-ground constraints.
+5. Scale-up recommendation recorded (stay Blue Pill or move up) with evidence.
+
+**Progress snapshot (2026-05-24):**
+- Closure outputs 1-4 are now documented in `docs/PCB_REDESIGN_PREP_2026-05-20.md` under Phase 10 (hardware-only migration baseline).
+- Output 5 remains open with one identified blocker: **KERC-04 reset-safe startup evidence**.
+- Execution checklist in Phase 10.6 is now mostly closed: `KMCU-01..07` are complete and `KERC-01/02/03/05/06` are promoted based on latest ERC evidence.
+- Latest ERC evidence remains warning-only (`Errors 0`, `Warnings 50`) and no longer blocks pin-conflict, SWD, UART, fault, or I2C integrity gates.
+- Remaining hold is validation-only (bench/firmware): prove rail-control defaults remain inactive through reset/early boot and assert only after controlled firmware init.
+- U7 symbol identity is now normalized to local Blue Pill migrated symbol naming in the active HAT schematic; remaining hold is bench evidence only.
+- Bench execution reference: `docs/KERC-04_RESET_STARTUP_VALIDATION.md`.
+
+**Issue 15 gate result:** [HOLD - KERC-04 only] (reset-safe startup evidence pending)
 
 ---
 
@@ -468,10 +507,10 @@ Netlist baseline verified (2026-05-19):
 | TS5A3157 footprint correction | RB-009 | High | ✅ Locked to Package_TO_SOT_SMD:SOT-363_SC-70-6 on Rev-B |
 | MOSFET gate drive characterization | RB-003 | High | Scope transient; optimize pull-up/down resistors |
 | Rail protection (fuses/TVS) | RB-006 | Medium | Add SMD fuses and/or TVS diodes per output |
-| Bootstrap split net labels | 12 | High | Keep Rev-B baseline and remove conflicting naming claims until re-verified |
+| Bootstrap split net labels | 12 | High | ✅ Rev-B naming normalized to `+5V_Boot`; reduced-contract gate closed, strict baseline kept for audit |
 | Short-circuit feedback path | 13 | High | Digital INA path implemented; add analog instantaneous OCP comparator path for fast trip |
 | Reference sensing architecture | 14 | High | Verified on Rev-B netlists; enforce Kelvin pair/return-locality rules during layout |
-| MPU change tracking | 15 | Medium | Defer migration, but keep pin/contract deltas tracked for next phase |
+| MPU migration closure workflow | 15 | High | Active gate: close remap, level checks, UART+SWD path, and pin-freeze PASS/HOLD/FAIL |
 | Terminal block labeling | RB-004 | Medium | Add silkscreen polarity + keyed connector |
 | ESP32 footprint clarity | RB-005 | Medium | Verify variant match; update silk legends |
 | Stack height/connector review | RB-007 | Low | Measure height; confirm alignment pins; contact rating |
@@ -531,3 +570,8 @@ Netlist baseline verified (2026-05-19):
 | 2026-05-18 | Cross-board Rev-B VSENSE audit complete: issue 14 promoted to contract-verified at netlist level |
 | 2026-05-18 | RB-009 resolved: TS5A3157 symbol library default footprint corrected to Package_TO_SOT_SMD:SOT-363_SC-70-6 on Rev-B |
 | 2026-05-18 | Restart alignment: RB-001 status updated to implemented Rev-B 3-channel selector with bench continuity validation pending; issue 12 wording normalized to contract-cleanup state |
+| 2026-05-24 | Issue 15 promoted from deferred tracking to active migration closure workflow with explicit scale-up gates, connector assignment rules, and Rev-C pin-freeze checklist |
+| 2026-05-24 | Issue 15 migration-label cutover pass completed on HAT schematic: all `*_DRAFT` U7 net labels promoted to final names; ERC baseline restored to warning-only (`Errors 0`, `Warnings 50`) while symbol-library swap remains deferred |
+| 2026-05-24 | Issue 12 closed: Rev-B bootstrap naming normalized to `+5V_Boot`; connector verifier updated with `-BaselineFeedbackPolicy` (`reduced-policy` default, `strict` audit) and both Rev-B netlists re-exported after leading-space label cleanup |
+| 2026-05-24 | Issue 15 gate narrowed to single blocker: KERC-04 reset-safe startup evidence; other KERC gates documented as closed by latest ERC-backed evidence |
+| 2026-05-24 | Issue 15 symbol migration completion: active U7 symbol/lib_id in `DSP Regulator_hat.kicad_sch` renamed to local Blue Pill migrated identity; gate remains HOLD on KERC-04 bench startup evidence only |

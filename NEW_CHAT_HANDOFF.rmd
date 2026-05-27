@@ -1,54 +1,98 @@
 # Development Station New Chat Handoff
 
-Date: 2026-05-18
+Date: 2026-05-26
 Project: Development Station Power Supply
-Phase: PCB revision focus (regulator + HAT)
+Phase: Rev-B HAT — STM32 supporting circuit
 
 ## Current Objective
-Continue hardware revision updates first. Firmware feature expansion remains paused until Rev1 board bring-up is complete.
-Code-side work is scaffold-only until schematic population checkpoints are complete.
 
-## Stop Point Summary
-- Regulator and HAT Rev-B netlists were regenerated and reviewed after schematic edits.
-- Sense-B source mapping was corrected to HAT Rev-B netlist and verified:
-  - 5V via R59/R60
-  - 3.3V via R61/R62
-  - Adj via R63/R64
-- RB-001 implementation is present on all three channels in regulator Rev-B netlist:
-  - U5/U6/U7 LMV358IDR buffers
-  - D4/D5/D6 BAT54C combine stage
-  - R31/R33/R35 = 100 ohm local-input series
-  - R32/R34/R36 = 33k local attenuation to GND
-- Design intent was finalized as remote-primary sensing with slightly underbiased local fallback to reduce measurement handoff step while preserving startup fallback behavior.
-- Bench validation is intentionally deferred and remains required for final closure.
+Add the STM32 supporting cast to the Rev-B HAT schematic: decoupling capacitors on U10 power pins,
+BOOT0 pull-down strap, NRST RC/filter network, and a programming header. Then fix the
+verify-connector-contract.ps1 script which references old net names from the completed U10 migration.
 
-## Rev1 Firmware Isolation (completed)
-To prevent workflow contamination while hardware changes continue:
-- Added isolated Rev1 folder: src/rev1/
-- Copied active files into Rev1 scope:
-  - src/rev1/main.cpp
-  - src/rev1/display_main.cpp
-  - src/rev1/power_telemetry_map.h
-  - src/rev1/lvgl_demo.cpp
-- Updated platformio.ini environments to build from src/rev1/*
-- Added explicit src root excludes in platformio.ini
-- Preserved copied last-rev behavior in Rev1 files for upcoming board bring-up/testing
-- Preserved inversion diagnostic toggles and legacy wake path for controlled triage only
+## Why This Session Was Stopped
+
+U10 (STM32 Blue Pill) 44-pin migration is fully complete. ERC is 0 errors / 9 warnings (all
+environmental). User requested a clean stop before starting the supporting circuit work.
+
+## Stop Point Summary — What Was Finished
+
+1. All 44 U10 pins wired or explicitly NC'd.
+2. AMS1117-3.3 (U9) added as on-board 3.3V LDO (VI→+5V_Boot, VO→+3.3V Boot, GND).
+3. CTS/RTS wired: PA11→CTS→R77→J13 pin 6; PA12→RTS→R73→J13 pin 4.
+4. Development GPIO connector pins assigned: PB5→J12 pin 6, PB6→J12 pin 8, PB7→R86→J13 pin 10.
+5. Legacy net names cleaned up: 3V3_ESP→+3.3V Boot, GPIO10/11/12→PB5/PB6/PB7.
+6. stm32_BLUE custom symbol GND pin types fixed — all pin-type ERC errors eliminated.
+7. docs/U10_WIRING_WORKTHROUGH.md updated to final completed state.
+
+## ERC State At Stop
+
+- Errors: 0
+- Warnings: 9 (all environmental — missing library paths and dangling stub global labels for UART1_TX/RX/NRST)
+- No electrical wiring issues remain.
+
+## Known Failing Check
+
+verify-connector-contract.ps1 exits code 1. Likely references old net names that were renamed this session.
+Fix this early next session before starting schematic work.
+
+## Files That Matter
+
+- hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.kicad_sch — active schematic
+- hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.net — last exported netlist
+- docs/U10_WIRING_WORKTHROUGH.md — U10 pin assignment reference (complete)
+- docs/STM32_BLUEPILL_PIN_TABLE.md — validation log (needs one entry added)
+- scripts/verify-connector-contract.ps1 — needs net-name update
+
+## Next Session Actions (In Order)
+
+1. Fix verify-connector-contract.ps1 net references.
+2. Add decoupling caps on U10 VDD pins (100nF each on 5V pin 18 and 3.3V pins 20/38).
+3. Add BOOT0 pull-down strap (10kΩ to GND, with optional jumper/test point for override).
+4. Add NRST RC network (100nF cap to GND + optional 10kΩ pull-up to 3.3V).
+5. Add programming header — SWD 4-pin (VCC/GND/SWDIO/SWDCLK) or UART 1x4 (VCC/GND/TX/RX).
+6. Re-export netlist, re-run ERC, update STM32_BLUEPILL_PIN_TABLE.md.
+
+## Critical Open Risk
+
+U9 symbol migration metadata and surrounding net topology are not yet fully pin-reconciled.
+There is a real risk of semantic mismatch between intended Blue Pill pin function and actual connected net by coordinate/pin number.
+
+This is why final BOOT0 strap and final NRST RC implementation were intentionally deferred.
+
+## Known Verification State
+
+Strict baseline verifier remains failed (expected in this project context):
+- powershell -ExecutionPolicy Bypass -File scripts/verify-connector-contract.ps1 -RegulatorNetlist "hardware/kicad/dsp-regulator-rev-b/DSP-Regulator-RevB.net" -HatNetlist "hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.net" -Mode baseline -BaselineFeedbackPolicy strict
+- last recorded exit code: 1
+
+Do not treat this as a new migration regression until netlists are re-exported post-reconciliation.
 
 ## Rules For Next Session
-1. Stay on hardware revision tasks only unless explicitly redirected.
-2. Do not begin bench execution steps.
-3. If firmware edits are required, only edit files under src/rev1/.
-4. Treat HANDOFF.md as source of truth, then this file.
-5. Keep firmware in scaffold-freeze mode: no new runtime behavior changes unless a schematic-driven blocker is identified.
+
+1. Stay focused on Rev-B HAT U9 migration closure.
+2. Do not widen into unrelated redesign/planning topics.
+3. Do not run bench work unless explicitly requested.
+4. Use conservative edits and validate after each migration step.
+5. Keep handoff docs synchronized as soon as major migration milestones are reached.
 
 ## Priority Order Next Session
-1. Preserve current 3-channel topology unless bring-up data requires a value retune.
-2. Capture every hardware delta in handoff docs before ending session.
-3. Keep firmware in scaffold-freeze mode unless a schematic-driven blocker requires a narrow src/rev1 change.
+
+1. Build explicit U9 pin-number to project-net mapping table from current schematic state.
+2. Reconcile mismatched pin ownership in schematic wiring and labels.
+3. Implement final BOOT0 default-low strap and deterministic NRST hardware behavior.
+4. Re-export HAT netlist and run verification checks to capture post-change deltas.
+5. Update docs and close/retain migration blockers with evidence.
 
 ## First Action Next Session
-Read HANDOFF.md, then verify the latest Rev-B netlist still contains U5/U6/U7, D4/D5/D6, and R31-R36 values before making additional topology edits.
+
+Open and compare, in order:
+1. HANDOFF.md
+2. docs/STM32_BLUEPILL_PIN_TABLE.md
+3. hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.kicad_sch
+
+Then perform U9 pin-by-pin reconciliation before any new functional hardware additions.
 
 ## Suggested Prompt For New Chat
-Continue Development Station hardware revision work from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. Keep scope on regulator/HAT Rev-B schematic and netlist updates only. Preserve the current 3-channel LMV358 plus BAT54C selector topology unless bring-up data drives value changes. Do not run bench steps unless explicitly requested. Keep firmware paused unless absolutely required, and if needed, edit only src/rev1 files.
+
+Continue Rev-B HAT U9 migration closure from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. First do explicit U9 pin-by-pin reconciliation in DSP-Regulator-HAT-RevB.kicad_sch, then implement final BOOT0 default strap and NRST deterministic reset network, then re-export netlist and run connector verification checks. Keep scope tightly on migration closure only.

@@ -1,5 +1,7 @@
 # Display Path Handoff — 2026-04-20
 
+> Historical display-path handoff. Current project direction is maintained in README.md and docs/display-project/README.md; active restart flow is in HANDOFF.md.
+
 Project: WorkStation Development Station Power Supply
 Repo: https://github.com/Phil-CIA/Development-Station-Power-Supply.git
 Branch: main

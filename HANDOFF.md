@@ -1,70 +1,42 @@
 # Development Station Power Supply - Handoff
 
-## Session Closeout - 2026-05-18
+## Session Closeout - 2026-05-26
 
-## Verification Checkpoint - 2026-05-19
+Session closed by user request. U10 migration complete. Moving to STM32 supporting circuit next session.
 
-Strict text verification pass against current Rev-B netlists completed.
+## Current Objective At Stop
 
-Pass results:
-- Regulator Rev-B netlist contains U5/U6/U7 with LMV358IDR values.
-- Regulator Rev-B netlist contains D4/D5/D6 with BAT54C,215 values.
-- Regulator Rev-B netlist contains local fallback legs with expected values:
-	- R31/R33/R35 = 100 ohm
-	- R32/R34/R36 = 33k
-- HAT Rev-B netlist contains Sense-B resistor groups:
-	- 5V: R59/R60
-	- 3.3V: R61/R62
-	- Adj: R63/R64
-- HAT Rev-B netlist contains expected sense nets:
-	- VSENSE_5V+/VSENSE_5V-
-	- VSENSE_3V3+/VSENSE_3V3-
-	- VSENSE_ADJ+/VSENSE_ADJ-
-- HAT Rev-B netlist contains feedback nets:
-	- Feedback 5V
-	- Feedback 3.3
-	- Feedback Adj Channel
+STM32 Blue Pill (U10) migration on Rev-B HAT is fully complete. Next target is the STM32 supporting cast:
+decoupling capacitors on U10, BOOT0 pull-down strap, NRST RC/filter network, and programming header.
 
-Scope outcome:
-- Tracker language is now aligned to "implemented topology + bring-up validation pending".
-- Firmware remains in scaffold-only freeze mode while schematic/netlist population stays primary.
+## What Was Completed In This Stop Window
 
-Primary direction at stop:
-- Regulator/HAT Rev-B hardware revision work only.
-- Firmware feature work remains paused until Rev1 bring-up.
-- Firmware code changes are scaffold-only for inversion and bring-up paths.
-- Bench execution is deferred.
+1. Completed full 44-pin wiring of U10 (STM32 Blue Pill) on Rev-B HAT schematic.
+2. Added AMS1117-3.3 as new U9 LDO (VI→+5V_Boot, VO→+3.3V Boot) — legacy 3V3_ESP net renamed.
+3. Wired UART1 CTS/RTS: PA11→CTS→R77→J13 pin 6; PA12→RTS→R73→J13 pin 4.
+4. Assigned development GPIOs: PB5→J12 pin 6, PB6→J12 pin 8, PB7→R86→J13 pin 10.
+5. Fixed stm32_BLUE custom symbol GND pin types — cleared all pin-type ERC errors.
+6. ERC result: 0 errors / 9 warnings (all environmental — library paths, expected stub labels).
+7. Updated docs/U10_WIRING_WORKTHROUGH.md to final completed state.
 
-What changed this session:
-- Verified fresh Rev-B regulator and HAT netlists after user schematic updates.
-- Corrected Sense B mapping source-of-truth to the HAT Rev-B netlist:
-	- 5V: R59/R60 -> VSENSE_5V+/VSENSE_5V-
-	- 3.3V: R61/R62 -> VSENSE_3V3+/VSENSE_3V3-
-	- Adj: R63/R64 -> VSENSE_ADJ+/VSENSE_ADJ-
-- Implemented and verified 3-channel selector topology on regulator Rev-B netlist:
-	- U5/U6/U7 = LMV358IDR
-	- D4/D5/D6 = BAT54C (common-cathode combine)
-	- R31/R33/R35 = 100 ohm local-path series
-	- R32/R34/R36 = 33k local-path to GND
-- Finalized control intent for RB-001:
-	- Remote sense is primary in normal operation.
-	- Local path is a slightly underbiased fallback to avoid startup dead zones and reduce handoff step size in measured output.
-- Agreed that final handoff/continuity quality is a bring-up validation item, not a netlist-only closure.
-- Confirmed Rev1 firmware scaffolding remains intentional:
-	- inversion diagnostics and legacy display wake path are preserved for controlled bring-up triage
-	- copied last-rev behavior is retained for pending board bring-up/testing
+## Known Command State
 
-Current highest-priority unresolved work:
-- Run bring-up validation for the three channels and measure handoff continuity/error vs expectation.
-- If needed, retune local attenuation values from the 100 ohm / 33k baseline based on bench data.
+Strict connector baseline check still failing:
+- powershell -ExecutionPolicy Bypass -File scripts/verify-connector-contract.ps1 -RegulatorNetlist "hardware/kicad/dsp-regulator-rev-b/DSP-Regulator-RevB.net" -HatNetlist "hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.net" -Mode baseline -BaselineFeedbackPolicy strict
+- Last recorded status: exit code 1
+- Likely cause: script still references old net names (3V3_ESP, GPIO10/11/12) that were renamed this session.
 
-Safe resume point for next chat:
-- Start from hardware docs and the latest Rev-B netlists only.
-- Keep work scoped to regulator/HAT schematic and netlist updates unless explicitly asked to switch modes.
-- Keep firmware in scaffold-freeze mode for now (no new behavior changes).
-- Do not start bench steps unless explicitly requested.
+## Scope Policy For Next Session
 
-First action next session:
-1. Read this file and NEW_CHAT_HANDOFF.rmd.
-2. Confirm current netlist still contains U5/U6/U7, D4/D5/D6, and R31-R36 values as above.
-3. Continue schematic/netlist population while preserving current 3-channel topology baseline.
+1. U10 migration is done — do not revisit pin assignments.
+2. Focus is STM32 supporting circuit: decoupling, BOOT0, NRST, programming header.
+3. Fix verify-connector-contract.ps1 net-name references early in the session.
+4. After each schematic change set, re-export netlist and re-run ERC.
+
+## First Actions Next Session
+
+1. Read HANDOFF.md, NEW_CHAT_HANDOFF.rmd, and docs/U10_WIRING_WORKTHROUGH.md.
+2. Run verify-connector-contract.ps1 to see exact failure, then fix the script net-name references.
+3. Add STM32 supporting circuit: decoupling caps on U10, BOOT0 pull-down, NRST RC network.
+4. Add programming header (SWD 4-pin or UART 1x4).
+5. Re-export netlist, re-run ERC, update STM32_BLUEPILL_PIN_TABLE.md.

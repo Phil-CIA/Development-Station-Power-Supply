@@ -1,0 +1,182 @@
+ERC report (2026-05-24T12:00:22-0500, Encoding UTF8)
+
+***** Sheet /
+[lib_symbol_mismatch]: Symbol 'INA3221' doesn't match copy in library 'Power_Management'
+    ; warning
+    @(6800 mils, 2350 mils): Symbol U1 [INA3221]
+[lib_symbol_mismatch]: Symbol 'INA3221' doesn't match copy in library 'Power_Management'
+    ; warning
+    @(6900 mils, 5400 mils): Symbol U2 [INA3221]
+[lib_symbol_mismatch]: Symbol 'INA3221' doesn't match copy in library 'Power_Management'
+    ; warning
+    @(6900 mils, 8200 mils): Symbol U3 [INA3221]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 4600 mils): Symbol U4 Pin 1 [Q1, Unspecified, Line]
+    @(2500 mils, 3300 mils): Symbol R8 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 4700 mils): Symbol U4 Pin 2 [Q2, Unspecified, Line]
+    @(2500 mils, 2400 mils): Symbol R7 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 4800 mils): Symbol U4 Pin 3 [Q3, Unspecified, Line]
+    @(2500 mils, 5450 mils): Symbol R9 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 4900 mils): Symbol U4 Pin 4 [Q4, Unspecified, Line]
+    @(2500 mils, 6350 mils): Symbol R10 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 5000 mils): Symbol U4 Pin 5 [Q5, Unspecified, Line]
+    @(2500 mils, 9100 mils): Symbol R12 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 5100 mils): Symbol U4 Pin 6 [Q6, Unspecified, Line]
+    @(2500 mils, 8200 mils): Symbol R11 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Bidirectional are connected
+    ; warning
+    @(10200 mils, 5200 mils): Symbol U4 Pin 7 [Q7, Unspecified, Line]
+    @(12950 mils, 4700 mils): Symbol U7 Pin 4 [NRST, Bidirectional, Line]
+[pin_to_pin]: Pins of type Unspecified and Power input are connected
+    ; warning
+    @(10200 mils, 5300 mils): Symbol U4 Pin 8 [GND, Unspecified, Line]
+    @(10200 mils, 5300 mils): Symbol #PWR033 Pin 1 [Power input, Line]
+[footprint_link_issues]: The current configuration does not include the footprint library '20021121-00010C4LF'.
+    ; warning
+    @(9700 mils, 6200 mils): Symbol J5 [20021121-00010C4LF]
+[lib_symbol_mismatch]: Symbol 'Shift Register, 1 In, 8 Out, 74HC595D,118' doesn't match copy in library 'PCM_JLCPCB-ICs'
+    ; warning
+    @(10600 mils, 5000 mils): Symbol U4 [Shift Register, 1 In, 8 Out, 74HC5...]
+[pin_to_pin]: Pins of type Unspecified and Bidirectional are connected
+    ; warning
+    @(10200 mils, 5900 mils): Symbol U5 Pin 1 [Q1, Unspecified, Line]
+    @(12950 mils, 5200 mils): Symbol U7 Pin 9 [GPIO1, Bidirectional, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6000 mils): Symbol U5 Pin 2 [Q2, Unspecified, Line]
+    @(10200 mils, 6000 mils): Symbol J5 Pin 1 [1, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6100 mils): Symbol U5 Pin 3 [Q3, Unspecified, Line]
+    @(10200 mils, 6100 mils): Symbol J5 Pin 3 [3, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 4600 mils): Symbol U4 Pin 16 [VCC, Unspecified, Line]
+    @(11000 mils, 4600 mils): Symbol C21 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6200 mils): Symbol U5 Pin 4 [Q4, Unspecified, Line]
+    @(10200 mils, 6200 mils): Symbol J5 Pin 5 [5, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 4700 mils): Symbol U4 Pin 15 [Q0, Unspecified, Line]
+    @(9500 mils, 1950 mils): Symbol J4 Pin 5 [Pin_5, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6300 mils): Symbol U5 Pin 5 [Q5, Unspecified, Line]
+    @(10200 mils, 6300 mils): Symbol J5 Pin 7 [7, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6400 mils): Symbol U5 Pin 6 [Q6, Unspecified, Line]
+    @(10200 mils, 6400 mils): Symbol J5 Pin 9 [9, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Power input are connected
+    ; warning
+    @(11000 mils, 4900 mils): Symbol U4 Pin 13 [OE#, Unspecified, Line]
+    @(11400 mils, 4900 mils): Symbol #PWR038 Pin 1 [Power input, Line]
+[pin_to_pin]: Pins of type Unspecified and Unspecified are connected
+    ; warning
+    @(11000 mils, 5000 mils): Symbol U4 Pin 12 [STCP, Unspecified, Line]
+    @(11000 mils, 6300 mils): Symbol U5 Pin 12 [STCP, Unspecified, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(10200 mils, 6500 mils): Symbol U5 Pin 7 [Q7, Unspecified, Line]
+    @(9200 mils, 6400 mils): Symbol J5 Pin 10 [10, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Unspecified are connected
+    ; warning
+    @(11000 mils, 5100 mils): Symbol U4 Pin 11 [SHCP, Unspecified, Line]
+    @(11000 mils, 6400 mils): Symbol U5 Pin 11 [SHCP, Unspecified, Line]
+[pin_to_pin]: Pins of type Unspecified and Power input are connected
+    ; warning
+    @(10200 mils, 6600 mils): Symbol U5 Pin 8 [GND, Unspecified, Line]
+    @(10200 mils, 6600 mils): Symbol #PWR034 Pin 1 [Power input, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 5200 mils): Symbol U4 Pin 10 [MR#, Unspecified, Line]
+    @(11000 mils, 5200 mils): Symbol R45 Pin 1 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Unspecified are connected
+    ; warning
+    @(11000 mils, 5300 mils): Symbol U4 Pin 9 [Q7S, Unspecified, Line]
+    @(11000 mils, 6100 mils): Symbol U5 Pin 14 [DS, Unspecified, Line]
+[lib_symbol_mismatch]: Symbol 'Shift Register, 1 In, 8 Out, 74HC595D,118' doesn't match copy in library 'PCM_JLCPCB-ICs'
+    ; warning
+    @(10600 mils, 6300 mils): Symbol U5 [Shift Register, 1 In, 8 Out, 74HC5...]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 5900 mils): Symbol U5 Pin 16 [VCC, Unspecified, Line]
+    @(11000 mils, 5900 mils): Symbol C22 Pin 2 [Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 6000 mils): Symbol U5 Pin 15 [Q0, Unspecified, Line]
+    @(10550 mils, 2050 mils): Symbol J6 Pin 6 [Pin_6, Passive, Line]
+[pin_to_pin]: Pins of type Unspecified and Power input are connected
+    ; warning
+    @(11000 mils, 6200 mils): Symbol U5 Pin 13 [OE#, Unspecified, Line]
+    @(11400 mils, 6200 mils): Symbol #PWR039 Pin 1 [Power input, Line]
+[pin_to_pin]: Pins of type Unspecified and Passive are connected
+    ; warning
+    @(11000 mils, 6500 mils): Symbol U5 Pin 10 [MR#, Unspecified, Line]
+    @(11000 mils, 6500 mils): Symbol R46 Pin 1 [Passive, Line]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(12500 mils, 5700 mils): Symbol Memory_CS1 [5015]
+[lib_symbol_issues]: The current configuration does not include the symbol library '1My Connectors'
+    ; warning
+    @(13650 mils, 1850 mils): Symbol J8 [B4B-XH-A]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(12650 mils, 6850 mils): Symbol TP1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(12950 mils, 6500 mils): Symbol TP2_+5V1 [5015]
+[lib_symbol_issues]: The current configuration does not include the symbol library '1My Connectors'
+    ; warning
+    @(14450 mils, 1850 mils): Symbol J9 [B4B-XH-A]
+[footprint_link_issues]: Footprint 'BluePill_STM32F103C8' not found in library 'Module'.
+    ; warning
+    @(13950 mils, 5100 mils): Symbol U7 [BluePill_STM32F103C8_Migrated]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'Local'
+    ; warning
+    @(13950 mils, 5100 mils): Symbol U7 [BluePill_STM32F103C8_Migrated]
+[lib_symbol_mismatch]: Symbol '16MByte, SPI' doesn't match copy in library 'PCM_JLCPCB-Memory'
+    ; warning
+    @(12300 mils, 8550 mils): Symbol U6 [16MByte, SPI]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(13750 mils, 6450 mils): Symbol TP_+3.3V1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(15400 mils, 5000 mils): Symbol T_IRQ1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(15400 mils, 5200 mils): Symbol MOSI1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(15400 mils, 5300 mils): Symbol MISO1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(15400 mils, 5400 mils): Symbol SCK1 [5015]
+[lib_symbol_mismatch]: Symbol '5015' doesn't match copy in library '1My_Connectors'
+    ; warning
+    @(15400 mils, 5500 mils): Symbol CS1 [5015]
+[lib_symbol_mismatch]: Symbol 'MountingHole_Pad' doesn't match copy in library 'Mechanical'
+    ; warning
+    @(15200 mils, 9000 mils): Symbol H3 [MountingHole_Pad]
+[lib_symbol_mismatch]: Symbol 'MountingHole_Pad' doesn't match copy in library 'Mechanical'
+    ; warning
+    @(15000 mils, 9550 mils): Symbol H2 [MountingHole_Pad]
+[lib_symbol_mismatch]: Symbol 'TNES Logo 5mm' doesn't match copy in library '1My_Passive'
+    ; warning
+    @(15750 mils, 9650 mils): Symbol 5mm1 [TNES Logo 5mm]
+
+ ** ERC messages: 50  Errors 0  Warnings 50

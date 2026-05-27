@@ -1,33 +1,32 @@
-# Development Station Quick Handoff (2026-05-18)
+# Development Station Quick Handoff (2026-05-25)
 
-- Primary focus: hardware revision updates on regulator/HAT design.
-- Firmware feature work: intentionally paused until Rev1 board bring-up is complete.
-- Firmware code lane: scaffold-only (inversion/bring-up support), no new behavior changes for now.
-- Bench work: deferred for now.
+- Session intentionally stopped by user request for a fresh restart in a new chat.
+- Active scope at stop: Rev-B HAT U9 migration stabilization only.
 - Main source of truth: HANDOFF.md
 
-What changed this session:
-- Re-validated fresh Rev-B regulator/HAT netlists after schematic updates.
-- Corrected and verified HAT Sense-B origins:
-	- 5V: R59/R60
-	- 3.3V: R61/R62
-	- Adj: R63/R64
-- Confirmed RB-001 topology is implemented on all three channels in regulator Rev-B netlist:
-	- U5/U6/U7 LMV358IDR buffers
-	- D4/D5/D6 BAT54C selector combine
-	- R31/R33/R35 = 100 ohm
-	- R32/R34/R36 = 33k
-- Finalized intent as remote-primary sensing plus slightly underbiased local fallback to minimize measurement handoff step while keeping startup fallback behavior.
+What changed in this stop window:
+- Updated Rev-B U9-adjacent label semantics:
+  - TXD -> UART1_TX
+  - RXD -> UART1_RX
+  - GPIO8/BOOT -> BOOT0
+  - GPIO9/BOOT -> BOOT1
+- Added debug/program access support on HAT Rev-B schematic:
+  - Labels: SWDIO, SWDCLK, NRST
+  - Test points: TP_UART1_TX, TP_UART1_RX, TP_SWDIO, TP_SWDCLK, TP_NRST, TP_BOOT0
+- Updated docs/STM32_BLUEPILL_PIN_TABLE.md validation log.
+- File diagnostics are clean on edited files.
 
-Rev1 segregation status:
-- Active firmware edits must stay in src/rev1/.
-- platformio.ini envs were redirected to src/rev1 sources.
-- Explicit source excludes were added to reduce accidental root-src builds.
-- Copied last-rev behavior is intentionally retained in Rev1 files for pending bring-up/testing.
+Important open risk:
+- U9 symbol migration pin metadata and actual connected net ownership are not yet fully reconciled.
+- Do not finalize BOOT0 default strap or reset RC behavior until pin-by-pin reconciliation is complete.
+
+Known command status:
+- Strict baseline connector check currently exits 1 (expected in strict mode for this repo state).
 
 Next session first move:
-- Read HANDOFF.md and NEW_CHAT_HANDOFF.rmd, then verify U5/U6/U7, D4/D5/D6, and R31-R36 are still present in latest Rev-B netlist before further edits.
-- Continue schematic/netlist population while preserving the current 3-channel topology baseline and scaffold-only firmware freeze.
+1. Read HANDOFF.md and NEW_CHAT_HANDOFF.rmd.
+2. Reconcile U9 pin-by-pin ownership in DSP-Regulator-HAT-RevB.kicad_sch.
+3. Then finalize BOOT0 default-low and NRST deterministic network.
 
 Paste prompt:
-Continue Development Station hardware revision work from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. Keep scope on regulator/HAT Rev-B schematic and netlist updates only. Preserve the current 3-channel LMV358 plus BAT54C selector topology unless bring-up data drives value changes. Do not run bench steps unless explicitly requested. Keep firmware paused unless absolutely required, and if needed edit only src/rev1 files.
+Continue Rev-B HAT U9 migration closure from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. First perform explicit U9 pin-by-pin reconciliation in DSP-Regulator-HAT-RevB.kicad_sch, then implement final BOOT0 default strap and NRST reset network, then re-export netlist and run verification checks. Keep scope strictly on migration closure.
