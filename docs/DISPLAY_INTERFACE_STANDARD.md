@@ -29,12 +29,12 @@ Defines a reusable, copy-paste connector standard for attaching any display modu
 
 | Pin | Signal | Direction | Notes |
 |---:|---|---|---|
-| 1 | +5V | Host → Display | Powers display board; max 2A draw |
+| 1 | +5V | Host → Display | Powers display board; max 2A draw. Source: `+V Adj Channel` (LM2596S-ADJ fixed 5V). See note below. |
 | 2 | GND | — | Common ground |
 | 3 | DISP_UART_TX | Host → Display | Host transmits; display receives |
 | 4 | DISP_UART_RX | Display → Host | Display transmits; host receives |
 
-> **Cable polarity:** Pin 1 (+5V) must be verified before connecting. JST XH connectors are keyed but confirm latch orientation matches host and display footprints before powering.
+> **Pin 1 power source (Rev-C design decision — 2026-05-28):** J21 pin 1 is sourced from `+V Adj Channel` (the adjustable Channel 3 LM2596S-ADJ, configured for fixed 5V output). It is NOT connected to `+5V_Boot`. This keeps the 2A CrowPanel display load isolated from the HAT control electronics rail. The HAT schematic J21 pin 1 net was changed from `+5V_Boot` to `+V Adj Channel`. Bench bring-up still uses USB-C power for the CrowPanel; J21 pin 1 is only live on PCB Rev-C hardware.
 
 ---
 

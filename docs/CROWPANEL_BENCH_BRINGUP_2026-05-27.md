@@ -40,15 +40,33 @@ Before building a cable between J21 and the CrowPanel:
 
 ## Power Strategy — Bench Bring-Up
 
-**Do NOT connect J21 pin 1 (+5V_Boot) to the CrowPanel for bench testing.**
-
-The +5V_Boot rail on the HAT Rev-B is sourced from an LDO that is likely insufficient for the
-CrowPanel's 2A max draw. The production power solution is an open design decision.
+**Do NOT connect J21 pin 1 to the CrowPanel for bench testing.**
 
 **For bench bring-up:**
 - Power the CrowPanel via its **USB-C port** using a separate 5V/2A USB supply or bench PSU
 - On the UART0-IN XH2.54-4P connector: connect only **pins 2, 3, and 4** (GND + TX + RX)
 - Leave pin 1 (+5V) **disconnected**
+
+---
+
+## Power Strategy — Production (PCB Rev-C Decision — 2026-05-28)
+
+**Decision:** J21 pin 1 is rerouted from `+5V_Boot` to `+V Adj Channel`.
+
+The adjustable Channel 3 LM2596S-ADJ (U2 on DSP Regulator board) is dedicated to fixed 5V display
+supply. This keeps the CrowPanel's 2A max draw off the `+5V_Boot` rail (which powers STM32,
+AMS1117, WS2812, potentiometers) and avoids crowding the 3A LM2596 limit on that channel.
+
+| J21 Pin | Signal | Production Source |
+|---------|--------|------------------|
+| 1 | +5V display | `+V Adj Channel` — LM2596S-ADJ U2, fixed 5V (R_lower=240Ω, R_upper=750Ω) |
+| 2 | GND | GND |
+| 3 | DISP_UART_TX | STM32 PB10 → R78 |
+| 4 | DISP_UART_RX | STM32 PB11 → R79 |
+
+**HAT schematic change required:** J21 pin 1 net: `+5V_Boot` → `+V Adj Channel`
+**DSP Regulator schematic change required:** Remove relay selector (U8); set local feedback for 5V
+**See:** docs/DEV_STATION_HANDOFF_2026-05-28.md for KiCad implementation steps
 
 ---
 
