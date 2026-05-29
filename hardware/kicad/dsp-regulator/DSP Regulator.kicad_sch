@@ -31219,7 +31219,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "0fad8bc5-0a48-483b-b331-99d262a962a7")
 		(property "Reference" "R26"
 			(at 239.776 189.23 90)
@@ -34050,7 +34050,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "4ac8cf81-ad20-46f5-9cb2-257311228c87")
 		(property "Reference" "R43"
 			(at 239.522 178.816 90)
@@ -35524,7 +35524,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "1kΩ"
+		(property "Value" "240Ω"
 			(at 182.88 194.31 90)
 			(do_not_autoplace yes)
 			(effects
@@ -36122,7 +36122,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "100Ω"
+		(property "Value" "750Ω"
 			(at 224.79 181.61 90)
 			(do_not_autoplace yes)
 			(effects
@@ -39532,7 +39532,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "97b69828-4104-42b0-9b0a-afee8179fb00")
 		(property "Reference" "U8"
