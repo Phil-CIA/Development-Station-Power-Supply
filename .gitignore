@@ -6,6 +6,8 @@
 build_*.log
 build_*.txt
 pio_*.log
+.*.build.log
+*.orig
 
 # KiCad temporary and backup clutter
 *.kicad_pcb.lck

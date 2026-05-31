@@ -643,7 +643,7 @@ static void resetPersistentConfigDefaults() {
   autoRangeHighThresholdmA = 900.0f;
   hatTelemetry.setAutoRangeThresholds(autoRangeLowThresholdmA, autoRangeHighThresholdmA);
   hatTelemetry.resetCalibration();
-  hatTelemetry.setInaAddresses(0x40, 0x41, 0x42);  // Restores default shunt resistor values.
+  hatTelemetry.setInaAddresses(0x40, 0x41, 0x43);  // Restores default shunt resistor values.
   resetCurrentLimitDefaults();
   clearCurrentLimitRuntime();
 }

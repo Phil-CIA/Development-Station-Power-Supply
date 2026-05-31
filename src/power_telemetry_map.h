@@ -51,7 +51,7 @@ struct RailCalibration {
 class HatPowerTelemetry {
  public:
   explicit HatPowerTelemetry(SDL_Arduino_INA3221& driver) : ina_(driver) {
-    setInaAddresses(0x40, 0x41, 0x42);
+    setInaAddresses(0x40, 0x41, 0x43);
     setAutoRangeThresholds(250.0f, 900.0f);
     resetCalibration();
   }
