@@ -1,5 +1,10 @@
 # Development Station Power Supply - Handoff
 
+**Latest active handoff:** [HANDOFF_2026-05-30.md](HANDOFF_2026-05-30.md) —
+HAT↔CrowPanel wired UART link is now WORKING through the CrowPanel CH486F
+mux. ESP-NOW remains as the redundant backup. This is the current baseline
+for new sessions.
+
 ## Session Closeout - 2026-05-26
 
 Session closed by user request. U10 migration complete. Moving to STM32 supporting circuit next session.
