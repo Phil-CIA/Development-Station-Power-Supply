@@ -17,6 +17,7 @@
 constexpr int INA_SDA = 5;
 constexpr int INA_SCL = 6;
 constexpr uint32_t I2C_BIT_DELAY_US = 5;  // ~100 kHz
+constexpr bool OTA_ENABLED = false;
 
 static inline void sdaHigh() { pinMode(INA_SDA, INPUT_PULLUP); }
 static inline void sdaLow()  { pinMode(INA_SDA, OUTPUT); digitalWrite(INA_SDA, LOW); }
@@ -308,6 +309,7 @@ void scanBus(const I2cBusCandidate& bus) {
 void setup() {
   Serial.begin(115200);
   delay(200);
+  Serial.printf("policy: OTA %s\n", OTA_ENABLED ? "enabled" : "disabled");
 
   // Initialise shift register GPIOs and enable all output load switches.
   // Without this, the 74HC595 power-on state is random and FETs may be OFF.
@@ -349,5 +351,6 @@ void loop() {
     Serial.println("disp_link tx skipped: no 12V reading captured yet");
   }
 
-  delay(5000); // Wait 5 seconds before next scan
+  // Run the sampling/publish loop at ~10 Hz for lower end-to-end latency.
+  delay(100);
 }

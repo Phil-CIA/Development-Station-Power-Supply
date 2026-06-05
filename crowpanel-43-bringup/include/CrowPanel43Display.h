@@ -56,7 +56,9 @@ class CrowPanel43Display : public lgfx::LGFX_Device {
       cfg.pin_hsync = GPIO_NUM_40;
       cfg.pin_pclk = GPIO_NUM_39;
 
-      cfg.freq_write = 21000000;
+      // Use a conservative RGB pixel clock and longer VBP to reduce visible
+      // tearing/jitter during LVGL region updates on 800x480 panels.
+      cfg.freq_write = 16000000;
       cfg.hsync_polarity = 0;
       cfg.hsync_front_porch = 8;
       cfg.hsync_pulse_width = 4;
@@ -64,7 +66,7 @@ class CrowPanel43Display : public lgfx::LGFX_Device {
       cfg.vsync_polarity = 0;
       cfg.vsync_front_porch = 8;
       cfg.vsync_pulse_width = 4;
-      cfg.vsync_back_porch = 8;
+      cfg.vsync_back_porch = 16;
       cfg.pclk_idle_high = 1;
 
       bus_.config(cfg);

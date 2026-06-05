@@ -2,30 +2,123 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "WorkStation: Upload (esp32dev)",
-			"detail": "WorkStation project upload on COM4",
+			"label": "WorkStation: Upload (hat_c6_i2c_probe)",
+			"detail": "HAT ESP32-C6 guarded upload (port + chip precheck)",
 			"type": "shell",
-			"command": "C:/Users/user/.platformio/penv/Scripts/platformio.exe",
+			"command": "powershell",
 			"args": [
-				"run",
-				"-e",
-				"esp32dev",
-				"-t",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"hat",
+				"-Action",
 				"upload"
 			],
 			"group": "build"
 		},
 		{
-			"label": "WorkStation: Build (esp32dev)",
-			"detail": "WorkStation project build only",
+			"label": "WorkStation: Build (hat_c6_i2c_probe)",
+			"detail": "HAT ESP32-C6 build only",
 			"type": "shell",
-			"command": "C:/Users/user/.platformio/penv/Scripts/platformio.exe",
+			"command": "powershell",
 			"args": [
-				"run",
-				"-e",
-				"esp32dev"
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"hat",
+				"-Action",
+				"build"
 			],
 			"group": "build"
+		},
+		{
+			"label": "WorkStation: Upload (crowpanel43)",
+			"detail": "CrowPanel 4.3 guarded upload (port + chip precheck)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"crowpanel",
+				"-Action",
+				"upload"
+			],
+			"group": "build"
+		},
+		{
+			"label": "WorkStation: Build (crowpanel43)",
+			"detail": "CrowPanel 4.3 build only",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"crowpanel",
+				"-Action",
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "WorkStation: Upload (LEGACY esp32dev COM5)",
+			"detail": "Legacy ESP32 guarded upload. Do not use for HAT/CrowPanel.",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"legacy-esp32",
+				"-Action",
+				"upload"
+			],
+			"group": "none"
+		},
+		{
+			"label": "WorkStation: Build (LEGACY WS281x COM5)",
+			"detail": "Legacy ESP32 WS281x build only",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"legacy-esp32-led",
+				"-Action",
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "WorkStation: Upload (LEGACY WS281x COM5)",
+			"detail": "Legacy ESP32 WS281x guarded upload (port + chip precheck)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/guarded-flash.ps1",
+				"-Target",
+				"legacy-esp32-led",
+				"-Action",
+				"upload"
+			],
+			"group": "none"
 		}
 	]
 }

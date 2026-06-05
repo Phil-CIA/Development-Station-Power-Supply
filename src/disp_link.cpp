@@ -1,15 +1,10 @@
 #include "disp_link.h"
 
-#include <WiFi.h>
-#include <esp_now.h>
-#include <esp_wifi.h>
-#include <string.h>
-
 namespace disp_link {
 
 namespace {
 
-constexpr uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+constexpr bool kOtaEnabled = false;
 
 uint8_t s_seq    = 0;
 bool    s_begun  = false;
@@ -26,17 +21,12 @@ uint8_t crc8(const uint8_t* data, size_t len) {
   return crc;
 }
 
-void onSendStatus(const wifi_tx_info_t* /*info*/, esp_now_send_status_t status) {
-  // Quiet on success to avoid spam; only log failures.
-  if (status != ESP_NOW_SEND_SUCCESS) {
-    Serial.println("disp_link: esp_now send FAIL");
-  }
-}
-
 }  // namespace
 
 void begin() {
   if (s_begun) return;
+
+  Serial.printf("disp_link: ota policy=%s\n", kOtaEnabled ? "enabled" : "disabled");
 
   // UART1 on the C6's UART1 peripheral, RX=GPIO0, TX=GPIO7. Wired to the
   // CrowPanel UART1-OUT HY2.0-4P connector through the CH486F mux (K1=0,1).
@@ -44,37 +34,7 @@ void begin() {
   Serial.printf("disp_link: UART1 up @%lu baud RX=GPIO%d TX=GPIO%d\n",
                 static_cast<unsigned long>(kUartBaud), kUartRxPin, kUartTxPin);
 
-  // STA mode, no association — required for ESP-NOW.
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect(false, true);
-  delay(50);
-
-  esp_wifi_set_channel(kEspNowChannel, WIFI_SECOND_CHAN_NONE);
-
-  const esp_err_t init_rc = esp_now_init();
-  if (init_rc != ESP_OK) {
-    Serial.printf("disp_link: esp_now_init FAIL rc=%d\n", init_rc);
-    return;
-  }
-  esp_now_register_send_cb(onSendStatus);
-
-  esp_now_peer_info_t peer = {};
-  memcpy(peer.peer_addr, kBroadcastMac, 6);
-  peer.channel = kEspNowChannel;
-  peer.encrypt = false;
-  peer.ifidx   = WIFI_IF_STA;
-  const esp_err_t add_rc = esp_now_add_peer(&peer);
-  if (add_rc != ESP_OK && add_rc != ESP_ERR_ESPNOW_EXIST) {
-    Serial.printf("disp_link: esp_now_add_peer FAIL rc=%d\n", add_rc);
-    return;
-  }
-
   s_begun = true;
-
-  uint8_t mac[6] = {};
-  WiFi.macAddress(mac);
-  Serial.printf("disp_link: ESP-NOW up; STA MAC=%02X:%02X:%02X:%02X:%02X:%02X channel=%u broadcast peer ok\n",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], kEspNowChannel);
 }
 
 bool publishTelemetry(uint16_t v12_mV, int16_t i12_mA) {
@@ -95,15 +55,8 @@ bool publishTelemetry(uint16_t v12_mV, int16_t i12_mA) {
 
   // Primary wired path: push the frame down UART1 (via CrowPanel CH486F mux
   // to S3 IO19/IO20; see repo memory entry "UART HAT↔CrowPanel — SOLVED").
-  Serial1.write(frame, kFrameSizeTlm);
-
-  // Send via ESP-NOW — wireless backup, always on.
-  const esp_err_t rc = esp_now_send(kBroadcastMac, frame, kFrameSizeTlm);
-  if (rc != ESP_OK) {
-    Serial.printf("disp_link: esp_now_send rc=%d\n", rc);
-    return false;
-  }
-  return true;
+  const size_t written = Serial1.write(frame, kFrameSizeTlm);
+  return written == kFrameSizeTlm;
 }
 
 }  // namespace disp_link

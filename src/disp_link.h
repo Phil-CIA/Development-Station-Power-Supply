@@ -2,7 +2,7 @@
 
 // disp_link — HAT (ESP32-C6) → CrowPanel 4.3" display link.
 //
-// Transport: UART1 (wired primary) + ESP-NOW broadcast (wireless backup).
+// Transport: UART1 (wired).
 //
 // UART wiring (HAT J8 ↔ CrowPanel UART1-OUT HY2.0-4P):
 //   HAT GPIO7 (TX)  →  CrowPanel IO19 (RX, IO19_RX_IRQ)
@@ -38,8 +38,6 @@
 
 namespace disp_link {
 
-constexpr uint8_t  kEspNowChannel = 1;   // must match CrowPanel side
-
 constexpr int      kUartTxPin    = 7;       // HAT TX  → CrowPanel IO19 (RX)
 constexpr int      kUartRxPin    = 0;       // HAT RX  ← CrowPanel IO20 (TX)
 constexpr uint32_t kUartBaud     = 115200;
@@ -50,11 +48,10 @@ constexpr uint8_t  kFrameTagTlm  = 'T';
 constexpr uint8_t  kFrameLenTlm  = 6;
 constexpr size_t   kFrameSizeTlm = 10;
 
-// Initialise WiFi STA + ESP-NOW + broadcast peer. Safe to call once.
+// Initialise UART transport. Safe to call once.
 void begin();
 
-// Build a telemetry frame and broadcast it via ESP-NOW. Returns true on
-// successful esp_now_send() submission (delivery is asynchronous).
+// Build a telemetry frame and send it via UART1.
 bool publishTelemetry(uint16_t v12_mV, int16_t i12_mA);
 
 }  // namespace disp_link

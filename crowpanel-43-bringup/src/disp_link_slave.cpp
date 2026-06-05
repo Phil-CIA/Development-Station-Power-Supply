@@ -1,11 +1,7 @@
 #include "disp_link_slave.h"
 
-#include <WiFi.h>
-#include <esp_now.h>
-#include <esp_wifi.h>
 #include <driver/gpio.h>
 #include <soc/usb_serial_jtag_reg.h>
-#include <string.h>
 
 // UART1 wiring to HAT (CrowPanel side of HY2.0-4P UART1-OUT, K1=0,1):
 //   IO20 = RX (HAT TX = GPIO7)
@@ -50,7 +46,7 @@ void bumpErr() {
   portEXIT_CRITICAL(&s_mux);
 }
 
-void parseFrame(const uint8_t* f, bool via_uart) {
+void parseFrame(const uint8_t* f) {
   if (f[0] != kSof1 || f[1] != kSof2) { bumpErr(); return; }
   if (f[2] != kFrameLenTlm)            { bumpErr(); return; }
   if (f[3] != kFrameTagTlm)            { bumpErr(); return; }
@@ -64,40 +60,19 @@ void parseFrame(const uint8_t* f, bool via_uart) {
       (static_cast<uint16_t>(f[8]) << 8));
 
   portENTER_CRITICAL(&s_mux);
+  s_state.i2c_rx_count++;   // counter doubles as UART success count
   s_state.rx_count++;
   s_state.last_seq    = seq;
   s_state.last_v12_mV = v12_mV;
   s_state.last_i12_mA = i12_mA;
   s_state.last_rx_ms  = millis();
-  if (via_uart) s_state.i2c_rx_count++;   // counter doubles as UART success count
   portEXIT_CRITICAL(&s_mux);
-}
-
-void onRecv(const esp_now_recv_info_t* /*info*/, const uint8_t* data, int len) {
-  if (len != static_cast<int>(kFrameSize)) {
-    bumpErr();
-    return;
-  }
-  parseFrame(data, /*via_uart=*/false);
 }
 
 }  // namespace
 
 void begin() {
   if (s_begun) return;
-
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect(false, true);
-  delay(50);
-
-  esp_wifi_set_channel(kEspNowChannel, WIFI_SECOND_CHAN_NONE);
-
-  const esp_err_t init_rc = esp_now_init();
-  if (init_rc != ESP_OK) {
-    Serial.printf("disp_link_slave: esp_now_init FAIL rc=%d\n", init_rc);
-    return;
-  }
-  esp_now_register_recv_cb(onRecv);
 
   // Bring up UART1 on IO20(RX)/IO19(TX). IO19/IO20 are the S3's USB-Serial-JTAG
   // D-/D+ pads at boot; release them from USB-JTAG so the UART peripheral can
@@ -109,11 +84,6 @@ void begin() {
   Serial1.begin(kUartBaud, SERIAL_8N1, kUartRxPin, kUartTxPin);
 
   s_begun = true;
-
-  uint8_t mac[6] = {};
-  WiFi.macAddress(mac);
-  Serial.printf("disp_link_slave: ESP-NOW recv up; STA MAC=%02X:%02X:%02X:%02X:%02X:%02X channel=%u\n",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], kEspNowChannel);
   Serial.printf("disp_link_slave: UART1 listening @%lu baud RX=IO%d TX=IO%d (K1 must be 0,1)\n",
                 static_cast<unsigned long>(kUartBaud), kUartRxPin, kUartTxPin);
 }
@@ -141,7 +111,7 @@ void poll() {
     }
     buf[idx++] = b;
     if (idx >= kFrameSize) {
-      parseFrame(buf, /*via_uart=*/true);
+      parseFrame(buf);
       idx = 0;
     }
   }
