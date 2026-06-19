@@ -1,0 +1,20 @@
+ERC report (2026-06-09T10:05:26-0500, Encoding UTF8)
+
+***** Sheet /
+[lib_symbol_mismatch]: Symbol 'USBLC6-2SC6' doesn't match copy in library 'Power_Protection'
+    ; warning
+    @(2100 mils, 4600 mils): Symbol U2 [USBLC6-2SC6]
+[lib_symbol_mismatch]: Symbol 'Connector, USB-TYPE-C-16P' doesn't match copy in library 'PCM_JLCPCB-Extended'
+    ; warning
+    @(1950 mils, 6950 mils): Symbol J2 [Connector, USB-TYPE-C-16P]
+[lib_symbol_mismatch]: Symbol 'B4B-XH-A_LF__SN_' doesn't match copy in library 'dk_Rectangular-Connectors-Headers-Male-Pins'
+    ; warning
+    @(10100 mils, 2200 mils): Symbol J7 [B4B-XH-A_LF__SN_]
+[footprint_link_issues]: The current configuration does not include the footprint library ''.
+    ; warning
+    @(9800 mils, 4350 mils): Symbol U8 [TPS25830AQCWRHBRQ1]
+[lib_symbol_mismatch]: Symbol 'ADA_Fruit_CH334F' doesn't match copy in library '1 - Phil's global lib'
+    ; warning
+    @(5950 mils, 9400 mils): Symbol U7 [ADA_Fruit_CH334F]
+
+ ** ERC messages: 5  Errors 0  Warnings 5

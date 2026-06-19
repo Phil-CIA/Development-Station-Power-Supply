@@ -6,6 +6,182 @@ Goal: Capture all known schematic edits and board-split decision points so Rev-C
 
 ---
 
+## Current Active Plan (2026-06-09): USB Hub + STM32 Integration
+
+Objective for this cycle:
+- Preserve the original USB hub value (power + port management + metering intent)
+- Restore strong STM32 flashing/programming capability after the ESP32-to-STM32 migration
+- Keep connector mechanics and external role expectations as stable as practical
+
+Confirmed decisions (locked for this cycle):
+1. Scope is hardware-only (schematic + PCB planning/execution).
+2. Add an onboard USB-to-SWD debug bridge on the USB hub redesign.
+3. Keep high-rate USB serial telemetry path independent (CH340C path on HAT remains runtime telemetry).
+4. Preserve existing external connector mechanics/roles as much as possible.
+5. Consume one existing flashing/data port budget for the internal SWD bridge path (simplest route).
+
+### Execution Phases (Current)
+
+| Phase | Focus | Exit Criterion |
+|------|-------|----------------|
+| 0 | Baseline lock + topology map | Port-role map frozen and documented for redesign start |
+| 1 | Bridge architecture lock | USB-to-SWD bridge electrical contract frozen |
+| 2 | Hub schematic integration | One downstream data path reassigned to onboard bridge |
+| 3 | STM32 tie-in contract | SWDIO/SWDCLK/NRST/GND/VTref board-to-board contract validated |
+| 4 | PCB implementation | Placement and routing constraints applied for USB + SWD paths |
+| 5 | Validation + freeze | ERC/DRC/netlist checks pass and docs updated |
+
+### Kickoff Status (Started 2026-06-09)
+
+Completed now:
+1. Baseline target for edits locked to `hardware/kicad/usb-hub-next-iter/USB Hub Next Iter.kicad_sch`.
+2. Existing hub role map confirmed from netlist:
+   - Upstream host data: `Port H_D+`, `Port H_D-`
+   - Downstream data ports: `Port 1_D+/-`, `Port 2_D+/-`, `Port 3_D+/-`, `Port 4_D+/-`
+   - Power-only USB-A intent retained for J4/J6 (D+/D- intentionally NC)
+3. STM32-side programming + telemetry baseline confirmed:
+   - SWD header path present on HAT (`J19`)
+   - USB serial telemetry path present (`CH340C` + `J20`)
+
+In progress next:
+1. Phase 1 bridge selection and SWD electrical contract freeze.
+2. Phase 2 reassignment of one hub downstream data path to the internal bridge in `usb-hub-next-iter` schematic.
+3. Tracker updates and explicit closure gates for flash + telemetry coexistence.
+
+### Immediate Work Queue (Next 3 Tasks)
+
+1. Freeze bridge implementation details (signal list, power domain behavior, protection strategy).
+2. Add a new redesign issue entry in USB hub tracker for internal SWD-bridge integration work.
+3. Define/record which existing flashing data port is consumed by the internal bridge and mark resulting external role update.
+
+### Phase 1 Started: Bridge Electrical Contract Draft
+
+Use this checklist to freeze the bridge contract before editing net topology.
+
+Required USB-side signals:
+- `USB_BRIDGE_DP`
+- `USB_BRIDGE_DM`
+- `USB_BRIDGE_VBUS_SENSE`
+- `USB_BRIDGE_GND`
+
+Required target-side signals (STM32):
+- `SWDIO`
+- `SWDCLK`
+- `NRST`
+- `VTref` (target voltage sense/reference)
+- `GND`
+
+Conditioning/protection requirements:
+1. Add series damping (initial target 22-47 ohm) on SWDIO/SWDCLK near bridge output pins.
+2. Keep NRST polarity and pull behavior compatible with existing STM32 path.
+3. Prevent back-power paths when bridge is USB-powered but target is not.
+4. Ensure all bridge I/O connected to STM32 are valid at target voltage domain.
+
+Freeze gates (must be YES before Phase 2 net reassignment):
+- Gate A: Bridge USB side is electrically isolated from non-selected downstream ports.
+- Gate B: SWD and NRST signaling path is complete end-to-end (bridge -> inter-board contract -> STM32).
+- Gate C: CH340C runtime telemetry path remains unchanged and independent.
+- Gate D: Power-only USB-A roles (J4/J6 intent) remain unchanged.
+- Gate E: ERC has no new hard errors attributable to bridge insertion.
+
+#### Bridge Pin-Level Contract (Draft v0)
+
+| Bridge function | Net label (target) | Notes |
+|------|---------------------|-------|
+| USB D+ input | `USB_BRIDGE_DP` | Comes from selected hub downstream D+ pair |
+| USB D- input | `USB_BRIDGE_DM` | Comes from selected hub downstream D- pair |
+| USB VBUS detect | `USB_BRIDGE_VBUS_SENSE` | Sense only; do not use as backfeed source |
+| USB ground | `USB_BRIDGE_GND` | Tie to local digital ground reference |
+| SWD data | `SWDIO_BRIDGE_OUT` | Route to STM32 SWDIO contract with series damping |
+| SWD clock | `SWDCLK_BRIDGE_OUT` | Route to STM32 SWDCLK contract with series damping |
+| Target reset | `NRST_BRIDGE_OUT` | Preserve active-low behavior to STM32 NRST |
+| Target reference | `VTREF_BRIDGE_IN` | Bridge level reference from STM32 target rail |
+| Target ground | `SWD_GND_REF` | Common SWD reference return |
+
+#### Electrical Constraints (Draft v0)
+
+1. Place 22-47 ohm series resistors at bridge outputs for `SWDIO_BRIDGE_OUT` and `SWDCLK_BRIDGE_OUT`.
+2. Keep `NRST_BRIDGE_OUT` pull network compatible with existing STM32 reset behavior.
+3. Do not allow bridge I/O to source STM32 rail when target rail is absent.
+4. Keep bridge-to-target SWD routing short and avoid shared high-current return bottlenecks.
+5. Keep bridge USB pair stubs short from hub path to bridge input.
+
+### Phase 2 Prep: Provisional Downstream Port Assignment
+
+Provisional selection for internal bridge USB feed:
+- Use `Port 2_D+` / `Port 2_D-` as the consumed downstream data path for the onboard USB-to-SWD bridge.
+
+Rationale for provisional pick:
+1. `Port 3_D+/-` is tied into additional smart-charging path logic and is not the cleanest first reassignment target.
+2. J4/J6 are intentionally power-only and are excluded from consideration.
+3. A single clean downstream pair is required to move forward with minimal topology churn.
+
+Validation required before hard-freeze:
+1. Confirm connector-level mapping for the physical flashing port currently associated with `Port 2_D+/-`.
+2. Confirm that reassignment of `Port 2_D+/-` does not break required external user-facing data behavior.
+3. If either check fails, fallback candidate is `Port 1_D+/-`.
+
+### Pack 2 Verification Snapshot (2026-06-09)
+
+Verified from refreshed netlist/ERC:
+1. `Port 2_D+/-` is reassigned to internal bridge USB path using `USB_BRIDGE_DP` / `USB_BRIDGE_DM`.
+2. Bridge-to-STM32 debug handoff connector present: `J11` value `STM32_SWD_BRIDGE_OUT`.
+3. Series damping installed: `R27 = 33 ohm` (SWDIO path), `R28 = 33 ohm` (SWDCLK path).
+4. Current ERC state is warning-only for redesign additions (no hard architectural blocker).
+5. Latest refreshed ERC baseline is now 0 errors / 5 warnings (library/footprint housekeeping only).
+
+Locked role decision for this pass:
+1. External Port 2 data role is consumed by internal STM32 programming bridge path.
+2. Upstream host path (`Port H_D+/-`) and non-selected downstream channels remain unchanged in this pass.
+3. J4/J6 remain power-only by design intent.
+
+Remaining cleanup (non-blocking for topology lock):
+1. Keep net naming consistent between schematic labels and connector pinout notes before PCB floorplanning.
+
+### Priority Shift (2026-06-09): Order Regulator + HAT First
+
+Execution order update:
+1. Defer USB hub PCB placement/routing until regulator and HAT boards are finished and ready for order.
+2. Keep USB hub schematic/netlist as staged integration baseline while upstream boards are closed.
+
+Immediate gate before regulator/HAT release:
+1. `scripts/verify-connector-contract.ps1 -Mode reduced` currently fails 4 required mappings.
+2. Fix these connector-contract nets first, then rerun reduced and baseline checks.
+
+Current failing mappings to resolve:
+1. `VSENSE_ADJ+` (expected Reg `J2-12` <-> HAT `J6-12`)
+2. `VSENSE_ADJ-` (expected Reg `J2-11` <-> HAT `J6-11`)
+3. `ISET_MPU_Channel_3` (expected Reg `J2-5` <-> HAT `J6-5`)
+4. `+V Adj Channel` (expected Reg `J2-13` <-> HAT `J6-13`)
+
+#### Net Reassignment Mapping (Implementation Draft v0)
+
+Current path (from netlist):
+1. `J10 D+/-` feeds ESD stage `U10 I/O1/I/O2`.
+2. `U10` feeds hub downstream nets `Port 2_D+` / `Port 2_D-`.
+3. Hub controller `U7` consumes `Port 2_D+` / `Port 2_D-` as one external downstream channel.
+
+Planned reassignment:
+1. Keep `J10` mechanical connector unchanged unless layout forces otherwise.
+2. Reassign `Port 2_D+` / `Port 2_D-` channel to internal bridge nets `USB_BRIDGE_DP` / `USB_BRIDGE_DM`.
+3. Document the external role change: the prior Port 2 flashing/data path becomes internal STM32 programming path.
+4. Keep `Port H_D+/-` upstream and other downstream channels unchanged for this pass.
+
+Pre-edit schematic checklist:
+1. Confirm `J10` is the active physical port associated with `Port 2_D+/-` in current files.
+2. Add explicit net labels for bridge USB input and SWD output paths before rerouting.
+3. Preserve existing ESD intent while changing only the downstream ownership of the selected channel.
+
+### Phase 4 Handoff Constraints (PCB)
+
+1. Place `J11`, `R27`, and `R28` as a tight SWD cluster with short, direct routes to their source nets.
+2. Keep bridge USB D+/D- traces from hub channel to bridge input short and matched as practical.
+3. Keep the reassigned Port 2 branch free of unnecessary stubs and avoid crossings near switching power nodes.
+4. Preserve clear reference return for SWD signals; avoid routing SWD over split return regions.
+5. Maintain existing connector edge mechanics unless a documented mechanical conflict requires change.
+
+---
+
 ## Phase 1: Signal Inventory (What Crosses Between Boards?)
 
 ### Regulator Board → HAT Board Signals

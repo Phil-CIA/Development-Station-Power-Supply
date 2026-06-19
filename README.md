@@ -13,9 +13,14 @@ This is the active working repo for the full bench-supply platform, not just a s
 - USB hub board files and next-iter reference cleanup
 - bring-up notes, pin maps, and display evaluation references
 
-## Current direction (2026-04-15)
+## Current direction (2026-06-16)
 
 The project has shifted to a bring-up-first path.
+
+**Recent progress:**
+- Completed design simplification: migrated from adjustable 3-channel architecture to single +5V_Boot rail
+- Connector contract verification passing (10 signal mappings validated across regulator↔HAT interface)
+- Both RegulatorRevB and HAT-RevB boards electrically verified and ready for order prep
 
 Current plan:
 1. Use the hardware already built as the learning and validation baseline
@@ -29,10 +34,25 @@ Current plan:
 ## Hardware scope in this repo
 
 - External supply 12V feeds the regulator and HAT control stack
-- Regulator board generates the main rails
+- Regulator board generates the main rails (+5V, +3.3V primary; +12V intermediate)
 - HAT board handles measurement, feedback, and control behavior
 - Front-panel display path is now treated as a system integration problem, not a redesign-first task
 - USB hub files are retained as reference and redesign starting point where needed
+
+## Hardware board status
+
+**DSP-Regulator-RevB:** Ready for order
+- ERC: 0 electrical errors (8 library warnings, non-critical)
+- Connector contract: Verified against HAT-RevB (all 10 required signal mappings present)
+- Latest netlist export: 2026-06-11 01:43:33
+
+**DSP-Regulator-HAT-RevB:** Ready for order
+- ERC: Clean (0 errors, 0 warnings)
+- Connector contract: Verified with Regulator-RevB (all 10 required signal mappings present)
+- Latest netlist export: 2026-06-11 01:10:51
+- Design: Single +5V_Boot rail (simplified from adjustable 3-channel architecture)
+
+Next steps: DRC validation, gerber/drill file generation, finalize order placement
 
 ## Firmware status
 
@@ -46,10 +66,12 @@ Current firmware work in this repo includes:
 
 ## Current bench priorities
 
-- safe first power-up and validation of the built boards
-- confirm regulator and HAT behavior on the bench
-- resume front-panel display bring-up
-- map the existing front-panel connector to the smart-display interface as needed
+- Complete DRC checks and generate fabrication outputs for RegulatorRevB and HAT-RevB
+- Place orders for both boards
+- Safe first power-up and validation of the new boards
+- Confirm regulator and HAT behavior on the bench
+- Resume front-panel display bring-up
+- Map the existing front-panel connector to the smart-display interface as needed
 
 ## Useful project references
 

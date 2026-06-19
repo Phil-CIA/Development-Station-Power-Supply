@@ -1,32 +1,21 @@
-# Development Station Quick Handoff (2026-05-25)
+# Development Station Quick Handoff (2026-06-19)
 
-- Session intentionally stopped by user request for a fresh restart in a new chat.
-- Active scope at stop: Rev-B HAT U9 migration stabilization only.
-- Main source of truth: HANDOFF.md
+- Session closed by user request for handoff + commit.
+- Current source of truth: HANDOFF.md
+- Current mission: review all PCB changes and determine must-fix vs acceptable vs defer before order.
 
 What changed in this stop window:
-- Updated Rev-B U9-adjacent label semantics:
-  - TXD -> UART1_TX
-  - RXD -> UART1_RX
-  - GPIO8/BOOT -> BOOT0
-  - GPIO9/BOOT -> BOOT1
-- Added debug/program access support on HAT Rev-B schematic:
-  - Labels: SWDIO, SWDCLK, NRST
-  - Test points: TP_UART1_TX, TP_UART1_RX, TP_SWDIO, TP_SWDCLK, TP_NRST, TP_BOOT0
-- Updated docs/STM32_BLUEPILL_PIN_TABLE.md validation log.
-- File diagnostics are clean on edited files.
-
-Important open risk:
-- U9 symbol migration pin metadata and actual connected net ownership are not yet fully reconciled.
-- Do not finalize BOOT0 default strap or reset RC behavior until pin-by-pin reconciliation is complete.
-
-Known command status:
-- Strict baseline connector check currently exits 1 (expected in strict mode for this repo state).
+- Connector contract script updated to current board mapping and reduced active signal set.
+- Contract checks now pass in both reduced and baseline modes.
+- ERC status confirmed:
+  - HAT Rev-B: 0 errors, 0 warnings
+  - Regulator Rev-B: 0 errors, 8 library warnings
+- Root README updated to reflect simplified architecture and order-prep status.
 
 Next session first move:
-1. Read HANDOFF.md and NEW_CHAT_HANDOFF.rmd.
-2. Reconcile U9 pin-by-pin ownership in DSP-Regulator-HAT-RevB.kicad_sch.
-3. Then finalize BOOT0 default-low and NRST deterministic network.
+1. Read HANDOFF.md.
+2. Run DRC on both Rev-B boards.
+3. Build a disposition list: must-fix / acceptable / defer.
 
 Paste prompt:
-Continue Rev-B HAT U9 migration closure from HANDOFF.md and NEW_CHAT_HANDOFF.rmd. First perform explicit U9 pin-by-pin reconciliation in DSP-Regulator-HAT-RevB.kicad_sch, then implement final BOOT0 default strap and NRST reset network, then re-export netlist and run verification checks. Keep scope strictly on migration closure.
+Continue from HANDOFF.md. Run DRC on HAT Rev-B and Regulator Rev-B, review all recent PCB edits, and classify issues into must-fix, acceptable, and defer before generating fabrication outputs.

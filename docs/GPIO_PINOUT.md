@@ -81,6 +81,37 @@ This section is the current hardware migration target for the HAT MCU path. It i
 Detailed learning/tracking table:
 - `docs/STM32_BLUEPILL_PIN_TABLE.md`
 
+### USB Hub Debug Bridge Handoff (2026-06-09 Draft)
+
+Current `usb-hub-next-iter` integration adds a bridge handoff connector for STM32 programming path.
+
+| Connector | Pin | Net | Function |
+|---|---:|---|---|
+| J11 (`STM32_SWD_BRIDGE_OUT`) | 1 | 3v3 (VTref sense) | Target voltage reference |
+| J11 (`STM32_SWD_BRIDGE_OUT`) | 2 | SWDIO path via R27 (33Ω) | SWD data |
+| J11 (`STM32_SWD_BRIDGE_OUT`) | 3 | SWDCLK path via R28 (33Ω) | SWD clock |
+| J11 (`STM32_SWD_BRIDGE_OUT`) | 4 | NRST_BRIDGE_OUT | Target reset |
+| J11 (`STM32_SWD_BRIDGE_OUT`) | 5 | GND | SWD reference ground |
+
+Notes:
+1. Port 2 USB downstream data channel is now consumed internally for this debug-bridge path.
+2. CH340C telemetry path remains independent and unchanged on the HAT side.
+
+Required STM32-side destination mapping (what these bridge labels must connect to):
+
+| Bridge net from hub board | Connect to on STM32 side | STM32 pin/function |
+|---|---|---|
+| `SWDIO_BRIDGE_OUT` | SWDIO net on target debug header/path | PA13 (SWDIO) |
+| `SWDCLK_BRIDGE_OUT` | SWCLK net on target debug header/path | PA14 (SWCLK) |
+| `NRST_BRIDGE_OUT` | Target reset net | NRST |
+| `VTREF_BRIDGE_IN` | Target logic rail reference | 3V3 target rail |
+| `SWD_GND_REF` | Target debug ground reference | GND |
+
+Implementation policy for this cycle:
+1. Treat remaining dangling-label ERC warnings on hub schematic as acceptable until final inter-board tie-in is represented.
+2. Do not rename these nets; keep names stable across hub/HAT docs and wiring.
+3. Prioritize physical routing and connector contract correctness over cosmetic ERC cleanup.
+
 ### Target posture
 - First candidate: STM32F103C8T6 "Blue Pill"
 - If the pin budget or debug path fails, escalate to a larger STM32 family

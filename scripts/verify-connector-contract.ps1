@@ -128,26 +128,22 @@ $reg = Read-Text -Path $RegulatorNetlist
 $hat = Read-Text -Path $HatNetlist
 
 $requiredMappings = @(
-    @{ Net = "VSENSE_5V+"; RegRef = "J1"; RegPin = "3"; HatRef = "J4"; HatPin = "3" },
-    @{ Net = "VSENSE_5V-"; RegRef = "J1"; RegPin = "2"; HatRef = "J4"; HatPin = "2" },
-    @{ Net = "VSENSE_3V3+"; RegRef = "J1"; RegPin = "15"; HatRef = "J4"; HatPin = "15" },
-    @{ Net = "VSENSE_3V3-"; RegRef = "J1"; RegPin = "14"; HatRef = "J4"; HatPin = "14" },
-    @{ Net = "VSENSE_ADJ+"; RegRef = "J2"; RegPin = "12"; HatRef = "J6"; HatPin = "12" },
-    @{ Net = "VSENSE_ADJ-"; RegRef = "J2"; RegPin = "11"; HatRef = "J6"; HatPin = "11" },
-    @{ Net = "ISET_MPU_5V"; RegRef = "J1"; RegPin = "5"; HatRef = "J4"; HatPin = "5" },
-    @{ Net = "ISET_MPU_3V3"; RegRef = "J1"; RegPin = "10"; HatRef = "J4"; HatPin = "10" },
-    @{ Net = "ISET_MPU_Channel_3"; RegRef = "J2"; RegPin = "5"; HatRef = "J6"; HatPin = "5" },
-    @{ Net = "+5V_reg"; RegRef = "J1"; RegPin = "6"; HatRef = "J4"; HatPin = "6" },
-    @{ Net = "+3.3V_Reg"; RegRef = "J1"; RegPin = "11"; HatRef = "J4"; HatPin = "11" },
-    @{ Net = "+V Adj Channel"; RegRef = "J2"; RegPin = "13"; HatRef = "J6"; HatPin = "13" },
-    @{ Net = "+12V"; RegRef = "J2"; RegPin = "8"; HatRef = "J6"; HatPin = "10" },
-    @{ Net = "FAULT_CRITICAL_SUM"; RegRef = "J2"; RegPin = "3"; HatRef = "J6"; HatPin = "3" }
+    @{ Net = "VSENSE_5V+"; RegRef = "J1"; RegPin = "3"; HatRef = "J1"; HatPin = "3" },
+    @{ Net = "VSENSE_5V-"; RegRef = "J1"; RegPin = "2"; HatRef = "J1"; HatPin = "2" },
+    @{ Net = "VSENSE_3V3+"; RegRef = "J1"; RegPin = "15"; HatRef = "J1"; HatPin = "15" },
+    @{ Net = "VSENSE_3V3-"; RegRef = "J1"; RegPin = "14"; HatRef = "J1"; HatPin = "14" },
+    @{ Net = "ISET_MPU_5V"; RegRef = "J1"; RegPin = "5"; HatRef = "J1"; HatPin = "5" },
+    @{ Net = "ISET_MPU_3V3"; RegRef = "J1"; RegPin = "10"; HatRef = "J1"; HatPin = "10" },
+    @{ Net = "+5V_reg"; RegRef = "J1"; RegPin = "6"; HatRef = "J1"; HatPin = "6" },
+    @{ Net = "+3.3V_Reg"; RegRef = "J1"; RegPin = "11"; HatRef = "J1"; HatPin = "11" },
+    @{ Net = "+12V"; RegRef = "J2"; RegPin = "8"; HatRef = "J2"; HatPin = "10" },
+    @{ Net = "FAULT_CRITICAL_SUM"; RegRef = "J2"; RegPin = "3"; HatRef = "J2"; HatPin = "3" }
 )
 
 $feedbackMappings = @(
-    @{ Net = "Feedback 5V"; RegRef = "J1"; RegPin = "4"; HatRef = "J4"; HatPin = "4"; BaselineHatOptional = $false },
-    @{ Net = "Feedback 3.3"; RegRef = "J1"; RegPin = "9"; HatRef = "J4"; HatPin = "9"; BaselineHatOptional = $true },
-    @{ Net = "Feedback Adj Channel"; RegRef = "J2"; RegPin = "4"; HatRef = "J6"; HatPin = "4"; BaselineHatOptional = $false }
+    @{ Net = "Feedback 5V"; RegRef = "J1"; RegPin = "4"; HatRef = "J1"; HatPin = "4"; BaselineHatOptional = $false },
+    @{ Net = "Feedback 3.3"; RegRef = "J1"; RegPin = "9"; HatRef = "J1"; HatPin = "9"; BaselineHatOptional = $true },
+    @{ Net = "Feedback Adj Channel"; RegRef = "J2"; RegPin = "4"; HatRef = "J2"; HatPin = "4"; BaselineHatOptional = $false }
 )
 
 $checks = New-Object System.Collections.Generic.List[Object]

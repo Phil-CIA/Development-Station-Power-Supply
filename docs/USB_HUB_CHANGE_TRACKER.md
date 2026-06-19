@@ -5,6 +5,47 @@
 
 ---
 
+## Redesign Kickoff (2026-06-09): USB Hub + STM32 Programming Integration
+
+Direction update:
+- Project has moved to STM32 control, and USB functionality/flash workflow must be recovered without losing the hub board value proposition.
+- Active redesign baseline remains `hardware/kicad/usb-hub-next-iter`.
+
+Locked decisions for this redesign pass:
+1. Add onboard USB-to-SWD bridge capability for STM32 programming/debug.
+2. Keep external connector mechanics/roles stable where possible.
+3. Accept one existing flashing/data port budget being consumed by the onboard bridge path.
+4. Keep CH340C telemetry path on HAT independent from SWD programming path.
+
+### SCH-USBSTM32-001 — Integrate onboard USB-to-SWD bridge using one downstream hub path
+**Status:** 🟡 In progress  
+**Severity:** High (architecture/functionality recovery)  
+**Found by:** Redesign planning pivot (STM32 migration + USB/OTA workflow gap)  
+**Description:** Existing hub assumptions were ESP32-centric. With STM32 now primary, the hub redesign must provide a reliable internal programming path while preserving external USB utility.  
+**Required result:**
+1. One selected downstream USB data path is reassigned to an internal USB-to-SWD bridge.
+2. SWDIO/SWDCLK/NRST/GND/VTref contract is exported to STM32 side without breaking existing validated connector contracts.
+3. External port role update is documented explicitly (which flashing/data port is now internalized).
+4. Power-only ports (J4/J6 intent) remain unchanged unless explicitly re-scoped.
+5. ERC/DRC/netlist checks pass after integration.
+
+**Progress (2026-06-09):**
+1. Bridge electrical contract draft added to redesign prep doc (USB-side, SWD-side, and freeze gates).
+2. Provisional downstream reassignment selected: consume `Port 2_D+/-` for internal bridge path (with fallback to `Port 1_D+/-` if validation fails).
+3. Implementation draft now includes explicit current-path and target-path remap steps for schematic editing kickoff.
+4. Pack 2 schematic integration completed in `usb-hub-next-iter`:
+	- `J11` added (`STM32_SWD_BRIDGE_OUT`)
+	- `R27`/`R28` added as 33Ω SWD series resistors
+	- Hub channel remapped from `Port 2_D+/-` to `USB_BRIDGE_DP/DM`
+5. ERC is now warning-only for bridge integration path; remaining warnings are predominantly known library noise plus label hygiene cleanup.
+
+**Next Actions (implementation):**
+1. Hold USB PCB placement/routing work until regulator and HAT order-readiness gates are closed.
+2. Keep J11 bridge pin-to-net contract frozen and unchanged during the hold.
+3. Resume with post-placement ERC/DRC gate once the hold is lifted.
+
+---
+
 ## Status Legend
 | Symbol | Meaning |
 |--------|---------|
