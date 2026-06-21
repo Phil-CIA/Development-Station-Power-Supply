@@ -6,6 +6,28 @@ Previous handoff: [HANDOFF_2026-06-01.md](HANDOFF_2026-06-01.md)
 
 Session status: active for STM32 breadboard bring-up and CrowPanel bench validation.
 
+## Session Closeout - 2026-06-21
+
+Rev-B fabrication review is effectively complete for PCB/layout gates. HAT Rev-B DRC is clean after the U10 footprint fix, and the remaining Regulator Rev-B DRC items are cosmetic silk warnings only. The next required step before gerber generation is a Regulator board BOM review.
+
+## Current Objective At Stop
+
+Close out the Rev-B order-prep loop with a regulator BOM check, then generate fabrication outputs if the BOM is acceptable.
+
+## Verified State At Stop
+
+- HAT Rev-B DRC: 0 violations, 0 unconnected pads, 0 footprint errors
+- HAT Rev-B ERC: 0 errors, 5 warnings (AHT20/easyeda2kicad library noise only)
+- Regulator Rev-B DRC: 2 warnings, 0 unconnected pads, 0 footprint errors
+- Connector contract: `verify-connector-contract.ps1` passes in both `reduced` and `baseline` modes
+
+## Next Session Priority Order
+
+1. Review the Regulator Rev-B BOM before gerber generation.
+2. If BOM is acceptable, generate fabrication outputs for both Rev-B boards.
+3. Record output artifact paths and close the order-prep handoff.
+4. Keep KERC-04, RB-007, and J21 power-budget items deferred as documented.
+
 ## Session Closeout - 2026-06-19
 
 Session closed by user request for handoff + commit. Connector contract gates are now passing and the repo is at PCB review / order-prep staging.

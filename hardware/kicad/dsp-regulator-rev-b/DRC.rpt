@@ -1,0 +1,16 @@
+** Drc report for DSP-Regulator-RevB.kicad_pcb **
+** Created on 2026-06-19T02:16:21-0500 **
+
+** Found 2 DRC violations **
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(140.5700 mm, 104.3400 mm): Rectangle on F.Silkscreen
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(194.4300 mm, 104.4800 mm): Rectangle on F.Silkscreen
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** End of Report **

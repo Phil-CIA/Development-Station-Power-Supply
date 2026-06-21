@@ -663,7 +663,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "../../../../../OneDrive/JLCPCB files/Development station supply/Regulator Hat/REV B/KiCad Files/",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "",
@@ -729,7 +729,7 @@
           "group_by": true,
           "label": "Footprint",
           "name": "Footprint",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,
@@ -873,7 +873,7 @@
           "group_by": false,
           "label": "MANUFACTURER",
           "name": "MANUFACTURER",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,
@@ -885,7 +885,7 @@
           "group_by": false,
           "label": "MP",
           "name": "MP",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,

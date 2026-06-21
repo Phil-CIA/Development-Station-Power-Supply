@@ -1,5 +1,36 @@
 # Development Station New Chat Handoff
 
+## Session Closeout - 2026-06-21
+
+Project: Development Station Power Supply
+Phase: Rev-B PCB review and order-prep gate
+
+## Current Objective
+
+Finish the Rev-B release handoff by checking the Regulator board BOM, then generate fabrication outputs if the BOM is acceptable.
+
+## Why This Session Was Stopped
+
+HAT Rev-B was cleaned up and now has a zero-violation DRC state after the U10 footprint fix. Regulator Rev-B still has only cosmetic DRC warnings, but the BOM on the regulator board must be checked before gerber generation.
+
+## Verified State At Stop
+
+- HAT Rev-B DRC: 0 violations, 0 unconnected pads, 0 footprint errors
+- HAT Rev-B ERC: 0 errors, 5 warnings (AHT20/easyeda2kicad library noise only)
+- Regulator Rev-B DRC: 2 warnings, 0 unconnected pads, 0 footprint errors
+- Connector contract: PASS in both reduced and baseline modes
+
+## Next Session Actions (In Order)
+
+1. Review the Regulator Rev-B BOM before any gerber generation.
+2. If BOM is acceptable, generate fabrication outputs for both Rev-B boards.
+3. Record artifact paths and timestamps in handoff notes.
+4. Keep KERC-04, RB-007, and J21 display power budget deferred for post-order follow-up.
+
+## First Action Next Session
+
+Read `HANDOFF.md`, then review the Regulator Rev-B BOM before generating fabrication outputs.
+
 Date: 2026-06-19
 Project: Development Station Power Supply
 Phase: Rev-B PCB review and order-prep gate

@@ -1,15 +1,12 @@
-ERC report (2026-06-11T01:43:07-0500, Encoding UTF8)
+ERC report (2026-06-19T02:15:23-0500, Encoding UTF8)
 
 ***** Sheet /
+[power_pin_not_driven]: Input Power pin not driven by any Output Power pins
+    ; error
+    @(154.94 mm, 53.34 mm): Symbol U4 Pin 1 [VIN, Power input, Line]
 [lib_symbol_mismatch]: Symbol 'LM2596S-ADJ' doesn't match copy in library 'Regulator_Switching'
     ; warning
     @(168.91 mm, 129.54 mm): Symbol U3 [LM2596S-ADJ]
-[lib_symbol_mismatch]: Symbol 'MountingHole_Pad' doesn't match copy in library 'Mechanical'
-    ; warning
-    @(54.61 mm, 226.06 mm): Symbol H1 [MountingHole_Pad]
-[lib_symbol_mismatch]: Symbol 'MountingHole_Pad' doesn't match copy in library 'Mechanical'
-    ; warning
-    @(49.53 mm, 233.68 mm): Symbol H3 [MountingHole_Pad]
 [lib_symbol_mismatch]: Symbol 'LMV358IDR' doesn't match copy in library 'dk_Linear-Amplifiers-Instrumentation-OP-Amps-Buffer-Amps'
     ; warning
     @(245.11 mm, 107.95 mm): Symbol U6 [LMV358IDR]
@@ -26,4 +23,4 @@ ERC report (2026-06-11T01:43:07-0500, Encoding UTF8)
     ; warning
     @(237.49 mm, 228.60 mm): Symbol U2 [LM2596S-ADJ]
 
- ** ERC messages: 8  Errors 0  Warnings 8
+ ** ERC messages: 7  Errors 1  Warnings 6
