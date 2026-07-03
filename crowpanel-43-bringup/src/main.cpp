@@ -27,6 +27,7 @@ constexpr bool    kMinimalUiLabelsOnly = false;
 constexpr uint8_t kChartDecimation = 2;
 constexpr uint16_t kVoltageUpdateDeadband_mV = 5;
 constexpr int16_t  kCurrentUpdateDeadband_mA = 2;
+constexpr int16_t  kOutputOnThreshold_mA = 50;
 constexpr uint32_t kValueKeepaliveMs = 0;
 constexpr uint32_t kSplashDurationMs = 1800;
 constexpr uint32_t kDemoFrameMs = 50;
@@ -73,7 +74,6 @@ static lv_obj_t* screen_main = nullptr;
 static lv_obj_t* screen_graph = nullptr;
 static lv_obj_t* screen_settings = nullptr;
 
-// Setup screen controls (encoder-based parameter editing)
 static lv_obj_t* lbl_setup_title = nullptr;
 static lv_obj_t* lbl_setup_param = nullptr;
 static lv_obj_t* lbl_setup_value = nullptr;
@@ -84,8 +84,10 @@ static bool setup_done = false;
 // Main screen (dual-channel layout)
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;
 static lv_obj_t* lbl_main_ch1_current = nullptr;
+static lv_obj_t* lbl_main_ch1_power = nullptr;
 static lv_obj_t* lbl_main_ch2_voltage = nullptr;
 static lv_obj_t* lbl_main_ch2_current = nullptr;
+static lv_obj_t* lbl_main_ch2_power = nullptr;
 static lv_obj_t* lbl_main_stats = nullptr;
 static lv_obj_t* bar_main_ch1_voltage = nullptr;
 static lv_obj_t* bar_main_ch1_current = nullptr;
@@ -103,6 +105,7 @@ static lv_obj_t* lbl_status_link = nullptr;
 static lv_obj_t* lbl_status_seq = nullptr;
 static lv_obj_t* lbl_status_mode = nullptr;
 static lv_obj_t* lbl_status_uptime = nullptr;
+static lv_obj_t* lbl_status_output = nullptr;
 static lv_obj_t* lbl_splash_hint = nullptr;
 static lv_obj_t* lbl_fault_main = nullptr;
 static lv_obj_t* lbl_fault_graph = nullptr;
@@ -144,11 +147,13 @@ static bool     have_drawn_values = false;
 static uint32_t last_value_draw_ms = 0;
 static char     last_voltage_text[32] = "";
 static char     last_current_text[32] = "";
+static char     last_ch2_voltage_text[32] = "";
+static char     last_ch2_current_text[32] = "";
 static size_t   last_drawn_samples = static_cast<size_t>(-1);
 static uint16_t chart_write_idx = 0;
 static uint32_t last_detail_ui_update_ms = 0;
-static bool demo_mode = true;
-static bool demo_tour = true;
+static bool demo_mode = false;
+static bool demo_tour = false;
 static uint32_t demo_start_ms = 0;
 static uint32_t demo_last_tour_switch_ms = 0;
 
@@ -160,6 +165,12 @@ struct DisplayTelemetry {
   uint8_t last_seq;
   uint16_t last_v12_mV;
   int16_t last_i12_mA;
+  uint16_t last_v3v3_mV;
+  int16_t last_i3v3_mA;
+  uint8_t last_temp_C;
+  uint8_t status;
+  uint8_t protection_flags;
+  bool has_extended;
   uint32_t last_rx_ms;
 };
 
@@ -289,6 +300,12 @@ DisplayTelemetry get_display_telemetry() {
     raw.last_seq,
     raw.last_v12_mV,
     raw.last_i12_mA,
+    raw.last_v3v3_mV,
+    raw.last_i3v3_mA,
+    raw.last_temp_C,
+    raw.status,
+    raw.protection_flags,
+    raw.has_extended,
     raw.last_rx_ms,
   };
 
@@ -306,6 +323,12 @@ DisplayTelemetry get_display_telemetry() {
   out.last_seq = static_cast<uint8_t>((now_ms - demo_start_ms) / 200);
   out.last_v12_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(v), 9000, 15000));
   out.last_i12_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(i), -500, 3000));
+  out.last_v3v3_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(3300.0f + 90.0f * sinf(t * 1.7f)), 3000, 3600));
+  out.last_i3v3_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(420.0f + 130.0f * sinf(t * 1.9f + 0.6f)), -100, 2000));
+  out.last_temp_C = static_cast<uint8_t>(clamp_i32(static_cast<int32_t>(31.0f + 5.0f * sinf(t * 0.22f)), 20, 95));
+  out.status = 0xF0;  // CH1/CH2 enabled + CH1/CH2 in CV mode
+  out.protection_flags = 0x00;
+  out.has_extended = true;
   out.last_rx_ms = now_ms;
   return out;
 }
@@ -679,7 +702,7 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(status, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lv_obj_t* mode = lv_label_create(status);
-  lv_label_set_text(mode, "LIVE OUTPUT 12V BUS");
+  lv_label_set_text(mode, "DUAL RAIL LIVE");
   lv_obj_set_style_text_color(mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(mode, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(mode, LV_ALIGN_LEFT_MID, 14, 0);
@@ -716,11 +739,11 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(badge, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(badge, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
-  lv_obj_t* badge_lbl = lv_label_create(badge);
-  lv_label_set_text(badge_lbl, "OUTPUT ON");
-  lv_obj_set_style_text_color(badge_lbl, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
-  lv_obj_set_style_text_font(badge_lbl, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_center(badge_lbl);
+  lbl_status_output = lv_label_create(badge);
+  lv_label_set_text(lbl_status_output, "OUTPUT --");
+  lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_status_output, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_center(lbl_status_output);
 
   create_nav_btn(status, "Graphs", UiScreen::Graph, -10);
 
@@ -733,13 +756,13 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(panel_v, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lv_obj_t* hdr_v = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v, "INPUT VOLTAGE");
+  lv_label_set_text(hdr_v, "CH1  +5V RAIL");
   lv_obj_set_style_text_color(hdr_v, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hdr_v, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_v, LV_ALIGN_TOP_LEFT, 18, 16);
 
   lv_obj_t* hdr_v_set = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v_set, "SET 12.00V");
+  lv_label_set_text(hdr_v_set, "SET 5.00V");
   lv_obj_set_style_text_color(hdr_v_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hdr_v_set, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hdr_v_set, LV_ALIGN_TOP_RIGHT, -16, 18);
@@ -751,6 +774,18 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_width(lbl_main_ch1_voltage, 330);
   lv_obj_set_style_text_align(lbl_main_ch1_voltage, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
   lv_obj_align(lbl_main_ch1_voltage, LV_ALIGN_TOP_LEFT, 18, 58);
+
+  lbl_main_ch1_current = lv_label_create(panel_v);
+  lv_label_set_text(lbl_main_ch1_current, "I --.--- A");
+  lv_obj_set_style_text_color(lbl_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 22, 122);
+
+  lbl_main_ch1_power = lv_label_create(panel_v);
+  lv_label_set_text(lbl_main_ch1_power, "P --.-- W   T --C");
+  lv_obj_set_style_text_color(lbl_main_ch1_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_power, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_power, LV_ALIGN_TOP_LEFT, 22, 152);
 
   bar_main_ch1_voltage = lv_bar_create(panel_v);
   lv_obj_set_size(bar_main_ch1_voltage, 330, 20);
@@ -765,19 +800,19 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_INDICATOR);
 
   lv_obj_t* bar_v_lo = lv_label_create(panel_v);
-  lv_label_set_text(bar_v_lo, "9V");
+  lv_label_set_text(bar_v_lo, "4.5V");
   lv_obj_set_style_text_color(bar_v_lo, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_v_lo, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_v_lo, LV_ALIGN_BOTTOM_LEFT, 18, -2);
 
   lv_obj_t* bar_v_mid = lv_label_create(panel_v);
-  lv_label_set_text(bar_v_mid, "12V");
+  lv_label_set_text(bar_v_mid, "5.0V");
   lv_obj_set_style_text_color(bar_v_mid, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_v_mid, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_v_mid, LV_ALIGN_BOTTOM_MID, 0, -2);
 
   lv_obj_t* bar_v_hi = lv_label_create(panel_v);
-  lv_label_set_text(bar_v_hi, "15V");
+  lv_label_set_text(bar_v_hi, "5.5V");
   lv_obj_set_style_text_color(bar_v_hi, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_v_hi, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_v_hi, LV_ALIGN_BOTTOM_RIGHT, -18, -2);
@@ -791,51 +826,63 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(panel_i, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lv_obj_t* hdr_i = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i, "INPUT CURRENT");
+  lv_label_set_text(hdr_i, "CH2  +3.3V RAIL");
   lv_obj_set_style_text_color(hdr_i, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hdr_i, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_i, LV_ALIGN_TOP_LEFT, 18, 16);
 
   lv_obj_t* hdr_i_set = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i_set, "LIM 2.000A");
+  lv_label_set_text(hdr_i_set, "SET 3.30V");
   lv_obj_set_style_text_color(hdr_i_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hdr_i_set, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hdr_i_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
-  lbl_main_ch1_current = lv_label_create(panel_i);
-  lv_label_set_text(lbl_main_ch1_current, "--.--- A");
-  lv_obj_set_style_text_color(lbl_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_ch1_current, 330);
-  lv_obj_set_style_text_align(lbl_main_ch1_current, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 18, 58);
+  lbl_main_ch2_voltage = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch2_voltage, "--.-- V");
+  lv_obj_set_style_text_color(lbl_main_ch2_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch2_voltage, &lv_font_montserrat_48, LV_PART_MAIN);
+  lv_obj_set_width(lbl_main_ch2_voltage, 330);
+  lv_obj_set_style_text_align(lbl_main_ch2_voltage, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_voltage, LV_ALIGN_TOP_LEFT, 18, 58);
 
-  bar_main_ch1_current = lv_bar_create(panel_i);
-  lv_obj_set_size(bar_main_ch1_current, 330, 20);
-  lv_obj_align(bar_main_ch1_current, LV_ALIGN_BOTTOM_LEFT, 18, -20);
-  lv_bar_set_range(bar_main_ch1_current, 0, 1000);
-  lv_bar_set_value(bar_main_ch1_current, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar_main_ch1_current, lv_color_hex(0x1A2735), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(bar_main_ch1_current, lv_color_hex(0x73C8FF), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(bar_main_ch1_current, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar_main_ch1_current, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar_main_ch1_current, 4, LV_PART_INDICATOR);
+  lbl_main_ch2_current = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch2_current, "I --.--- A");
+  lv_obj_set_style_text_color(lbl_main_ch2_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch2_current, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_current, LV_ALIGN_TOP_LEFT, 22, 122);
+
+  lbl_main_ch2_power = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch2_power, "P --.-- W");
+  lv_obj_set_style_text_color(lbl_main_ch2_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch2_power, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_power, LV_ALIGN_TOP_LEFT, 22, 152);
+
+  bar_main_ch2_voltage = lv_bar_create(panel_i);
+  lv_obj_set_size(bar_main_ch2_voltage, 330, 20);
+  lv_obj_align(bar_main_ch2_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -20);
+  lv_bar_set_range(bar_main_ch2_voltage, 0, 1000);
+  lv_bar_set_value(bar_main_ch2_voltage, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(bar_main_ch2_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar_main_ch2_voltage, lv_color_hex(UiTheme::kAccentI), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_color(bar_main_ch2_voltage, lv_color_hex(0x73C8FF), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_dir(bar_main_ch2_voltage, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_INDICATOR);
 
   lv_obj_t* bar_i_lo = lv_label_create(panel_i);
-  lv_label_set_text(bar_i_lo, "-0.5A");
+  lv_label_set_text(bar_i_lo, "3.0V");
   lv_obj_set_style_text_color(bar_i_lo, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_i_lo, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_i_lo, LV_ALIGN_BOTTOM_LEFT, 18, -2);
 
   lv_obj_t* bar_i_mid = lv_label_create(panel_i);
-  lv_label_set_text(bar_i_mid, "1.0A");
+  lv_label_set_text(bar_i_mid, "3.3V");
   lv_obj_set_style_text_color(bar_i_mid, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_i_mid, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_i_mid, LV_ALIGN_BOTTOM_MID, 0, -2);
 
   lv_obj_t* bar_i_hi = lv_label_create(panel_i);
-  lv_label_set_text(bar_i_hi, "3.0A");
+  lv_label_set_text(bar_i_hi, "3.6V");
   lv_obj_set_style_text_color(bar_i_hi, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(bar_i_hi, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(bar_i_hi, LV_ALIGN_BOTTOM_RIGHT, -18, -2);
@@ -849,7 +896,7 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(panel_meta, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lv_obj_t* panel_meta_hdr = lv_label_create(panel_meta);
-  lv_label_set_text(panel_meta_hdr, "SYSTEM SNAPSHOT");
+  lv_label_set_text(panel_meta_hdr, "SYSTEM / STATS");
   lv_obj_set_style_text_color(panel_meta_hdr, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(panel_meta_hdr, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(panel_meta_hdr, LV_ALIGN_TOP_LEFT, 16, 16);
@@ -875,7 +922,7 @@ void create_main_screen(lv_obj_t* root) {
   chip_main_run = create_state_chip(chip_col, "RUN", 0x1F3A27, UiTheme::kAccentOk, 156);
 
   lv_obj_t* footer = lv_label_create(panel_meta);
-  lv_label_set_text(footer, "Read-only visual mode");
+  lv_label_set_text(footer, "Phase 5 live telemetry");
   lv_obj_set_style_text_color(footer, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
   lv_obj_set_style_text_font(footer, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 16, -16);
@@ -928,23 +975,23 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(card, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_graph_voltage = lv_label_create(card);
-  lv_label_set_text(lbl_graph_voltage, "V --.--");
+  lv_label_set_text(lbl_graph_voltage, "CH1 --.--V / --.---A");
   lv_obj_set_style_text_color(lbl_graph_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_graph_voltage, &lv_font_montserrat_28, LV_PART_MAIN);
-  lv_obj_set_width(lbl_graph_voltage, 210);
+  lv_obj_set_style_text_font(lbl_graph_voltage, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_width(lbl_graph_voltage, 320);
   lv_obj_set_style_text_align(lbl_graph_voltage, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
   lv_obj_align(lbl_graph_voltage, LV_ALIGN_LEFT_MID, 20, 0);
 
   lbl_graph_current = lv_label_create(card);
-  lv_label_set_text(lbl_graph_current, "I --.---");
+  lv_label_set_text(lbl_graph_current, "CH2 --.--V / --.---A");
   lv_obj_set_style_text_color(lbl_graph_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_graph_current, &lv_font_montserrat_28, LV_PART_MAIN);
-  lv_obj_set_width(lbl_graph_current, 210);
+  lv_obj_set_style_text_font(lbl_graph_current, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_width(lbl_graph_current, 320);
   lv_obj_set_style_text_align(lbl_graph_current, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-  lv_obj_align(lbl_graph_current, LV_ALIGN_LEFT_MID, 260, 0);
+  lv_obj_align(lbl_graph_current, LV_ALIGN_LEFT_MID, 360, 0);
 
   lbl_graph_stats = lv_label_create(card);
-  lv_label_set_text(lbl_graph_stats, "samples=0");
+  lv_label_set_text(lbl_graph_stats, "samples=0 T=--C");
   lv_obj_set_style_text_color(lbl_graph_stats, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_graph_stats, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(lbl_graph_stats, LV_ALIGN_RIGHT_MID, -20, 0);
@@ -1087,7 +1134,9 @@ void update_telemetry_labels() {
       if (lbl_main_ch1_voltage) lv_label_set_text(lbl_main_ch1_voltage, vbuf);
       if (lbl_graph_voltage) {
         char v_graph[32];
-        snprintf(v_graph, sizeof(v_graph), "V %s", vbuf);
+        snprintf(v_graph, sizeof(v_graph), "CH1 %05.2fV / %05.3fA",
+                 t.last_v12_mV / 1000.0f,
+                 t.last_i12_mA / 1000.0f);
         lv_label_set_text(lbl_graph_voltage, v_graph);
       }
       strncpy(last_voltage_text, vbuf, sizeof(last_voltage_text) - 1);
@@ -1097,14 +1146,54 @@ void update_telemetry_labels() {
     char ibuf[32];
     snprintf(ibuf, sizeof(ibuf), "%06.3f A", t.last_i12_mA / 1000.0f);
     if (strcmp(ibuf, last_current_text) != 0) {
-      if (lbl_main_ch1_current) lv_label_set_text(lbl_main_ch1_current, ibuf);
+      if (lbl_main_ch1_current) {
+        char i_main[32];
+        snprintf(i_main, sizeof(i_main), "I %s", ibuf);
+        lv_label_set_text(lbl_main_ch1_current, i_main);
+      }
       if (lbl_graph_current) {
-        char i_graph[32];
-        snprintf(i_graph, sizeof(i_graph), "I %s", ibuf);
+        char i_graph[40];
+        snprintf(i_graph, sizeof(i_graph), "CH2 %05.2fV / %05.3fA",
+                 t.last_v3v3_mV / 1000.0f,
+                 t.last_i3v3_mA / 1000.0f);
         lv_label_set_text(lbl_graph_current, i_graph);
       }
       strncpy(last_current_text, ibuf, sizeof(last_current_text) - 1);
       last_current_text[sizeof(last_current_text) - 1] = '\0';
+    }
+
+    char v3buf[32];
+    snprintf(v3buf, sizeof(v3buf), "%06.2f V", t.last_v3v3_mV / 1000.0f);
+    if (strcmp(v3buf, last_ch2_voltage_text) != 0) {
+      if (lbl_main_ch2_voltage) lv_label_set_text(lbl_main_ch2_voltage, v3buf);
+      strncpy(last_ch2_voltage_text, v3buf, sizeof(last_ch2_voltage_text) - 1);
+      last_ch2_voltage_text[sizeof(last_ch2_voltage_text) - 1] = '\0';
+    }
+
+    char i3buf[32];
+    snprintf(i3buf, sizeof(i3buf), "%06.3f A", t.last_i3v3_mA / 1000.0f);
+    if (strcmp(i3buf, last_ch2_current_text) != 0) {
+      if (lbl_main_ch2_current) {
+        char i3_main[32];
+        snprintf(i3_main, sizeof(i3_main), "I %s", i3buf);
+        lv_label_set_text(lbl_main_ch2_current, i3_main);
+      }
+      strncpy(last_ch2_current_text, i3buf, sizeof(last_ch2_current_text) - 1);
+      last_ch2_current_text[sizeof(last_ch2_current_text) - 1] = '\0';
+    }
+
+    if (lbl_main_ch1_power) {
+      char p1buf[48];
+      snprintf(p1buf, sizeof(p1buf), "P %05.2f W   T %uC",
+               (t.last_v12_mV / 1000.0f) * (t.last_i12_mA / 1000.0f),
+               static_cast<unsigned>(t.last_temp_C));
+      lv_label_set_text(lbl_main_ch1_power, p1buf);
+    }
+    if (lbl_main_ch2_power) {
+      char p2buf[48];
+      snprintf(p2buf, sizeof(p2buf), "P %05.2f W",
+               (t.last_v3v3_mV / 1000.0f) * (t.last_i3v3_mA / 1000.0f));
+      lv_label_set_text(lbl_main_ch2_power, p2buf);
     }
   last_v12_drawn_mV = t.last_v12_mV;
   last_i12_drawn_mA = t.last_i12_mA;
@@ -1116,29 +1205,24 @@ void update_telemetry_labels() {
   if (now_ms - last_detail_ui_update_ms < kDetailUiUpdateMinMs) return;
   last_detail_ui_update_ms = now_ms;
 
-  char sbuf[112];
-  snprintf(sbuf, sizeof(sbuf), "rx=%lu err=%lu uart=%lu bytes=%lu",
+  char sbuf[144];
+  snprintf(sbuf, sizeof(sbuf), "rx=%lu err=%lu uart=%lu bytes=%lu ch2=%.3fV %.3fA T=%uC",
            static_cast<unsigned long>(t.rx_count),
            static_cast<unsigned long>(t.err_count),
            static_cast<unsigned long>(t.i2c_rx_count),
-           static_cast<unsigned long>(t.uart_bytes));
+           static_cast<unsigned long>(t.uart_bytes),
+           t.last_v3v3_mV / 1000.0f,
+           t.last_i3v3_mA / 1000.0f,
+           static_cast<unsigned>(t.last_temp_C));
   if (lbl_main_stats) lv_label_set_text(lbl_main_stats, sbuf);
-  
-  // Update dual-channel display (using legacy single-channel telemetry for now)
-  if (lbl_main_ch1_voltage && lbl_main_ch1_current) {
-    char buf_v[32], buf_i[32];
-    snprintf(buf_v, sizeof(buf_v), "%.2f V", t.last_v12_mV / 1000.0f);
-    snprintf(buf_i, sizeof(buf_i), "%.3f A", t.last_i12_mA / 1000.0f);
-    lv_label_set_text(lbl_main_ch1_voltage, buf_v);
-    lv_label_set_text(lbl_main_ch1_current, buf_i);
-  }
   
   if (lbl_graph_stats) {
     char gbuf[112];
-    snprintf(gbuf, sizeof(gbuf), "samples=%lu rx=%lu err=%lu",
+    snprintf(gbuf, sizeof(gbuf), "samples=%lu rx=%lu err=%lu T=%uC",
              static_cast<unsigned long>(trend_count),
              static_cast<unsigned long>(t.rx_count),
-             static_cast<unsigned long>(t.err_count));
+             static_cast<unsigned long>(t.err_count),
+             static_cast<unsigned>(t.last_temp_C));
     lv_label_set_text(lbl_graph_stats, gbuf);
   }
 
@@ -1162,7 +1246,8 @@ void update_telemetry_labels() {
   }
 
   if (lbl_status_mode) {
-    if (t.last_i12_mA >= 1500) {
+    const bool ch1_cv = t.has_extended ? ((t.status & 0x20u) != 0u) : (t.last_i12_mA < 1500);
+    if (!ch1_cv) {
       lv_label_set_text(lbl_status_mode, "CC");
       lv_obj_set_style_text_color(lbl_status_mode, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
     } else {
@@ -1171,12 +1256,43 @@ void update_telemetry_labels() {
     }
   }
 
+  if (lbl_status_output) {
+    const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
+    const bool output_on = t.has_extended
+        ? ((t.status & 0x80u) != 0u)
+        : (t.last_i12_mA >= kOutputOnThreshold_mA);
+    if (link_stale) {
+      lv_label_set_text(lbl_status_output, "OUTPUT ??");
+      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+    } else if (output_on) {
+      lv_label_set_text(lbl_status_output, "OUTPUT ON");
+      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+    } else {
+      lv_label_set_text(lbl_status_output, "OUTPUT OFF");
+      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+    }
+  }
+
   if (lbl_fault_main || lbl_fault_graph) {
     const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-    const bool cc_mode = (t.last_i12_mA >= 1500);
-    char fbuf[96];
-    snprintf(fbuf, sizeof(fbuf), "OVP OK   OCP OK   OTP OK   SCP OK   LIM %s%s",
+    const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
+    const bool ch1_ovp = t.has_extended ? ((t.protection_flags & 0x80u) != 0u) : false;
+    const bool ch1_ocp = t.has_extended ? ((t.protection_flags & 0x40u) != 0u) : false;
+    const bool ch1_otp = t.has_extended ? ((t.protection_flags & 0x08u) != 0u) : false;
+    const bool ch2_ovp = t.has_extended ? ((t.protection_flags & 0x20u) != 0u) : false;
+    const bool ch2_ocp = t.has_extended ? ((t.protection_flags & 0x10u) != 0u) : false;
+    const bool ch2_otp = t.has_extended ? ((t.protection_flags & 0x04u) != 0u) : false;
+    const bool thermal_warn = t.has_extended ? ((t.status & 0x08u) != 0u) : false;
+    char fbuf[128];
+    snprintf(fbuf, sizeof(fbuf), "CH1 %s/%s/%s  CH2 %s/%s/%s  LIM %s%s%s",
+             ch1_ovp ? "OVP!" : "OVP",
+             ch1_ocp ? "OCP!" : "OCP",
+             ch1_otp ? "OTP!" : "OTP",
+             ch2_ovp ? "OVP!" : "OVP",
+             ch2_ocp ? "OCP!" : "OCP",
+             ch2_otp ? "OTP!" : "OTP",
              cc_mode ? "CC" : "CV",
+             thermal_warn ? "   THERM WARN" : "",
              link_stale ? "   COMM WARN" : "");
     if (lbl_fault_main) {
       lv_label_set_text(lbl_fault_main, fbuf);
@@ -1193,7 +1309,7 @@ void update_telemetry_labels() {
   }
 
   const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-  const bool cc_mode = (t.last_i12_mA >= 1500);
+  const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
 
   if (chip_main_ok) {
     lv_label_set_text(chip_main_ok, link_stale ? "WARN" : "OK");
@@ -1222,15 +1338,17 @@ void update_telemetry_labels() {
   }
 
   if (chip_main_run) {
-    lv_label_set_text(chip_main_run, link_stale ? "WAIT" : "RUN");
+    const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
+    lv_label_set_text(chip_main_run, (link_stale || !ch1_enabled) ? "WAIT" : "RUN");
     lv_obj_set_style_text_color(chip_main_run,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
+                                (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
                                 LV_PART_MAIN);
   }
   if (chip_graph_run) {
-    lv_label_set_text(chip_graph_run, link_stale ? "WAIT" : "RUN");
+    const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
+    lv_label_set_text(chip_graph_run, (link_stale || !ch1_enabled) ? "WAIT" : "RUN");
     lv_obj_set_style_text_color(chip_graph_run,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
+                                (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
                                 LV_PART_MAIN);
   }
 
@@ -1241,12 +1359,12 @@ void update_telemetry_labels() {
   }
 
   if (bar_main_ch1_voltage) {
-    const int32_t v_scaled = map_i32(static_cast<int32_t>(t.last_v12_mV), 9000, 15000, 0, 1000);
+    const int32_t v_scaled = map_i32(static_cast<int32_t>(t.last_v12_mV), 4500, 5500, 0, 1000);
     lv_bar_set_value(bar_main_ch1_voltage, static_cast<lv_coord_t>(v_scaled), LV_ANIM_OFF);
   }
-  if (bar_main_ch1_current) {
-    const int32_t i_scaled = map_i32(static_cast<int32_t>(t.last_i12_mA), -500, 3000, 0, 1000);
-    lv_bar_set_value(bar_main_ch1_current, static_cast<lv_coord_t>(i_scaled), LV_ANIM_OFF);
+  if (bar_main_ch2_voltage) {
+    const int32_t v3_scaled = map_i32(static_cast<int32_t>(t.last_v3v3_mV), 3000, 3600, 0, 1000);
+    lv_bar_set_value(bar_main_ch2_voltage, static_cast<lv_coord_t>(v3_scaled), LV_ANIM_OFF);
   }
 
   if (trend_count != last_drawn_samples) {
@@ -1301,13 +1419,19 @@ void printStatus() {
 void printRxStatus() {
   const auto t = disp_link_slave::snapshot();
   const uint32_t age_ms = (t.last_rx_ms == 0) ? 0 : (millis() - t.last_rx_ms);
-  Serial.printf("rx frames=%lu errs=%lu uart=%lu seq=%u V12=%u mV I12=%d mA age=%lu ms uartB=%lu\n",
+  Serial.printf("rx frames=%lu errs=%lu uart=%lu seq=%u V5=%u mV I5=%d mA V3=%u mV I3=%d mA T=%uC st=0x%02X pf=0x%02X ext=%u age=%lu ms uartB=%lu\n",
                 static_cast<unsigned long>(t.rx_count),
                 static_cast<unsigned long>(t.err_count),
                 static_cast<unsigned long>(t.i2c_rx_count),
                 static_cast<unsigned>(t.last_seq),
-                static_cast<unsigned>(t.last_v12_mV),
-                static_cast<int>(t.last_i12_mA),
+                static_cast<unsigned>(t.last_v5_mV),
+                static_cast<int>(t.last_i5_mA),
+                static_cast<unsigned>(t.last_v3v3_mV),
+                static_cast<int>(t.last_i3v3_mA),
+                static_cast<unsigned>(t.last_temp_C),
+                static_cast<unsigned>(t.status),
+                static_cast<unsigned>(t.protection_flags),
+                static_cast<unsigned>(t.has_extended ? 1 : 0),
                 static_cast<unsigned long>(age_ms),
                 static_cast<unsigned long>(t.uart_bytes));
 }

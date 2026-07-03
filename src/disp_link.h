@@ -47,11 +47,22 @@ constexpr uint8_t  kFrameSof2    = 0x55;
 constexpr uint8_t  kFrameTagTlm  = 'T';
 constexpr uint8_t  kFrameLenTlm  = 6;
 constexpr size_t   kFrameSizeTlm = 10;
+constexpr uint8_t  kFrameLenExt  = 13;
+constexpr size_t   kFrameSizeExt = 17;
 
 // Initialise UART transport. Safe to call once.
 void begin();
 
 // Build a telemetry frame and send it via UART1.
 bool publishTelemetry(uint16_t v12_mV, int16_t i12_mA);
+
+// Build an extended telemetry frame and send it via UART1.
+bool publishTelemetryExtended(uint16_t v5_mV,
+							  int16_t i5_mA,
+							  uint16_t v3v3_mV,
+							  int16_t i3v3_mA,
+							  uint8_t temp_C,
+							  uint8_t status,
+							  uint8_t protection_flags);
 
 }  // namespace disp_link

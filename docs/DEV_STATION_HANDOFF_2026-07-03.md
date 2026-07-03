@@ -61,6 +61,11 @@ No other source files were required for this stop.
 If serial monitor/open-port checks fail with access denied, stale PlatformIO/Python processes may hold COM12.
 Resolve by closing monitor tasks/processes before guarded upload.
 
+Additional Windows note from this session:
+- If guarded CrowPanel upload crashes during the esptool progress display with a `UnicodeEncodeError` under `cp1252`, run the upload from a UTF-8 console context first:
+   - `chcp 65001`
+   - `$env:PYTHONIOENCODING='utf-8'`
+
 ## Next Session Objective (Phase 5 Start)
 
 Begin project-specific functionality integration on top of this UI.
@@ -93,3 +98,86 @@ Begin project-specific functionality integration on top of this UI.
 1. At least one UI element currently in visual-only mode is driven by real system data.
 2. Guarded build/flash workflow still passes.
 3. No regression in screen navigation or render stability.
+
+---
+
+## Continuation Update - 2026-07-03 (Phase 5 Starter Slice)
+
+1. Started Phase 5 with a minimal real-data binding on CrowPanel.
+2. Changed runtime default to live telemetry mode:
+   - `DEMO` now defaults to OFF at boot.
+   - `TOUR` now defaults to OFF at boot.
+3. Replaced one static visual-only widget with telemetry-driven behavior:
+   - Main-screen status badge now updates as `OUTPUT ON|OFF|??`.
+   - `ON` when link is fresh and measured current is above threshold.
+   - `OFF` when link is fresh and current is below threshold.
+   - `??` when link is stale.
+4. Guarded workflow status:
+   - CrowPanel build passed.
+   - Guarded CrowPanel upload passed with expected COM12 + ESP32-S3 precheck.
+
+### Notes
+
+- This is an interim binding heuristic for output state using measured current until an explicit output-enable/status field is added to the telemetry contract.
+- Existing visual style and screen navigation were left intact.
+
+## Continuation Update - 2026-07-03 (Phase 5 Protocol Alignment)
+
+1. Applied the Phase 5 parameter-integration design direction from commit `41a7a08` into live code.
+2. Extended the STM32 -> CrowPanel telemetry frame from legacy 10-byte format to an extended frame carrying:
+   - CH1 (+5V) voltage/current
+   - CH2 (+3.3V) voltage/current
+   - temperature
+   - status byte
+   - protection flags byte
+3. CrowPanel UART parser is now backward-compatible:
+   - legacy 10-byte frame still accepted
+   - extended frame auto-detected by length and parsed when present
+4. CrowPanel UI state binding updated to use explicit telemetry fields when available:
+   - RUN/WAIT chip uses explicit output-enable bit
+   - CV/CC chip uses explicit mode bit
+   - fault strip uses explicit protection bits
+   - RX diagnostic output now shows CH2, temp, status, protection, and extended-frame presence
+5. Deployment status:
+   - STM32 Blue Pill build passed
+   - STM32 Blue Pill upload passed
+   - CrowPanel build passed
+   - Guarded CrowPanel upload passed with COM12 + ESP32-S3 precheck
+
+### Current Scope Note
+
+- This is still a transport-and-binding slice, not full Phase 5 completion.
+- UI layout remains the Phase 4 visual baseline; the 2-channel IPS3608-style full-screen re-layout is not started yet.
+
+## Continuation Update - 2026-07-03 (Phase 5 Main-Screen Layout Slice)
+
+1. Advanced the CrowPanel Main screen from the old single-rail presentation to a first 2-channel view.
+2. Reused the two large main cards as:
+   - `CH1 +5V RAIL`
+   - `CH2 +3.3V RAIL`
+3. Bound both cards to live extended telemetry fields:
+   - CH1 voltage/current/power/temperature
+   - CH2 voltage/current/power
+4. Repurposed the two main bars to show per-channel voltage windows:
+   - CH1: 4.5V to 5.5V
+   - CH2: 3.0V to 3.6V
+5. This is still a transitional Phase 5 layout:
+   - graph screen remains mostly Phase 4 style
+   - main-screen meta/status area is not yet fully IPS3608-style dual-channel content
+
+### Validation / Hardware State
+
+1. CrowPanel build passed after the layout change.
+2. CrowPanel COM12 later re-enumerated normally as `USB-SERIAL CH340K (COM12)`.
+3. Guarded CrowPanel upload then passed with expected COM12 + ESP32-S3 precheck.
+4. Because strict flash-safety policy is active, no opportunistic port switching was attempted while COM12 was absent.
+
+## Continuation Update - 2026-07-03 (Graph Summary Slice)
+
+1. Updated the Graph screen top summary card to reflect the 2-channel telemetry model.
+2. Graph header now shows:
+   - CH1 voltage/current summary
+   - CH2 voltage/current summary
+   - sample count and temperature summary
+3. CrowPanel build passed after this follow-up change.
+4. Guarded CrowPanel upload also passed after this follow-up change.

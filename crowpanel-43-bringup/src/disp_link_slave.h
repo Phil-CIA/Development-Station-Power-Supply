@@ -18,6 +18,14 @@ struct Telemetry {
   uint8_t  last_seq;
   uint16_t last_v12_mV;
   int16_t  last_i12_mA;
+  uint16_t last_v5_mV;
+  int16_t  last_i5_mA;
+  uint16_t last_v3v3_mV;
+  int16_t  last_i3v3_mA;
+  uint8_t  last_temp_C;
+  uint8_t  status;
+  uint8_t  protection_flags;
+  bool     has_extended;
   uint32_t last_rx_ms;
   uint32_t i2c_rx_count;   // legacy field, now: frames received via UART1
   uint32_t uart_bytes;     // raw bytes seen on Serial1 (debug)

@@ -22,7 +22,10 @@ constexpr uint8_t kSof1         = 0xAA;
 constexpr uint8_t kSof2         = 0x55;
 constexpr uint8_t kFrameTagTlm  = 'T';
 constexpr uint8_t kFrameLenTlm  = 6;
-constexpr size_t  kFrameSize    = 10;
+constexpr uint8_t kFrameLenExtMin = 13;
+constexpr size_t  kFrameSizeLegacy = 10;
+constexpr size_t  kFrameSizeExtMin = 17;
+constexpr size_t  kFrameSizeMax    = 40;
 
 portMUX_TYPE       s_mux   = portMUX_INITIALIZER_UNLOCKED;
 volatile Telemetry s_state = {};
@@ -46,26 +49,47 @@ void bumpErr() {
   portEXIT_CRITICAL(&s_mux);
 }
 
-void parseFrame(const uint8_t* f) {
+void parseFrame(const uint8_t* f, size_t frame_size) {
+  if (frame_size < kFrameSizeLegacy) { bumpErr(); return; }
   if (f[0] != kSof1 || f[1] != kSof2) { bumpErr(); return; }
-  if (f[2] != kFrameLenTlm)            { bumpErr(); return; }
-  if (f[3] != kFrameTagTlm)            { bumpErr(); return; }
-  if (crc8(&f[2], 7) != f[9])          { bumpErr(); return; }
 
-  const uint8_t  seq    = f[4];
-  const uint16_t v12_mV = static_cast<uint16_t>(f[5]) |
-                          (static_cast<uint16_t>(f[6]) << 8);
-  const int16_t  i12_mA = static_cast<int16_t>(
+  const uint8_t len = f[2];
+  if (frame_size != static_cast<size_t>(len) + 4) { bumpErr(); return; }
+  if (f[3] != kFrameTagTlm) { bumpErr(); return; }
+  if (crc8(&f[2], static_cast<size_t>(len) + 1) != f[frame_size - 1]) { bumpErr(); return; }
+
+  const uint8_t seq = f[4];
+  const uint16_t v5_mV = static_cast<uint16_t>(f[5]) |
+                         (static_cast<uint16_t>(f[6]) << 8);
+  const int16_t i5_mA = static_cast<int16_t>(
       static_cast<uint16_t>(f[7]) |
       (static_cast<uint16_t>(f[8]) << 8));
 
   portENTER_CRITICAL(&s_mux);
   s_state.i2c_rx_count++;   // counter doubles as UART success count
   s_state.rx_count++;
-  s_state.last_seq    = seq;
-  s_state.last_v12_mV = v12_mV;
-  s_state.last_i12_mA = i12_mA;
-  s_state.last_rx_ms  = millis();
+  s_state.last_seq = seq;
+  s_state.last_v5_mV = v5_mV;
+  s_state.last_i5_mA = i5_mA;
+  s_state.last_v12_mV = v5_mV;
+  s_state.last_i12_mA = i5_mA;
+  s_state.has_extended = false;
+
+  if (len >= kFrameLenExtMin && frame_size >= kFrameSizeExtMin) {
+    const uint16_t v3v3_mV = static_cast<uint16_t>(f[9]) |
+                             (static_cast<uint16_t>(f[10]) << 8);
+    const int16_t i3v3_mA = static_cast<int16_t>(
+        static_cast<uint16_t>(f[11]) |
+        (static_cast<uint16_t>(f[12]) << 8));
+    s_state.last_v3v3_mV = v3v3_mV;
+    s_state.last_i3v3_mA = i3v3_mA;
+    s_state.last_temp_C = f[13];
+    s_state.status = f[14];
+    s_state.protection_flags = f[15];
+    s_state.has_extended = true;
+  }
+
+  s_state.last_rx_ms = millis();
   portEXIT_CRITICAL(&s_mux);
 }
 
@@ -89,16 +113,18 @@ void begin() {
 }
 
 void poll() {
-  // Byte-by-byte SOF state machine on Serial1. Frames are 10 bytes; we resync
-  // on any byte that doesn't match the expected SOF sequence.
-  static uint8_t  buf[kFrameSize];
-  static uint8_t  idx = 0;
+  // Byte-by-byte SOF state machine on Serial1. Supports variable-length
+  // telemetry frames while preserving legacy 10-byte compatibility.
+  static uint8_t  buf[kFrameSizeMax];
+  static size_t   idx = 0;
+  static size_t   expected_total = 0;
 
   while (Serial1.available()) {
     const uint8_t b = static_cast<uint8_t>(Serial1.read());
     portENTER_CRITICAL(&s_mux);
     s_state.uart_bytes++;
     portEXIT_CRITICAL(&s_mux);
+
     if (idx == 0) {
       if (b == kSof1) { buf[0] = b; idx = 1; }
       continue;
@@ -109,10 +135,31 @@ void poll() {
       else                 { idx = 0; }
       continue;
     }
-    buf[idx++] = b;
-    if (idx >= kFrameSize) {
-      parseFrame(buf);
+    if (idx == 2) {
+      const uint8_t len = b;
+      expected_total = static_cast<size_t>(len) + 4;
+      if (expected_total < kFrameSizeLegacy || expected_total > kFrameSizeMax) {
+        bumpErr();
+        idx = 0;
+        expected_total = 0;
+        continue;
+      }
+      buf[idx++] = b;
+      continue;
+    }
+
+    if (idx >= kFrameSizeMax) {
+      bumpErr();
       idx = 0;
+      expected_total = 0;
+      continue;
+    }
+
+    buf[idx++] = b;
+    if (expected_total > 0 && idx >= expected_total) {
+      parseFrame(buf, expected_total);
+      idx = 0;
+      expected_total = 0;
     }
   }
 }

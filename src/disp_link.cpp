@@ -59,4 +59,42 @@ bool publishTelemetry(uint16_t v12_mV, int16_t i12_mA) {
   return written == kFrameSizeTlm;
 }
 
+bool publishTelemetryExtended(uint16_t v5_mV,
+                              int16_t i5_mA,
+                              uint16_t v3v3_mV,
+                              int16_t i3v3_mA,
+                              uint8_t temp_C,
+                              uint8_t status,
+                              uint8_t protection_flags) {
+  if (!s_begun) return false;
+
+  uint8_t frame[kFrameSizeExt];
+  frame[0] = kFrameSof1;
+  frame[1] = kFrameSof2;
+  frame[2] = kFrameLenExt;
+  frame[3] = kFrameTagTlm;
+  frame[4] = s_seq++;
+  frame[5] = static_cast<uint8_t>(v5_mV & 0xFF);
+  frame[6] = static_cast<uint8_t>((v5_mV >> 8) & 0xFF);
+
+  const uint16_t i5_u = static_cast<uint16_t>(i5_mA);
+  frame[7] = static_cast<uint8_t>(i5_u & 0xFF);
+  frame[8] = static_cast<uint8_t>((i5_u >> 8) & 0xFF);
+
+  frame[9] = static_cast<uint8_t>(v3v3_mV & 0xFF);
+  frame[10] = static_cast<uint8_t>((v3v3_mV >> 8) & 0xFF);
+
+  const uint16_t i3_u = static_cast<uint16_t>(i3v3_mA);
+  frame[11] = static_cast<uint8_t>(i3_u & 0xFF);
+  frame[12] = static_cast<uint8_t>((i3_u >> 8) & 0xFF);
+
+  frame[13] = temp_C;
+  frame[14] = status;
+  frame[15] = protection_flags;
+  frame[16] = crc8(&frame[2], 14);
+
+  const size_t written = Serial1.write(frame, kFrameSizeExt);
+  return written == kFrameSizeExt;
+}
+
 }  // namespace disp_link
