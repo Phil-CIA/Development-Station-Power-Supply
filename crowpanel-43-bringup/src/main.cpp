@@ -36,8 +36,10 @@ constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimat
 
 enum class UiScreen : uint8_t {
   Splash = 0,
-  Main = 1,
-  Graph = 2,
+  Setup = 1,
+  Main = 2,
+  Graph = 3,
+  Settings = 4,
 };
 
 struct UiTheme {
@@ -66,12 +68,29 @@ static lv_color_t* lvgl_fb2 = nullptr;
 
 // ── LVGL UI handles ────────────────────────────────────────────────────────
 static lv_obj_t* screen_splash = nullptr;
+static lv_obj_t* screen_setup = nullptr;
 static lv_obj_t* screen_main = nullptr;
 static lv_obj_t* screen_graph = nullptr;
+static lv_obj_t* screen_settings = nullptr;
 
-static lv_obj_t* lbl_main_voltage = nullptr;
-static lv_obj_t* lbl_main_current = nullptr;
+// Setup screen controls (encoder-based parameter editing)
+static lv_obj_t* lbl_setup_title = nullptr;
+static lv_obj_t* lbl_setup_param = nullptr;
+static lv_obj_t* lbl_setup_value = nullptr;
+static lv_obj_t* lbl_setup_hint = nullptr;
+static uint32_t setup_start_ms = 0;
+static bool setup_done = false;
+
+// Main screen (dual-channel layout)
+static lv_obj_t* lbl_main_ch1_voltage = nullptr;
+static lv_obj_t* lbl_main_ch1_current = nullptr;
+static lv_obj_t* lbl_main_ch2_voltage = nullptr;
+static lv_obj_t* lbl_main_ch2_current = nullptr;
 static lv_obj_t* lbl_main_stats = nullptr;
+static lv_obj_t* bar_main_ch1_voltage = nullptr;
+static lv_obj_t* bar_main_ch1_current = nullptr;
+static lv_obj_t* bar_main_ch2_voltage = nullptr;
+static lv_obj_t* bar_main_ch2_current = nullptr;
 
 static lv_obj_t* lbl_graph_voltage = nullptr;
 static lv_obj_t* lbl_graph_current = nullptr;
@@ -98,13 +117,18 @@ static lv_obj_t* chip_graph_mode = nullptr;
 static lv_obj_t* chip_graph_limit = nullptr;
 static lv_obj_t* chip_graph_run = nullptr;
 
-static lv_obj_t* bar_main_voltage = nullptr;
-static lv_obj_t* bar_main_current = nullptr;
-
 static lv_obj_t* chart_v     = nullptr;
 static lv_obj_t* chart_i     = nullptr;
+static lv_obj_t* chart_ch1_v = nullptr;
+static lv_obj_t* chart_ch1_i = nullptr;
+static lv_obj_t* chart_ch2_v = nullptr;
+static lv_obj_t* chart_ch2_i = nullptr;
 static lv_chart_series_t* chart_v_series = nullptr;
 static lv_chart_series_t* chart_i_series = nullptr;
+static lv_chart_series_t* chart_ch1_v_series = nullptr;
+static lv_chart_series_t* chart_ch1_i_series = nullptr;
+static lv_chart_series_t* chart_ch2_v_series = nullptr;
+static lv_chart_series_t* chart_ch2_i_series = nullptr;
 
 static UiScreen active_screen = UiScreen::Splash;
 static bool splash_done = false;
@@ -319,6 +343,10 @@ void set_active_screen(UiScreen screen) {
     if (screen == UiScreen::Splash) lv_obj_clear_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
   }
+  if (screen_setup) {
+    if (screen == UiScreen::Setup) lv_obj_clear_flag(screen_setup, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(screen_setup, LV_OBJ_FLAG_HIDDEN);
+  }
   if (screen_main) {
     if (screen == UiScreen::Main) lv_obj_clear_flag(screen_main, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_main, LV_OBJ_FLAG_HIDDEN);
@@ -327,16 +355,31 @@ void set_active_screen(UiScreen screen) {
     if (screen == UiScreen::Graph) lv_obj_clear_flag(screen_graph, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_graph, LV_OBJ_FLAG_HIDDEN);
   }
+  if (screen_settings) {
+    if (screen == UiScreen::Settings) lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 void nav_btn_event_cb(lv_event_t* e) {
   const uintptr_t target = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
+  if (target == static_cast<uintptr_t>(UiScreen::Setup)) {
+    set_active_screen(UiScreen::Setup);
+    setup_done = false;
+    setup_start_ms = millis();
+    return;
+  }
   if (target == static_cast<uintptr_t>(UiScreen::Main)) {
     set_active_screen(UiScreen::Main);
     return;
   }
   if (target == static_cast<uintptr_t>(UiScreen::Graph)) {
     set_active_screen(UiScreen::Graph);
+    return;
+  }
+  if (target == static_cast<uintptr_t>(UiScreen::Settings)) {
+    set_active_screen(UiScreen::Settings);
+    return;
   }
 }
 
@@ -441,6 +484,184 @@ void create_splash_screen(lv_obj_t* root) {
   lv_obj_align(lbl_splash_hint, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
 
+// ── Setup Screen (encoder-based parameter editing template) ─────────────────
+void create_setup_screen(lv_obj_t* root) {
+  screen_setup = lv_obj_create(root);
+  lv_obj_set_size(screen_setup, kDisplayWidth, kDisplayHeight);
+  lv_obj_clear_flag(screen_setup, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(screen_setup, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(screen_setup, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_border_width(screen_setup, 0, LV_PART_MAIN);
+
+  lv_obj_t* header = lv_obj_create(screen_setup);
+  lv_obj_set_size(header, kDisplayWidth - 20, 60);
+  lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 8);
+  lv_obj_set_style_bg_color(header, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
+  lv_obj_set_style_radius(header, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(header, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(header, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lbl_setup_title = lv_label_create(header);
+  lv_label_set_text(lbl_setup_title, "SETUP: Initial Configuration");
+  lv_obj_set_style_text_color(lbl_setup_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_title, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_title, LV_ALIGN_TOP_LEFT, 20, 10);
+
+  lv_obj_t* hint = lv_label_create(header);
+  lv_label_set_text(hint, "Use encoder: rotate to select, press to edit. Auto-skip in 30s.");
+  lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 20, -6);
+
+  // Parameter list (template, not functional yet)
+  lv_obj_t* panel = lv_obj_create(screen_setup);
+  lv_obj_set_size(panel, kDisplayWidth - 40, 340);
+  lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, 88);
+  lv_obj_set_style_bg_color(panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lbl_setup_param = lv_label_create(panel);
+  lv_label_set_text(lbl_setup_param, "CH1 Current Limit (I_max)");
+  lv_obj_set_style_text_color(lbl_setup_param, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_param, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_param, LV_ALIGN_TOP_LEFT, 20, 20);
+
+  lbl_setup_value = lv_label_create(panel);
+  lv_label_set_text(lbl_setup_value, "► 2.500 A ◄");
+  lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_48, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_MID, 0, 80);
+
+  lv_obj_t* items_list = lv_label_create(panel);
+  lv_label_set_text(items_list,
+    "CH1 OCP Threshold (I_ocp)    1.000 A\n"
+    "CH1 OVP Threshold (V_ovp)   12.000 V\n"
+    "CH2 Current Limit (I_max)    3.000 A\n"
+    "CH2 OCP Threshold (I_ocp)    2.800 A\n"
+    "CH2 OVP Threshold (V_ovp)    3.500 V\n"
+    "Global OTP Threshold (T)     75 °C\n"
+    "Display Brightness           100%");
+  lv_obj_set_style_text_color(items_list, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(items_list, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(items_list, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+
+  lv_obj_t* footer = lv_obj_create(screen_setup);
+  lv_obj_set_size(footer, kDisplayWidth - 40, 40);
+  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_obj_set_style_bg_color(footer, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
+  lv_obj_set_style_radius(footer, 9, LV_PART_MAIN);
+  lv_obj_set_style_border_width(footer, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(footer, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lbl_setup_hint = lv_label_create(footer);
+  lv_label_set_text(lbl_setup_hint, "Press center to enter, knob to adjust. Long-press to skip setup.");
+  lv_obj_set_style_text_color(lbl_setup_hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_hint, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_hint);
+}
+
+// ── Settings Screen (System/DataSet/About menu skeleton) ────────────────────
+void create_settings_screen(lv_obj_t* root) {
+  screen_settings = lv_obj_create(root);
+  lv_obj_set_size(screen_settings, kDisplayWidth, kDisplayHeight);
+  lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(screen_settings, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(screen_settings, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_border_width(screen_settings, 0, LV_PART_MAIN);
+
+  lv_obj_t* header = lv_obj_create(screen_settings);
+  lv_obj_set_size(header, kDisplayWidth - 20, 50);
+  lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 8);
+  lv_obj_set_style_bg_color(header, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
+  lv_obj_set_style_radius(header, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(header, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(header, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lv_obj_t* title = lv_label_create(header);
+  lv_label_set_text(title, "SETTINGS");
+  lv_obj_set_style_text_color(title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(title, LV_ALIGN_LEFT_MID, 20, 0);
+
+  create_nav_btn(header, "Main", UiScreen::Main, -10);
+
+  // System settings
+  lv_obj_t* sys_panel = lv_obj_create(screen_settings);
+  lv_obj_set_size(sys_panel, (kDisplayWidth - 50) / 2, 180);
+  lv_obj_align(sys_panel, LV_ALIGN_TOP_LEFT, 20, 70);
+  lv_obj_set_style_bg_color(sys_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(sys_panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(sys_panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(sys_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lv_obj_t* sys_title = lv_label_create(sys_panel);
+  lv_label_set_text(sys_title, "SYSTEM");
+  lv_obj_set_style_text_color(sys_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(sys_title, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(sys_title, LV_ALIGN_TOP_LEFT, 16, 12);
+
+  lv_obj_t* sys_items = lv_label_create(sys_panel);
+  lv_label_set_text(sys_items,
+    "Language:     English\n"
+    "Brightness:  100%\n"
+    "Volume:        80%\n"
+    "Theme:       Dark");
+  lv_obj_set_style_text_color(sys_items, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(sys_items, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(sys_items, LV_ALIGN_TOP_LEFT, 16, 48);
+
+  // DataSet settings
+  lv_obj_t* data_panel = lv_obj_create(screen_settings);
+  lv_obj_set_size(data_panel, (kDisplayWidth - 50) / 2, 180);
+  lv_obj_align(data_panel, LV_ALIGN_TOP_RIGHT, -20, 70);
+  lv_obj_set_style_bg_color(data_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(data_panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(data_panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(data_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lv_obj_t* data_title = lv_label_create(data_panel);
+  lv_label_set_text(data_title, "DATASETS");
+  lv_obj_set_style_text_color(data_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(data_title, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(data_title, LV_ALIGN_TOP_LEFT, 16, 12);
+
+  lv_obj_t* data_items = lv_label_create(data_panel);
+  lv_label_set_text(data_items,
+    "P1: Default\n"
+    "P2: Lab Bench\n"
+    "P3: Prototype\n"
+    "P4: Testing");
+  lv_obj_set_style_text_color(data_items, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(data_items, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(data_items, LV_ALIGN_TOP_LEFT, 16, 48);
+
+  // About
+  lv_obj_t* about_panel = lv_obj_create(screen_settings);
+  lv_obj_set_size(about_panel, kDisplayWidth - 40, 140);
+  lv_obj_align(about_panel, LV_ALIGN_TOP_MID, 0, 270);
+  lv_obj_set_style_bg_color(about_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(about_panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(about_panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(about_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lv_obj_t* about_title = lv_label_create(about_panel);
+  lv_label_set_text(about_title, "ABOUT");
+  lv_obj_set_style_text_color(about_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(about_title, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(about_title, LV_ALIGN_TOP_LEFT, 16, 12);
+
+  lv_obj_t* about_info = lv_label_create(about_panel);
+  lv_label_set_text(about_info,
+    "Development Station Power Supply v2.0\n"
+    "CrowPanel 4.3\" FNIRSI UI Adaptation\n"
+    "Firmware build 2026-07-03");
+  lv_obj_set_style_text_color(about_info, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(about_info, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(about_info, LV_ALIGN_TOP_LEFT, 16, 48);
+}
+
 void create_main_screen(lv_obj_t* root) {
   screen_main = lv_obj_create(root);
   lv_obj_set_size(screen_main, kDisplayWidth, kDisplayHeight);
@@ -523,25 +744,25 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_v_set, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hdr_v_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
-  lbl_main_voltage = lv_label_create(panel_v);
-  lv_label_set_text(lbl_main_voltage, "--.-- V");
-  lv_obj_set_style_text_color(lbl_main_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_voltage, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_voltage, 330);
-  lv_obj_set_style_text_align(lbl_main_voltage, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-  lv_obj_align(lbl_main_voltage, LV_ALIGN_TOP_LEFT, 18, 58);
+  lbl_main_ch1_voltage = lv_label_create(panel_v);
+  lv_label_set_text(lbl_main_ch1_voltage, "--.-- V");
+  lv_obj_set_style_text_color(lbl_main_ch1_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_voltage, &lv_font_montserrat_48, LV_PART_MAIN);
+  lv_obj_set_width(lbl_main_ch1_voltage, 330);
+  lv_obj_set_style_text_align(lbl_main_ch1_voltage, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_voltage, LV_ALIGN_TOP_LEFT, 18, 58);
 
-  bar_main_voltage = lv_bar_create(panel_v);
-  lv_obj_set_size(bar_main_voltage, 330, 20);
-  lv_obj_align(bar_main_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -20);
-  lv_bar_set_range(bar_main_voltage, 0, 1000);
-  lv_bar_set_value(bar_main_voltage, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar_main_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar_main_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(bar_main_voltage, lv_color_hex(0xFFD95A), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(bar_main_voltage, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar_main_voltage, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar_main_voltage, 4, LV_PART_INDICATOR);
+  bar_main_ch1_voltage = lv_bar_create(panel_v);
+  lv_obj_set_size(bar_main_ch1_voltage, 330, 20);
+  lv_obj_align(bar_main_ch1_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -20);
+  lv_bar_set_range(bar_main_ch1_voltage, 0, 1000);
+  lv_bar_set_value(bar_main_ch1_voltage, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(bar_main_ch1_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar_main_ch1_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_color(bar_main_ch1_voltage, lv_color_hex(0xFFD95A), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_dir(bar_main_ch1_voltage, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_INDICATOR);
 
   lv_obj_t* bar_v_lo = lv_label_create(panel_v);
   lv_label_set_text(bar_v_lo, "9V");
@@ -581,25 +802,25 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_i_set, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hdr_i_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
-  lbl_main_current = lv_label_create(panel_i);
-  lv_label_set_text(lbl_main_current, "--.--- A");
-  lv_obj_set_style_text_color(lbl_main_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_current, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_current, 330);
-  lv_obj_set_style_text_align(lbl_main_current, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-  lv_obj_align(lbl_main_current, LV_ALIGN_TOP_LEFT, 18, 58);
+  lbl_main_ch1_current = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch1_current, "--.--- A");
+  lv_obj_set_style_text_color(lbl_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_48, LV_PART_MAIN);
+  lv_obj_set_width(lbl_main_ch1_current, 330);
+  lv_obj_set_style_text_align(lbl_main_ch1_current, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 18, 58);
 
-  bar_main_current = lv_bar_create(panel_i);
-  lv_obj_set_size(bar_main_current, 330, 20);
-  lv_obj_align(bar_main_current, LV_ALIGN_BOTTOM_LEFT, 18, -20);
-  lv_bar_set_range(bar_main_current, 0, 1000);
-  lv_bar_set_value(bar_main_current, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar_main_current, lv_color_hex(0x1A2735), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar_main_current, lv_color_hex(UiTheme::kAccentI), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(bar_main_current, lv_color_hex(0x73C8FF), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(bar_main_current, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar_main_current, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar_main_current, 4, LV_PART_INDICATOR);
+  bar_main_ch1_current = lv_bar_create(panel_i);
+  lv_obj_set_size(bar_main_ch1_current, 330, 20);
+  lv_obj_align(bar_main_ch1_current, LV_ALIGN_BOTTOM_LEFT, 18, -20);
+  lv_bar_set_range(bar_main_ch1_current, 0, 1000);
+  lv_bar_set_value(bar_main_ch1_current, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(bar_main_ch1_current, lv_color_hex(0x1A2735), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_color(bar_main_ch1_current, lv_color_hex(0x73C8FF), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_dir(bar_main_ch1_current, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(bar_main_ch1_current, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar_main_ch1_current, 4, LV_PART_INDICATOR);
 
   lv_obj_t* bar_i_lo = lv_label_create(panel_i);
   lv_label_set_text(bar_i_lo, "-0.5A");
@@ -824,8 +1045,10 @@ void create_dashboard() {
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 
   create_splash_screen(scr);
+  create_setup_screen(scr);
   create_main_screen(scr);
   create_graph_screen(scr);
+  create_settings_screen(scr);
   set_active_screen(UiScreen::Splash);
 }
 
@@ -861,7 +1084,7 @@ void update_telemetry_labels() {
     char vbuf[32];
     snprintf(vbuf, sizeof(vbuf), "%06.2f V", t.last_v12_mV / 1000.0f);
     if (strcmp(vbuf, last_voltage_text) != 0) {
-      if (lbl_main_voltage) lv_label_set_text(lbl_main_voltage, vbuf);
+      if (lbl_main_ch1_voltage) lv_label_set_text(lbl_main_ch1_voltage, vbuf);
       if (lbl_graph_voltage) {
         char v_graph[32];
         snprintf(v_graph, sizeof(v_graph), "V %s", vbuf);
@@ -874,7 +1097,7 @@ void update_telemetry_labels() {
     char ibuf[32];
     snprintf(ibuf, sizeof(ibuf), "%06.3f A", t.last_i12_mA / 1000.0f);
     if (strcmp(ibuf, last_current_text) != 0) {
-      if (lbl_main_current) lv_label_set_text(lbl_main_current, ibuf);
+      if (lbl_main_ch1_current) lv_label_set_text(lbl_main_ch1_current, ibuf);
       if (lbl_graph_current) {
         char i_graph[32];
         snprintf(i_graph, sizeof(i_graph), "I %s", ibuf);
@@ -900,6 +1123,16 @@ void update_telemetry_labels() {
            static_cast<unsigned long>(t.i2c_rx_count),
            static_cast<unsigned long>(t.uart_bytes));
   if (lbl_main_stats) lv_label_set_text(lbl_main_stats, sbuf);
+  
+  // Update dual-channel display (using legacy single-channel telemetry for now)
+  if (lbl_main_ch1_voltage && lbl_main_ch1_current) {
+    char buf_v[32], buf_i[32];
+    snprintf(buf_v, sizeof(buf_v), "%.2f V", t.last_v12_mV / 1000.0f);
+    snprintf(buf_i, sizeof(buf_i), "%.3f A", t.last_i12_mA / 1000.0f);
+    lv_label_set_text(lbl_main_ch1_voltage, buf_v);
+    lv_label_set_text(lbl_main_ch1_current, buf_i);
+  }
+  
   if (lbl_graph_stats) {
     char gbuf[112];
     snprintf(gbuf, sizeof(gbuf), "samples=%lu rx=%lu err=%lu",
@@ -1007,13 +1240,13 @@ void update_telemetry_labels() {
     lv_label_set_text(lbl_status_uptime, ubuf);
   }
 
-  if (bar_main_voltage) {
+  if (bar_main_ch1_voltage) {
     const int32_t v_scaled = map_i32(static_cast<int32_t>(t.last_v12_mV), 9000, 15000, 0, 1000);
-    lv_bar_set_value(bar_main_voltage, static_cast<lv_coord_t>(v_scaled), LV_ANIM_OFF);
+    lv_bar_set_value(bar_main_ch1_voltage, static_cast<lv_coord_t>(v_scaled), LV_ANIM_OFF);
   }
-  if (bar_main_current) {
+  if (bar_main_ch1_current) {
     const int32_t i_scaled = map_i32(static_cast<int32_t>(t.last_i12_mA), -500, 3000, 0, 1000);
-    lv_bar_set_value(bar_main_current, static_cast<lv_coord_t>(i_scaled), LV_ANIM_OFF);
+    lv_bar_set_value(bar_main_ch1_current, static_cast<lv_coord_t>(i_scaled), LV_ANIM_OFF);
   }
 
   if (trend_count != last_drawn_samples) {
@@ -1172,7 +1405,7 @@ void handleCommand(const String& rawLine) {
   line.trim();
   if (line.isEmpty()) return;
   if (line.equalsIgnoreCase("HELP")) {
-    Serial.println("Commands: HELP, PING, STATUS, RX, OTA, SCREEN <MAIN|GRAPH|SPLASH>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
+    Serial.println("Commands: HELP, PING, STATUS, RX, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
     return;
   }
   if (line.equalsIgnoreCase("PING"))         { Serial.println("PONG"); return; }
@@ -1186,7 +1419,22 @@ void handleCommand(const String& rawLine) {
   if (line.startsWith("SCREEN") || line.startsWith("screen")) {
     String arg = line.substring(6);
     arg.trim();
+    if (arg.equalsIgnoreCase("SPLASH")) {
+      set_active_screen(UiScreen::Splash);
+      splash_done = false;
+      splash_start_ms = millis();
+      Serial.println("ACK SCREEN SPLASH");
+      return;
+    }
+    if (arg.equalsIgnoreCase("SETUP")) {
+      set_active_screen(UiScreen::Setup);
+      setup_done = false;
+      setup_start_ms = millis();
+      Serial.println("ACK SCREEN SETUP");
+      return;
+    }
     if (arg.equalsIgnoreCase("MAIN")) {
+      setup_done = true;
       set_active_screen(UiScreen::Main);
       Serial.println("ACK SCREEN MAIN");
       return;
@@ -1196,14 +1444,12 @@ void handleCommand(const String& rawLine) {
       Serial.println("ACK SCREEN GRAPH");
       return;
     }
-    if (arg.equalsIgnoreCase("SPLASH")) {
-      set_active_screen(UiScreen::Splash);
-      splash_done = false;
-      splash_start_ms = millis();
-      Serial.println("ACK SCREEN SPLASH");
+    if (arg.equalsIgnoreCase("SETTINGS")) {
+      set_active_screen(UiScreen::Settings);
+      Serial.println("ACK SCREEN SETTINGS");
       return;
     }
-    Serial.println("ERR SCREEN: use MAIN|GRAPH|SPLASH");
+    Serial.println("ERR SCREEN: use SPLASH|SETUP|MAIN|GRAPH|SETTINGS");
     return;
   }
   if (line.startsWith("SPLASH") || line.startsWith("splash")) {
@@ -1389,19 +1635,33 @@ void loop() {
 
   update_telemetry_labels();  // updates LVGL labels if telemetry changed
 
+  // Boot sequence: Splash → Setup (30s timeout) → Main
   if (!splash_done && (now - splash_start_ms) >= kSplashDurationMs) {
     splash_done = true;
-    set_active_screen(UiScreen::Main);
+    set_active_screen(UiScreen::Setup);
+    setup_done = false;
+    setup_start_ms = now;
     if (lbl_splash_hint) {
-      lv_label_set_text(lbl_splash_hint, "Telemetry synchronized");
+      lv_label_set_text(lbl_splash_hint, "Entering Setup...");
     }
   }
 
-  if (demo_mode && demo_tour && splash_done && (now - demo_last_tour_switch_ms) >= kDemoTourSwitchMs) {
+  // Setup timeout (30s) or skip if demo/tour enabled
+  if (!setup_done && splash_done && (now - setup_start_ms >= 30000)) {
+    setup_done = true;
+    set_active_screen(UiScreen::Main);
+  }
+
+  // Demo mode: auto-tour between Setup, Main, Graph, Settings (when enabled)
+  if (demo_mode && demo_tour && splash_done && setup_done && (now - demo_last_tour_switch_ms) >= kDemoTourSwitchMs) {
     demo_last_tour_switch_ms = now;
-    if (active_screen == UiScreen::Main) {
+    if (active_screen == UiScreen::Setup) {
+      set_active_screen(UiScreen::Main);
+    } else if (active_screen == UiScreen::Main) {
       set_active_screen(UiScreen::Graph);
     } else if (active_screen == UiScreen::Graph) {
+      set_active_screen(UiScreen::Settings);
+    } else if (active_screen == UiScreen::Settings) {
       set_active_screen(UiScreen::Main);
     }
   }
