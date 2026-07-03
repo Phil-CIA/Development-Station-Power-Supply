@@ -1,8 +1,8 @@
 # Development Station Power Supply - Handoff
 
-Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-07-02.md](docs/DEV_STATION_HANDOFF_2026-07-02.md)
+Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-07-03.md](docs/DEV_STATION_HANDOFF_2026-07-03.md)
 
-Previous handoff: [HANDOFF_2026-06-01.md](HANDOFF_2026-06-01.md)
+Previous handoff: [docs/DEV_STATION_HANDOFF_2026-07-02.md](docs/DEV_STATION_HANDOFF_2026-07-02.md)
 
 Session status: active for STM32 breadboard bring-up and CrowPanel bench validation.
 
