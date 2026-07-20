@@ -4,12 +4,9 @@
 #include <soc/usb_serial_jtag_reg.h>
 
 // UART1 wiring to HAT (CrowPanel side of HY2.0-4P UART1-OUT, K1=0,1):
-//   IO20 = RX (HAT TX = GPIO7)
-//   IO19 = TX (HAT RX = GPIO0)  — unused for now but reserved
-// Pin assignments per Elecrow CrowPanel Advance 4.3 reference (lesson-09
-// zigbee_7.0): from the S3's perspective, IO19 is UART1 RX and IO20 is
-// UART1 TX.  HAT TX (GPIO7) -> CrowPanel IO19 (S3 RX); HAT RX (GPIO0) <-
-// CrowPanel IO20 (S3 TX).  K1 DIP must be (0,1) to engage UART1_OUT.
+// Live probe result on this session:
+//   IO19 = RX, IO20 = TX.
+// The earlier reversed mapping was not receiving frames.
 constexpr int      kUartRxPin = 19;
 constexpr int      kUartTxPin = 20;
 constexpr uint32_t kUartBaud  = 115200;
@@ -98,7 +95,7 @@ void parseFrame(const uint8_t* f, size_t frame_size) {
 void begin() {
   if (s_begun) return;
 
-  // Bring up UART1 on IO20(RX)/IO19(TX). IO19/IO20 are the S3's USB-Serial-JTAG
+  // Bring up UART1 on IO19(RX)/IO20(TX). IO19/IO20 are the S3's USB-Serial-JTAG
   // D-/D+ pads at boot; release them from USB-JTAG so the UART peripheral can
   // drive them. Without this, IO19/IO20 are held by the USB-JTAG block and the
   // UART RX line reads as a floating-high constant.

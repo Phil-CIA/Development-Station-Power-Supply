@@ -1,5 +1,9 @@
 #include <Arduino.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <string.h>
 
+HardwareSerial SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
 HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
 
 // Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
@@ -7,6 +11,34 @@ static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
 static const uint8_t PIN_ISET_CH3 = PA2;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
+static const uint8_t PIN_FLASH_CS = PA8;
+static const uint8_t PIN_SR_LATCH = PA4;
+
+static const uint8_t I2C_SCL_PIN = PB8;
+static const uint8_t I2C_SDA_PIN = PB9;
+static const uint8_t AHT20_ADDRESS = 0x38;
+static const uint8_t INA3221_ADDR_5V = 0x40;
+static const uint8_t INA3221_ADDR_3V3 = 0x41;
+static const uint8_t INA3221_REG_CONFIG = 0x00;
+static const uint8_t INA3221_REG_SHUNTVOLTAGE_1 = 0x01;
+static const uint8_t INA3221_REG_BUSVOLTAGE_1 = 0x02;
+static const uint16_t INA3221_CONFIG_CONTINUOUS = 0x7127;
+static const uint8_t AHT20_CMD_SOFT_RESET = 0xBA;
+static const uint8_t AHT20_CMD_INIT = 0xBE;
+static const uint8_t AHT20_CMD_MEASURE = 0xAC;
+static const uint8_t AHT20_STATUS_BUSY = 0x80;
+static const uint8_t AHT20_STATUS_CALIBRATED = 0x08;
+
+// W25Q128 commands (U11 external SPI flash)
+static const uint8_t CMD_RDID = 0x9F;
+static const uint8_t CMD_RDSR1 = 0x05;
+static const uint8_t CMD_WREN = 0x06;
+static const uint8_t CMD_SECTOR_ERASE_4K = 0x20;
+static const uint8_t CMD_PAGE_PROGRAM = 0x02;
+static const uint8_t CMD_READ_DATA = 0x03;
+
+static const uint32_t FLASH_TEST_ADDR = 0x001000; // dedicated bring-up test sector
+static const size_t FLASH_TEST_LEN = 32;
 
 // ── Telemetry frame constants ──────────────────────────────────────────────
 static const uint8_t FRAME_SOF1 = 0xAA;
@@ -15,6 +47,675 @@ static const uint8_t FRAME_TAG = 'T';
 static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
 static uint8_t frame_seq = 0;
+static bool flash_test_passed = false;
+static uint32_t flash_test_runs = 0;
+
+struct Aht20Sample {
+  bool valid;
+  float temp_C;
+  float humidity_pct;
+  uint8_t status;
+};
+
+struct Ina3221ChannelReading {
+  float bus_V;
+  float shunt_mV;
+  float current_mA;
+};
+
+struct Ina3221Reading {
+  uint8_t address;
+  bool present;
+  Ina3221ChannelReading channel[3];
+};
+
+struct IncomingRailSample {
+  bool valid;
+  float bus_V;
+  float current_mA;
+};
+
+Aht20Sample g_aht20 = {false, 0.0f, 0.0f, 0};
+IncomingRailSample g_incoming_rail = {false, 0.0f, 0.0f};
+
+bool runFlashBringupTest();
+bool readAht20Now(Aht20Sample& out);
+bool readIna3221(uint8_t address, Ina3221Reading& out);
+bool refreshIncomingRailSample();
+void runShiftRegisterSelfTest();
+void logHealthSummary();
+
+void logBoth(const char* msg) {
+  Serial.println(msg);
+  SerialDbg.println(msg);
+}
+
+void formatAhtValues(const Aht20Sample& sample,
+                     int32_t& t_whole,
+                     int32_t& t_frac,
+                     int32_t& h_whole,
+                     int32_t& h_frac) {
+  const int32_t t_centi = static_cast<int32_t>(sample.temp_C * 100.0f);
+  const int32_t h_centi = static_cast<int32_t>(sample.humidity_pct * 100.0f);
+  t_whole = t_centi / 100;
+  t_frac = t_centi >= 0 ? (t_centi % 100) : -(t_centi % 100);
+  h_whole = h_centi / 100;
+  h_frac = h_centi >= 0 ? (h_centi % 100) : -(h_centi % 100);
+}
+
+void formatFixedValue(float value, uint32_t scale, uint8_t digits, char* out, size_t out_len) {
+  const bool negative = value < 0.0f;
+  const float abs_value = negative ? -value : value;
+  const uint32_t scaled = static_cast<uint32_t>(abs_value * static_cast<float>(scale) + 0.5f);
+  const uint32_t whole = scaled / scale;
+  const uint32_t frac = scaled % scale;
+
+  if (digits == 3) {
+    snprintf(out, out_len, "%s%lu.%03lu", negative ? "-" : "", static_cast<unsigned long>(whole), static_cast<unsigned long>(frac));
+  } else {
+    snprintf(out, out_len, "%s%lu.%02lu", negative ? "-" : "", static_cast<unsigned long>(whole), static_cast<unsigned long>(frac));
+  }
+}
+
+void formatVoltageValue(float value, char* out, size_t out_len) {
+  formatFixedValue(value, 1000, 3, out, out_len);
+}
+
+void formatCurrentValue(float value, char* out, size_t out_len) {
+  formatFixedValue(value, 100, 2, out, out_len);
+}
+
+void printCommandHelp() {
+  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | INAPROBE | INANOW | INARAILS");
+}
+
+bool i2cPing(uint8_t address) {
+  Wire.beginTransmission(address);
+  return Wire.endTransmission() == 0;
+}
+
+bool i2cWriteReg16(uint8_t address, uint8_t reg, uint16_t value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.write(static_cast<uint8_t>((value >> 8) & 0xFF));
+  Wire.write(static_cast<uint8_t>(value & 0xFF));
+  return Wire.endTransmission() == 0;
+}
+
+bool i2cReadReg16(uint8_t address, uint8_t reg, uint16_t& value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+  if (Wire.requestFrom(static_cast<int>(address), 2) != 2) {
+    return false;
+  }
+  value = (static_cast<uint16_t>(Wire.read()) << 8) | static_cast<uint16_t>(Wire.read());
+  return true;
+}
+
+float inaBusVoltageV(uint16_t raw) {
+  const int16_t signed_value = static_cast<int16_t>(raw) >> 3;
+  return static_cast<float>(signed_value) * 0.008f;
+}
+
+float inaShuntMillivolts(uint16_t raw) {
+  const int16_t signed_value = static_cast<int16_t>(raw) >> 3;
+  return static_cast<float>(signed_value) * 0.04f;
+}
+
+float inaShuntOhmsFor(uint8_t address, int channel_index) {
+  if (address == INA3221_ADDR_5V) {
+    return 0.200f;
+  }
+  if (address == INA3221_ADDR_3V3 && channel_index == 2) {
+    return 0.018f;
+  }
+  return 0.200f;
+}
+
+bool initIna3221(uint8_t address) {
+  return i2cWriteReg16(address, INA3221_REG_CONFIG, INA3221_CONFIG_CONTINUOUS);
+}
+
+bool readIna3221(uint8_t address, Ina3221Reading& out) {
+  out.address = address;
+  out.present = false;
+
+  if (!i2cPing(address)) {
+    return false;
+  }
+  if (!initIna3221(address)) {
+    return false;
+  }
+
+  for (int channel = 0; channel < 3; channel++) {
+    const uint8_t shunt_reg = INA3221_REG_SHUNTVOLTAGE_1 + static_cast<uint8_t>(channel * 2);
+    const uint8_t bus_reg = INA3221_REG_BUSVOLTAGE_1 + static_cast<uint8_t>(channel * 2);
+    uint16_t raw_shunt = 0;
+    uint16_t raw_bus = 0;
+    if (!i2cReadReg16(address, shunt_reg, raw_shunt)) {
+      return false;
+    }
+    if (!i2cReadReg16(address, bus_reg, raw_bus)) {
+      return false;
+    }
+
+    out.channel[channel].bus_V = inaBusVoltageV(raw_bus);
+    out.channel[channel].shunt_mV = inaShuntMillivolts(raw_shunt);
+    out.channel[channel].current_mA = out.channel[channel].shunt_mV / inaShuntOhmsFor(address, channel);
+  }
+
+  out.present = true;
+  return true;
+}
+
+bool refreshIncomingRailSample() {
+  Ina3221Reading ina_3v3 = {};
+  if (!readIna3221(INA3221_ADDR_3V3, ina_3v3)) {
+    g_incoming_rail.valid = false;
+    return false;
+  }
+
+  g_incoming_rail.valid = true;
+  g_incoming_rail.bus_V = ina_3v3.channel[2].bus_V;
+  g_incoming_rail.current_mA = ina_3v3.channel[2].current_mA;
+  return true;
+}
+
+void printInaProbeSummary() {
+  char msg[96];
+  const bool found_5v = i2cPing(INA3221_ADDR_5V);
+  const bool found_3v3 = i2cPing(INA3221_ADDR_3V3);
+  snprintf(msg,
+           sizeof(msg),
+           "ina: expected 0x40=%s 0x41=%s (0x43 not used on this rev)",
+           found_5v ? "ACK" : "MISS",
+           found_3v3 ? "ACK" : "MISS");
+  logBoth(msg);
+}
+
+void printInaReading(const Ina3221Reading& reading, const char* label) {
+  char msg[128];
+  char ch1_v[16], ch1_i[16], ch2_v[16], ch2_i[16], ch3_v[16], ch3_i[16];
+  formatVoltageValue(reading.channel[0].bus_V, ch1_v, sizeof(ch1_v));
+  formatCurrentValue(reading.channel[0].current_mA, ch1_i, sizeof(ch1_i));
+  formatVoltageValue(reading.channel[1].bus_V, ch2_v, sizeof(ch2_v));
+  formatCurrentValue(reading.channel[1].current_mA, ch2_i, sizeof(ch2_i));
+  formatVoltageValue(reading.channel[2].bus_V, ch3_v, sizeof(ch3_v));
+  formatCurrentValue(reading.channel[2].current_mA, ch3_i, sizeof(ch3_i));
+  snprintf(msg,
+           sizeof(msg),
+           "ina %s 0x%02X: CH1 %sV %smA | CH2 %sV %smA | CH3 %sV %smA",
+           label,
+           reading.address,
+           ch1_v,
+           ch1_i,
+           ch2_v,
+           ch2_i,
+           ch3_v,
+           ch3_i);
+  logBoth(msg);
+}
+
+void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* ina_3v3) {
+  if (ina_5v != nullptr) {
+    char msg_5v[128];
+    char hi_v[16], hi_i[16], lo_v[16], lo_i[16];
+    formatVoltageValue(ina_5v->channel[0].bus_V, hi_v, sizeof(hi_v));
+    formatCurrentValue(ina_5v->channel[0].current_mA, hi_i, sizeof(hi_i));
+    formatVoltageValue(ina_5v->channel[1].bus_V, lo_v, sizeof(lo_v));
+    formatCurrentValue(ina_5v->channel[1].current_mA, lo_i, sizeof(lo_i));
+    snprintf(msg_5v,
+             sizeof(msg_5v),
+             "rail 5V: hi %sV %smA | lo %sV %smA",
+             hi_v,
+             hi_i,
+             lo_v,
+             lo_i);
+    logBoth(msg_5v);
+  } else {
+    logBoth("rail 5V: INA 0x40 unavailable");
+  }
+
+  if (ina_3v3 != nullptr) {
+    char msg_3v3[144];
+    char hi_v[16], hi_i[16], lo_v[16], lo_i[16], in_v[16], in_i[16];
+    formatVoltageValue(ina_3v3->channel[0].bus_V, hi_v, sizeof(hi_v));
+    formatCurrentValue(ina_3v3->channel[0].current_mA, hi_i, sizeof(hi_i));
+    formatVoltageValue(ina_3v3->channel[1].bus_V, lo_v, sizeof(lo_v));
+    formatCurrentValue(ina_3v3->channel[1].current_mA, lo_i, sizeof(lo_i));
+    formatVoltageValue(ina_3v3->channel[2].bus_V, in_v, sizeof(in_v));
+    formatCurrentValue(ina_3v3->channel[2].current_mA, in_i, sizeof(in_i));
+    snprintf(msg_3v3,
+             sizeof(msg_3v3),
+             "rail 3V3: hi %sV %smA | lo %sV %smA | in %sV %smA",
+             hi_v,
+             hi_i,
+             lo_v,
+             lo_i,
+             in_v,
+             in_i);
+    logBoth(msg_3v3);
+    logBoth("rail note: 0x41 CH3 is the incoming rail monitor; switched shunt currents remain hardware-limited on this rev.");
+  } else {
+    logBoth("rail 3V3: INA 0x41 unavailable");
+  }
+}
+
+void handleCommand(const String& cmd_in) {
+  String cmd = cmd_in;
+  cmd.trim();
+  cmd.toUpperCase();
+  if (cmd.length() == 0) return;
+
+  if (cmd == "HELP") {
+    printCommandHelp();
+    return;
+  }
+
+  if (cmd == "FTEST") {
+    flash_test_runs++;
+    char run_msg[48];
+    snprintf(run_msg, sizeof(run_msg), "flash: manual test run #%lu", static_cast<unsigned long>(flash_test_runs));
+    logBoth(run_msg);
+    flash_test_passed = runFlashBringupTest();
+    return;
+  }
+
+  if (cmd == "AHTNOW") {
+    Aht20Sample sample;
+    if (readAht20Now(sample)) {
+      g_aht20 = sample;
+      char msg[96];
+      int32_t t_whole = 0, t_frac = 0, h_whole = 0, h_frac = 0;
+      formatAhtValues(g_aht20, t_whole, t_frac, h_whole, h_frac);
+      snprintf(msg,
+               sizeof(msg),
+               "aht20: T=%ld.%02ldC RH=%ld.%02ld%% status=0x%02X",
+               static_cast<long>(t_whole),
+               static_cast<long>(t_frac),
+               static_cast<long>(h_whole),
+               static_cast<long>(h_frac),
+               g_aht20.status);
+      logBoth(msg);
+    } else {
+      logBoth("aht20: read failed");
+    }
+    return;
+  }
+
+  if (cmd == "AHTRESET") {
+    Wire.beginTransmission(AHT20_ADDRESS);
+    Wire.write(AHT20_CMD_SOFT_RESET);
+    const uint8_t tx_ok = Wire.endTransmission();
+    delay(25);
+    if (tx_ok != 0) {
+      logBoth("aht20: soft reset tx failed");
+      return;
+    }
+    Aht20Sample sample;
+    const bool ok = readAht20Now(sample);
+    logBoth(ok ? "aht20: reset + probe OK" : "aht20: reset done, read still failing");
+    return;
+  }
+
+  if (cmd == "SRTEST") {
+    runShiftRegisterSelfTest();
+    return;
+  }
+
+  if (cmd == "INAPROBE") {
+    printInaProbeSummary();
+    return;
+  }
+
+  if (cmd == "INANOW") {
+    Ina3221Reading ina_5v = {};
+    Ina3221Reading ina_3v3 = {};
+    const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
+    const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
+    if (!ok_5v && !ok_3v3) {
+      logBoth("ina: no expected devices responded");
+      return;
+    }
+    if (ok_5v) {
+      printInaReading(ina_5v, "5V");
+    } else {
+      logBoth("ina 5V 0x40: read failed");
+    }
+    if (ok_3v3) {
+      printInaReading(ina_3v3, "3V3");
+    } else {
+      logBoth("ina 3V3 0x41: read failed");
+    }
+    return;
+  }
+
+  if (cmd == "INARAILS") {
+    Ina3221Reading ina_5v = {};
+    Ina3221Reading ina_3v3 = {};
+    const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
+    const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
+    if (!ok_5v && !ok_3v3) {
+      logBoth("ina rails: no expected devices responded");
+      return;
+    }
+    printInaRailsSummary(ok_5v ? &ina_5v : nullptr, ok_3v3 ? &ina_3v3 : nullptr);
+    return;
+  }
+
+  char unknown_msg[80];
+  snprintf(unknown_msg, sizeof(unknown_msg), "cmd: unknown '%s'", cmd.c_str());
+  logBoth(unknown_msg);
+  printCommandHelp();
+}
+
+void pollCommands() {
+  if (Serial.available()) {
+    const String cmd = Serial.readStringUntil('\n');
+    handleCommand(cmd);
+  }
+  if (SerialDbg.available()) {
+    const String cmd = SerialDbg.readStringUntil('\n');
+    handleCommand(cmd);
+  }
+}
+
+bool readAhtStatus(uint8_t& status) {
+  if (Wire.requestFrom(static_cast<int>(AHT20_ADDRESS), 1) != 1) {
+    return false;
+  }
+  status = static_cast<uint8_t>(Wire.read());
+  return true;
+}
+
+bool initAhtIfNeeded() {
+  uint8_t status = 0;
+  if (!readAhtStatus(status)) return false;
+  if ((status & AHT20_STATUS_CALIBRATED) != 0) return true;
+
+  Wire.beginTransmission(AHT20_ADDRESS);
+  Wire.write(AHT20_CMD_INIT);
+  Wire.write(0x08);
+  Wire.write(0x00);
+  if (Wire.endTransmission() != 0) return false;
+  delay(12);
+  if (!readAhtStatus(status)) return false;
+  return (status & AHT20_STATUS_CALIBRATED) != 0;
+}
+
+bool readAht20Now(Aht20Sample& out) {
+  out.valid = false;
+
+  if (!initAhtIfNeeded()) {
+    return false;
+  }
+
+  Wire.beginTransmission(AHT20_ADDRESS);
+  Wire.write(AHT20_CMD_MEASURE);
+  Wire.write(0x33);
+  Wire.write(0x00);
+  if (Wire.endTransmission() != 0) return false;
+
+  delay(80);
+
+  uint8_t status = 0;
+  const uint32_t deadline = millis() + 120;
+  while (millis() < deadline) {
+    if (!readAhtStatus(status)) return false;
+    if ((status & AHT20_STATUS_BUSY) == 0) break;
+    delay(10);
+  }
+  if ((status & AHT20_STATUS_BUSY) != 0) return false;
+
+  uint8_t frame[7] = {0};
+  if (Wire.requestFrom(static_cast<int>(AHT20_ADDRESS), 7) != 7) {
+    return false;
+  }
+  for (size_t i = 0; i < 7; i++) {
+    frame[i] = static_cast<uint8_t>(Wire.read());
+  }
+
+  const uint32_t raw_h =
+      (static_cast<uint32_t>(frame[1]) << 12) |
+      (static_cast<uint32_t>(frame[2]) << 4) |
+      ((static_cast<uint32_t>(frame[3]) & 0xF0) >> 4);
+  const uint32_t raw_t =
+      ((static_cast<uint32_t>(frame[3]) & 0x0F) << 16) |
+      (static_cast<uint32_t>(frame[4]) << 8) |
+      static_cast<uint32_t>(frame[5]);
+
+  out.humidity_pct = (static_cast<float>(raw_h) * 100.0f) / 1048576.0f;
+  out.temp_C = (static_cast<float>(raw_t) * 200.0f) / 1048576.0f - 50.0f;
+  out.status = frame[0];
+  out.valid = true;
+  return true;
+}
+
+void srShiftOut16(uint16_t value) {
+  digitalWrite(PIN_SR_LATCH, LOW);
+  SPI.transfer(static_cast<uint8_t>((value >> 8) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>(value & 0xFF));
+  digitalWrite(PIN_SR_LATCH, HIGH);
+  delayMicroseconds(2);
+  digitalWrite(PIN_SR_LATCH, LOW);
+}
+
+void runShiftRegisterSelfTest() {
+  static const uint16_t patterns[] = {
+      0x0000,
+      0xFFFF,
+      0xAAAA,
+      0x5555,
+      0x00F0,
+      0x0F00,
+  };
+
+  logBoth("sr: self-test begin (interface only)");
+  for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); i++) {
+    srShiftOut16(patterns[i]);
+    char msg[64];
+    snprintf(msg,
+             sizeof(msg),
+             "sr: pattern[%lu]=0x%04X",
+             static_cast<unsigned long>(i),
+             static_cast<unsigned>(patterns[i]));
+    logBoth(msg);
+    delay(40);
+  }
+  srShiftOut16(0x0000);
+  logBoth("sr: self-test end");
+}
+
+void logHealthSummary() {
+  char msg[160];
+  if (g_aht20.valid && g_incoming_rail.valid) {
+    int32_t t_whole = 0, t_frac = 0, h_whole = 0, h_frac = 0;
+    char vin[16], iin[16];
+    formatAhtValues(g_aht20, t_whole, t_frac, h_whole, h_frac);
+    formatVoltageValue(g_incoming_rail.bus_V, vin, sizeof(vin));
+    formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
+    snprintf(msg,
+             sizeof(msg),
+             "status: flash=%s aht=%s Vin=%sV Iin=%smA T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             flash_test_passed ? "PASS" : "HOLD",
+             "PASS",
+             vin,
+             iin,
+             static_cast<long>(t_whole),
+             static_cast<long>(t_frac),
+             static_cast<long>(h_whole),
+             static_cast<long>(h_frac),
+             static_cast<unsigned long>(flash_test_runs));
+  } else if (g_aht20.valid) {
+    int32_t t_whole = 0, t_frac = 0, h_whole = 0, h_frac = 0;
+    formatAhtValues(g_aht20, t_whole, t_frac, h_whole, h_frac);
+    snprintf(msg,
+             sizeof(msg),
+             "status: flash=%s aht=%s T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             flash_test_passed ? "PASS" : "HOLD",
+             "PASS",
+             static_cast<long>(t_whole),
+             static_cast<long>(t_frac),
+             static_cast<long>(h_whole),
+             static_cast<long>(h_frac),
+             static_cast<unsigned long>(flash_test_runs));
+  } else if (g_incoming_rail.valid) {
+    char vin[16], iin[16];
+    formatVoltageValue(g_incoming_rail.bus_V, vin, sizeof(vin));
+    formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
+    snprintf(msg,
+             sizeof(msg),
+             "status: flash=%s aht=HOLD Vin=%sV Iin=%smA runs=%lu",
+             flash_test_passed ? "PASS" : "HOLD",
+             vin,
+             iin,
+             static_cast<unsigned long>(flash_test_runs));
+  } else {
+    snprintf(msg,
+             sizeof(msg),
+             "status: flash=%s aht=HOLD runs=%lu",
+             flash_test_passed ? "PASS" : "HOLD",
+             static_cast<unsigned long>(flash_test_runs));
+  }
+  logBoth(msg);
+}
+
+void flashSelect() {
+  digitalWrite(PIN_FLASH_CS, LOW);
+}
+
+void flashDeselect() {
+  digitalWrite(PIN_FLASH_CS, HIGH);
+}
+
+void flashWriteEnable() {
+  flashSelect();
+  SPI.transfer(CMD_WREN);
+  flashDeselect();
+}
+
+uint8_t flashReadStatus1() {
+  flashSelect();
+  SPI.transfer(CMD_RDSR1);
+  const uint8_t sr1 = SPI.transfer(0x00);
+  flashDeselect();
+  return sr1;
+}
+
+bool flashWaitReady(uint32_t timeout_ms) {
+  const uint32_t start = millis();
+  while ((millis() - start) < timeout_ms) {
+    if ((flashReadStatus1() & 0x01) == 0) {
+      return true;
+    }
+    delay(2);
+  }
+  return false;
+}
+
+void flashReadJedec(uint8_t& manufacturer, uint8_t& mem_type, uint8_t& capacity) {
+  flashSelect();
+  SPI.transfer(CMD_RDID);
+  manufacturer = SPI.transfer(0x00);
+  mem_type = SPI.transfer(0x00);
+  capacity = SPI.transfer(0x00);
+  flashDeselect();
+}
+
+void flashSectorErase4K(uint32_t address) {
+  flashWriteEnable();
+  flashSelect();
+  SPI.transfer(CMD_SECTOR_ERASE_4K);
+  SPI.transfer(static_cast<uint8_t>((address >> 16) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>((address >> 8) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>(address & 0xFF));
+  flashDeselect();
+}
+
+void flashPageProgram(uint32_t address, const uint8_t* data, size_t len) {
+  flashWriteEnable();
+  flashSelect();
+  SPI.transfer(CMD_PAGE_PROGRAM);
+  SPI.transfer(static_cast<uint8_t>((address >> 16) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>((address >> 8) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>(address & 0xFF));
+  for (size_t i = 0; i < len; i++) {
+    SPI.transfer(data[i]);
+  }
+  flashDeselect();
+}
+
+void flashReadData(uint32_t address, uint8_t* data, size_t len) {
+  flashSelect();
+  SPI.transfer(CMD_READ_DATA);
+  SPI.transfer(static_cast<uint8_t>((address >> 16) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>((address >> 8) & 0xFF));
+  SPI.transfer(static_cast<uint8_t>(address & 0xFF));
+  for (size_t i = 0; i < len; i++) {
+    data[i] = SPI.transfer(0x00);
+  }
+  flashDeselect();
+}
+
+bool runFlashBringupTest() {
+  logBoth("flash: begin bring-up test");
+
+  uint8_t manufacturer = 0;
+  uint8_t mem_type = 0;
+  uint8_t capacity = 0;
+  flashReadJedec(manufacturer, mem_type, capacity);
+
+  char id_msg[96];
+  snprintf(id_msg,
+           sizeof(id_msg),
+           "flash: JEDEC ID mfg=0x%02X type=0x%02X cap=0x%02X",
+           manufacturer,
+           mem_type,
+           capacity);
+  logBoth(id_msg);
+
+  // Winbond W25Q128 typical ID: EF 40 18.
+  if (manufacturer != 0xEF) {
+    logBoth("flash: unexpected manufacturer (expected Winbond 0xEF)");
+    return false;
+  }
+
+  const uint8_t sr1_before = flashReadStatus1();
+  char sr_msg[64];
+  snprintf(sr_msg, sizeof(sr_msg), "flash: SR1 before=0x%02X", sr1_before);
+  logBoth(sr_msg);
+
+  uint8_t tx[FLASH_TEST_LEN];
+  uint8_t rx[FLASH_TEST_LEN];
+  for (size_t i = 0; i < FLASH_TEST_LEN; i++) {
+    tx[i] = static_cast<uint8_t>(0xA0 + i);
+    rx[i] = 0;
+  }
+
+  flashSectorErase4K(FLASH_TEST_ADDR);
+  if (!flashWaitReady(4000)) {
+    logBoth("flash: sector erase timeout");
+    return false;
+  }
+
+  flashPageProgram(FLASH_TEST_ADDR, tx, FLASH_TEST_LEN);
+  if (!flashWaitReady(1000)) {
+    logBoth("flash: page program timeout");
+    return false;
+  }
+
+  flashReadData(FLASH_TEST_ADDR, rx, FLASH_TEST_LEN);
+  if (memcmp(tx, rx, FLASH_TEST_LEN) != 0) {
+    logBoth("flash: readback mismatch");
+    return false;
+  }
+
+  logBoth("flash: erase/program/readback PASS");
+  return true;
+}
 
 // ── CRC8 calculation (poly=0x07, init=0x00) ───────────────────────────────
 uint8_t crc8(const uint8_t* data, size_t len) {
@@ -86,17 +787,55 @@ void setup() {
   pinMode(PIN_STATUS_LED, OUTPUT);
   digitalWrite(PIN_STATUS_LED, HIGH); // LED off (active-low)
 
+  pinMode(PIN_FLASH_CS, OUTPUT);
+  digitalWrite(PIN_FLASH_CS, HIGH);
+
+  pinMode(PIN_SR_LATCH, OUTPUT);
+  digitalWrite(PIN_SR_LATCH, LOW);
+
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+
+  Wire.setSCL(I2C_SCL_PIN);
+  Wire.setSDA(I2C_SDA_PIN);
+  Wire.begin();
+
   Serial.begin(115200);
+  SerialDbg.begin(115200);
   delay(150);
   Serial.println("stm32-bluepill bringup: boot");
+  SerialDbg.println("stm32-bluepill bringup: boot");
 
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
   SerialU3.begin(115200);
   SerialU3.println("stm32-bluepill usart3: ready");
+  SerialDbg.println("stm32-bluepill usart3: ready");
+
+  printCommandHelp();
+  flash_test_passed = runFlashBringupTest();
+  flash_test_runs = 1;
+
+  Aht20Sample boot_sample;
+  if (readAht20Now(boot_sample)) {
+    g_aht20 = boot_sample;
+    logBoth("aht20: startup probe PASS");
+  } else {
+    logBoth("aht20: startup probe HOLD");
+  }
+  printInaProbeSummary();
+  if (refreshIncomingRailSample()) {
+    logBoth("ina: incoming rail sample PASS");
+  } else {
+    logBoth("ina: incoming rail sample HOLD");
+  }
+  logHealthSummary();
 }
 
 void loop() {
+  pollCommands();
+
   static uint32_t lastMs = 0;
+  static uint32_t lastSummaryMs = 0;
   uint32_t now = millis();
 
   if (now - lastMs >= 1000) {
@@ -105,16 +844,66 @@ void loop() {
     delay(40);
     digitalWrite(PIN_STATUS_LED, HIGH);
 
+    refreshIncomingRailSample();
+
     Serial.println("hb");
+    SerialDbg.println("hb");
+
+    if (g_incoming_rail.valid) {
+      char ina_hb_msg[96];
+      char vin[16], iin[16];
+      formatVoltageValue(g_incoming_rail.bus_V, vin, sizeof(vin));
+      formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
+      snprintf(ina_hb_msg,
+               sizeof(ina_hb_msg),
+               "ina hb: Vin=%sV Iin=%smA",
+               vin,
+               iin);
+      logBoth(ina_hb_msg);
+    } else {
+      logBoth("ina hb: HOLD");
+    }
+
+    if (!flash_test_passed) {
+      Serial.println("flash: HOLD (bring-up test failed)");
+      SerialDbg.println("flash: HOLD (bring-up test failed)");
+    }
     
-    // Extended placeholder telemetry for Phase 5 parser/UI bring-up.
-    const uint16_t v5_mV = 5000;
-    const int16_t i5_mA = 500;
-    const uint16_t v3v3_mV = 3300;
-    const int16_t i3v3_mA = 320;
-    const uint8_t temp_C = 31;
+    // Publish live telemetry from INA3221 rails when available.
+    Ina3221Reading ina_5v = {};
+    Ina3221Reading ina_3v3 = {};
+    const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
+    const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
+
+    const auto clampU16 = [](float value, uint16_t fallback) -> uint16_t {
+      if (value < 0.0f) return fallback;
+      if (value > 65535.0f) return 65535;
+      return static_cast<uint16_t>(value + 0.5f);
+    };
+    const auto clampI16 = [](float value, int16_t fallback) -> int16_t {
+      if (value < -32768.0f || value > 32767.0f) return fallback;
+      return static_cast<int16_t>(value + (value >= 0.0f ? 0.5f : -0.5f));
+    };
+
+    const uint16_t v5_mV = ok_5v ? clampU16(ina_5v.channel[0].bus_V * 1000.0f, 5000) : 5000;
+    const int16_t i5_mA = ok_5v ? clampI16(ina_5v.channel[0].current_mA, 500) : 500;
+    const uint16_t v3v3_mV = ok_3v3 ? clampU16(ina_3v3.channel[0].bus_V * 1000.0f, 3300) : 3300;
+    const int16_t i3v3_mA = ok_3v3 ? clampI16(ina_3v3.channel[0].current_mA, 320) : 320;
+    const uint8_t temp_C = g_aht20.valid
+        ? static_cast<uint8_t>(constrain(static_cast<int>(g_aht20.temp_C + 0.5f), 0, 125))
+        : 31;
     const uint8_t status = 0xF0;           // CH1_EN CH2_EN CH1_CV CH2_CV
     const uint8_t protection_flags = 0x00; // no active faults
     publishTelemetry(v5_mV, i5_mA, v3v3_mV, i3v3_mA, temp_C, status, protection_flags);
+  }
+
+  if (now - lastSummaryMs >= 60000) {
+    lastSummaryMs = now;
+    Aht20Sample periodic_sample;
+    if (readAht20Now(periodic_sample)) {
+      g_aht20 = periodic_sample;
+    }
+    refreshIncomingRailSample();
+    logHealthSummary();
   }
 }
