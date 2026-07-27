@@ -20,6 +20,9 @@ Session status: resumed on replacement CrowPanel and validated live-frame operat
 	- CrowPanel powered by USB-C
 	- UART0 temp wiring for data path testing
 	- HAT +5V injection to panel remains avoided in this phase
+8. UART0 mapping status after this run:
+	- Logical mapping confirmed: `UART0 RX=IO44`, `UART0 TX=IO43`
+	- Physical connector pin-3/pin-4 numbering still needs direct schematic pin-number closure in docs
 
 ## Current Session Goal
 
