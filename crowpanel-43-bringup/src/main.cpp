@@ -1720,11 +1720,16 @@ void setup() {
   Serial.begin(115200);
   Serial.println("policy: OTA disabled");
 
-  // IO19/IO20 are S3 USB-JTAG D-/D+ pads. Release them so Serial1 can own
-  // them as UART1 TX/RX.  Must happen before Wire.begin() and Serial1.begin().
-  REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
-  gpio_reset_pin(GPIO_NUM_19);
-  gpio_reset_pin(GPIO_NUM_20);
+  if (disp_link_slave::transportMode() == disp_link_slave::TransportMode::Uart1) {
+    // IO19/IO20 are S3 USB-JTAG D-/D+ pads. Release them so Serial1 can own
+    // them as UART1 TX/RX. Must happen before Serial1.begin().
+    REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+    gpio_reset_pin(GPIO_NUM_19);
+    gpio_reset_pin(GPIO_NUM_20);
+    Serial.println("transport: UART1 (IO19/IO20), K1 expected 0,1");
+  } else {
+    Serial.println("transport: UART0-IN (IO44/IO43), shared with Serial console");
+  }
 
   Wire.begin(15, 16);
   delay(50);
@@ -1773,18 +1778,22 @@ void setup() {
 void loop() {
   disp_link_slave::poll();
 
-  while (Serial.available() > 0) {
-    const char ch = static_cast<char>(Serial.read());
-    if (ch == '\n' || ch == '\r') {
-      if (!serialLine.isEmpty()) {
-        handleCommand(serialLine);
-        serialLine = "";
-      }
-    } else {
-      serialLine += ch;
-      if (serialLine.length() > 240) {
-        serialLine = "";
-        Serial.println("ERR line too long");
+  // In UART0 transport mode telemetry shares Serial, so command parsing must
+  // stay off to avoid consuming telemetry bytes as CLI input.
+  if (!disp_link_slave::telemetryOnConsoleSerial()) {
+    while (Serial.available() > 0) {
+      const char ch = static_cast<char>(Serial.read());
+      if (ch == '\n' || ch == '\r') {
+        if (!serialLine.isEmpty()) {
+          handleCommand(serialLine);
+          serialLine = "";
+        }
+      } else {
+        serialLine += ch;
+        if (serialLine.length() > 240) {
+          serialLine = "";
+          Serial.println("ERR line too long");
+        }
       }
     }
   }
@@ -1792,7 +1801,7 @@ void loop() {
   // Echo telemetry status to serial once per second.
   static uint32_t last_log_ms = 0;
   const uint32_t  now             = millis();
-  if (kRxSerialLogEnabled && now - last_log_ms >= 1000) {
+  if (kRxSerialLogEnabled && !disp_link_slave::telemetryOnConsoleSerial() && now - last_log_ms >= 1000) {
     last_log_ms = now;
     printRxStatus();
   }

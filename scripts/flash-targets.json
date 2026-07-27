@@ -4,8 +4,8 @@
     "notes": "HAT ESP32-C6 immutable MAC captured 2026-05-31 from COM11"
   },
   "crowpanel": {
-    "expectedMac": "80:B5:4E:DE:F6:10",
-    "notes": "CrowPanel ESP32-S3 immutable MAC captured 2026-05-31 from COM12"
+    "expectedMac": "80:B5:4E:E2:E4:08",
+    "notes": "CrowPanel ESP32-S3 replacement panel immutable MAC captured 2026-07-27 from COM12"
   },
   "legacy-esp32": {
     "expectedMac": "",

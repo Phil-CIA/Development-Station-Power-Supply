@@ -3,7 +3,11 @@
 // disp_link_slave — CrowPanel (ESP32-S3) UART receiver for HAT telemetry.
 //
 // See WorkStation/src/disp_link.h for the transport rationale and the
-// 10-byte frame layout. The transport is UART1 only.
+// 10-byte frame layout.
+//
+// Transport mode is compile-time selectable:
+// - UART1 (CrowPanel UART1-OUT path, IO19/IO20)
+// - UART0 (CrowPanel UART0-IN path, IO44/IO43)
 //
 // The recv callback runs on the WiFi task. Access to the latest Telemetry
 // snapshot is guarded by a portMUX critical section.
@@ -11,6 +15,11 @@
 #include <Arduino.h>
 
 namespace disp_link_slave {
+
+enum class TransportMode : uint8_t {
+  Uart1 = 0,
+  Uart0 = 1,
+};
 
 struct Telemetry {
   uint32_t rx_count;       // total frames parsed (UART)
@@ -27,15 +36,21 @@ struct Telemetry {
   uint8_t  protection_flags;
   bool     has_extended;
   uint32_t last_rx_ms;
-  uint32_t i2c_rx_count;   // legacy field, now: frames received via UART1
-  uint32_t uart_bytes;     // raw bytes seen on Serial1 (debug)
+  uint32_t i2c_rx_count;   // legacy field, now: frames received via active UART transport
+  uint32_t uart_bytes;     // raw bytes seen on active UART transport (debug)
 };
 
-// Bring up UART1 receiver.
+// Bring up telemetry receiver on the selected UART transport.
 void begin();
 
-// Drain Serial1 RX and feed bytes into the SOF state machine. Call from loop().
+// Drain selected UART RX and feed bytes into the SOF state machine. Call from loop().
 void poll();
+
+// Compile-time selected transport mode.
+TransportMode transportMode();
+
+// True when telemetry is bound to Serial (UART0) and shares the console stream.
+bool telemetryOnConsoleSerial();
 
 Telemetry snapshot();
 
