@@ -47602,7 +47602,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "765d9b5e-0c17-46f4-bb70-665a0d1e8d21")
 		(property "Reference" "R25"
 			(at 220.98 116.332 0)

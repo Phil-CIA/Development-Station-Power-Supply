@@ -181,3 +181,29 @@ Begin project-specific functionality integration on top of this UI.
    - sample count and temperature summary
 3. CrowPanel build passed after this follow-up change.
 4. Guarded CrowPanel upload also passed after this follow-up change.
+
+## Continuation Update - 2026-07-11 (CrowPanel Layout Cleanup Before Rev B Bench Pivot)
+
+1. Performed a cleanup pass on the CrowPanel Main and Graph screens to reduce visible overflow and clipping seen on hardware photos.
+2. Main-screen adjustments in `crowpanel-43-bringup/src/main.cpp`:
+   - tightened card text density
+   - moved setpoint emphasis into channel headers
+   - shortened current and power/status rows
+   - retained the right-side chip/status column while making the summary block denser
+3. Graph-screen adjustments in `crowpanel-43-bringup/src/main.cpp`:
+   - reduced and repositioned the summary card
+   - reduced chart widths/heights to avoid overlap with labels and footer regions
+   - repositioned the right-side chip column
+   - moved the fault row upward to reduce bottom-edge collision
+4. Build status for this cleanup pass:
+   - Guarded CrowPanel build passed after the layout changes
+   - No guarded upload was run in this closeout step
+5. Scope note:
+   - This was a layout-stability / readability pass, not a final commercial-match polish pass
+   - Further visual tuning is still possible later, but is intentionally deferred for now
+
+## Next Session Pivot
+
+1. Pause CrowPanel UI work here.
+2. Shift focus to bench power-up of Rev B hardware.
+3. Treat the current CrowPanel UI state as a parked prototype baseline unless bench findings require display-side changes.

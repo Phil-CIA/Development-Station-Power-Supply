@@ -3,8 +3,6 @@
 #include <lvgl.h>
 #include <cstring>
 #include <cmath>
-#include <driver/gpio.h>
-#include <soc/usb_serial_jtag_reg.h>
 
 #include "CrowPanel43Display.h"
 #include "disp_link_slave.h"
@@ -1719,17 +1717,7 @@ void handleCommand(const String& rawLine) {
 void setup() {
   Serial.begin(115200);
   Serial.println("policy: OTA disabled");
-
-  if (disp_link_slave::transportMode() == disp_link_slave::TransportMode::Uart1) {
-    // IO19/IO20 are S3 USB-JTAG D-/D+ pads. Release them so Serial1 can own
-    // them as UART1 TX/RX. Must happen before Serial1.begin().
-    REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
-    gpio_reset_pin(GPIO_NUM_19);
-    gpio_reset_pin(GPIO_NUM_20);
-    Serial.println("transport: UART1 (IO19/IO20), K1 expected 0,1");
-  } else {
-    Serial.println("transport: UART0-IN (IO44/IO43), shared with Serial console");
-  }
+  Serial.println("transport: UART0-IN (IO44/IO43), shared with Serial console");
 
   Wire.begin(15, 16);
   delay(50);

@@ -13,6 +13,9 @@ static const uint8_t PIN_ISET_CH3 = PA2;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
 static const uint8_t PIN_FLASH_CS = PA8;
 static const uint8_t PIN_SR_LATCH = PA4;
+// U4 shift-register bits controlling 3.3V rail path (PMOS: 0=ON, 1=OFF)
+static const uint8_t SR_BIT_3V3_HI = 3;
+static const uint8_t SR_BIT_3V3_LO = 4;
 
 static const uint8_t I2C_SCL_PIN = PB8;
 static const uint8_t I2C_SDA_PIN = PB9;
@@ -49,6 +52,7 @@ static const size_t FRAME_SIZE = 17;
 static uint8_t frame_seq = 0;
 static bool flash_test_passed = false;
 static uint32_t flash_test_runs = 0;
+static uint16_t g_sr_state = 0x0000;
 
 struct Aht20Sample {
   bool valid;
@@ -84,6 +88,8 @@ bool readIna3221(uint8_t address, Ina3221Reading& out);
 bool refreshIncomingRailSample();
 void runShiftRegisterSelfTest();
 void logHealthSummary();
+void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms);
+void setD9PathEnabled(bool enabled);
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -126,7 +132,7 @@ void formatCurrentValue(float value, char* out, size_t out_len) {
 }
 
 void printCommandHelp() {
-  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | INAPROBE | INANOW | INARAILS");
+  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS");
 }
 
 bool i2cPing(uint8_t address) {
@@ -366,6 +372,21 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+  if (cmd == "D9FLASH") {
+    flashD9Led(8, 1000, 1000);
+    return;
+  }
+
+  if (cmd == "D9ON") {
+    setD9PathEnabled(true);
+    return;
+  }
+
+  if (cmd == "D9OFF") {
+    setD9PathEnabled(false);
+    return;
+  }
+
   if (cmd == "INAPROBE") {
     printInaProbeSummary();
     return;
@@ -495,12 +516,58 @@ bool readAht20Now(Aht20Sample& out) {
 }
 
 void srShiftOut16(uint16_t value) {
+  g_sr_state = value;
   digitalWrite(PIN_SR_LATCH, LOW);
   SPI.transfer(static_cast<uint8_t>((value >> 8) & 0xFF));
   SPI.transfer(static_cast<uint8_t>(value & 0xFF));
   digitalWrite(PIN_SR_LATCH, HIGH);
   delayMicroseconds(2);
   digitalWrite(PIN_SR_LATCH, LOW);
+}
+
+void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
+  const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
+  const uint16_t saved = g_sr_state;
+  // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
+  const uint16_t ch2_on = static_cast<uint16_t>(saved & ~mask);
+  const uint16_t ch2_off = static_cast<uint16_t>(saved | mask);
+
+  char msg[96];
+  snprintf(msg,
+           sizeof(msg),
+           "d9: flashing %u cycles (on=%u ms off=%u ms)",
+           static_cast<unsigned>(blinks),
+           static_cast<unsigned>(on_ms),
+           static_cast<unsigned>(off_ms));
+  logBoth(msg);
+
+  for (uint8_t i = 0; i < blinks; ++i) {
+    srShiftOut16(ch2_on);
+    delay(on_ms);
+    srShiftOut16(ch2_off);
+    delay(off_ms);
+  }
+
+  srShiftOut16(saved);
+  logBoth("d9: flash sequence complete");
+}
+
+void setD9PathEnabled(bool enabled) {
+  const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
+  // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
+  const uint16_t on_state = static_cast<uint16_t>(g_sr_state & ~mask);
+  const uint16_t off_state = static_cast<uint16_t>(g_sr_state | mask);
+
+  if (enabled) {
+    // Force a visible transition on the gate even if the path was already on.
+    srShiftOut16(off_state);
+    delay(20);
+    srShiftOut16(on_state);
+  } else {
+    srShiftOut16(off_state);
+  }
+
+  logBoth(enabled ? "d9: path forced ON" : "d9: path forced OFF");
 }
 
 void runShiftRegisterSelfTest() {

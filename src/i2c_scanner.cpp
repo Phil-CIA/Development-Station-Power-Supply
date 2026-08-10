@@ -1,18 +1,15 @@
 #include <Arduino.h>
 
+#include <string.h>
+
 #include "disp_link.h"
 
 // ----------------------------------------------------------------------------
-// Bit-bang I²C master on GPIO5 (SDA) / GPIO6 (SCL) for INA3221 reads.
+// Bit-bang I2C master on GPIO5 (SDA) / GPIO6 (SCL).
 //
-// The C6 has only one HP_I2C peripheral and that hardware is now dedicated to
-// the IDF v5 slave driver in disp_link.cpp (port 0, GPIO0/GPIO7).  A real
-// hardware master can't share the peripheral, so INA3221 reads run through
-// this tiny open-drain bit-bang implementation.  ~100 kHz; speed doesn't
-// matter because the loop scans only every 5 s.
-//
-// Pull-ups: INA3221 board provides external pull-ups on SDA/SCL; internal
-// INPUT_PULLUP is also enabled as a belt-and-suspenders fallback.
+// This bus currently serves bring-up reads for INA3221 devices and the U5
+// AHT20 temperature/humidity sensor. Pull-ups are expected externally;
+// INPUT_PULLUP is also enabled as a fallback.
 // ----------------------------------------------------------------------------
 constexpr int INA_SDA = 5;
 constexpr int INA_SCL = 6;
@@ -149,10 +146,14 @@ static bool inaInit(uint8_t addr) {
 constexpr uint8_t SR_DATA_PIN  = 3;
 constexpr uint8_t SR_CLK_PIN   = 4;
 constexpr uint8_t SR_LATCH_PIN = 1;
+constexpr bool SR_SELF_TEST_ENABLED = false;
 
 // Bitmask for U4 bits 1-6: all six load-switch FET enables
 constexpr uint16_t SR_ALL_CH_ENABLE = 0x0000;  // all bits 0 = all PMOS gates LOW = all FETs ON
 constexpr uint16_t SR_ALL_CH_OFF    = 0x007E;  // bits 1-6 = 1 = all FETs OFF
+constexpr uint8_t SR_BIT_3V3_LOW_RANGE = 4;    // U4 Q4
+
+static uint16_t g_sr_state = SR_ALL_CH_OFF;
 
 void shiftOut16(uint16_t value) {
   // Send 16 bits MSB-first: bits[15:8] go to U5, bits[7:0] go to U4.
@@ -168,9 +169,50 @@ void shiftOut16(uint16_t value) {
   digitalWrite(SR_LATCH_PIN, LOW);
 }
 
+void applyShiftRegisterState(const char* reason) {
+  shiftOut16(g_sr_state);
+  Serial.printf("SR state [%s]: 0x%04X (3V3_LOW=%s)\n",
+                reason,
+                static_cast<unsigned>(g_sr_state),
+                ((g_sr_state >> SR_BIT_3V3_LOW_RANGE) & 0x1) ? "OFF" : "ON");
+}
+
+void set3v3LowRange(bool on) {
+  const uint16_t bit = static_cast<uint16_t>(1u << SR_BIT_3V3_LOW_RANGE);
+  if (on) {
+    g_sr_state &= static_cast<uint16_t>(~bit);  // PMOS gate LOW => ON
+    applyShiftRegisterState("3V3LOW ON");
+  } else {
+    g_sr_state |= bit;                          // PMOS gate HIGH => OFF
+    applyShiftRegisterState("3V3LOW OFF");
+  }
+}
+
 void enableAllChannels() {
-  shiftOut16(SR_ALL_CH_ENABLE);
-  Serial.println("Load switches: all channels ENABLED (gate LOW, PMOS ON).");
+  g_sr_state = SR_ALL_CH_OFF;
+  applyShiftRegisterState("idle");
+}
+
+void runShiftRegisterSelfTest() {
+  static const uint16_t patterns[] = {
+      0x0000,
+      0xFFFF,
+      0xAAAA,
+      0x5555,
+      0x00F0,
+      0x0F00,
+  };
+
+  Serial.println("SR self-test: begin (interface-only pattern sweep)");
+  for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); i++) {
+    shiftOut16(patterns[i]);
+    Serial.printf("SR self-test pattern[%u] = 0x%04X\n",
+                  static_cast<unsigned>(i),
+                  static_cast<unsigned>(patterns[i]));
+    delay(40);
+  }
+  shiftOut16(SR_ALL_CH_OFF);
+  Serial.println("SR self-test: end (returned to idle pattern)");
 }
 
 struct I2cBusCandidate {
@@ -186,6 +228,25 @@ constexpr I2cBusCandidate BUS_CANDIDATES[] = {
 };
 
 constexpr uint8_t TARGET_ADDRESSES[] = {0x40, 0x41, 0x43};
+constexpr uint8_t AHT20_ADDRESS = 0x38;
+
+constexpr uint8_t AHT20_CMD_SOFT_RESET = 0xBA;
+constexpr uint8_t AHT20_CMD_INIT = 0xBE;
+constexpr uint8_t AHT20_CMD_MEASURE = 0xAC;
+
+constexpr uint8_t AHT20_STATUS_BUSY = 0x80;
+constexpr uint8_t AHT20_STATUS_CALIBRATED = 0x08;
+
+struct Aht20Reading {
+  bool valid = false;
+  float temperature_C = 0.0f;
+  float humidity_pct = 0.0f;
+  uint8_t status = 0;
+};
+
+Aht20Reading g_aht20;
+uint32_t g_last_aht_print_ms = 0;
+constexpr uint32_t AHT_PRINT_INTERVAL_MS = 1000;
 
 // Last good 12V input reading captured from INA3221 0x41 CH3 — published over
 // disp_link to the CrowPanel once per scan cycle.
@@ -195,6 +256,194 @@ struct Last12V {
   float  current_mA = 0.0f;
 };
 Last12V g_last_12v;
+
+static bool ahtWriteCmd1(uint8_t cmd) {
+  i2cStart();
+  if (i2cWriteByte(static_cast<uint8_t>(AHT20_ADDRESS << 1))) { i2cStop(); return false; }
+  if (i2cWriteByte(cmd)) { i2cStop(); return false; }
+  i2cStop();
+  return true;
+}
+
+static bool ahtWriteCmd3(uint8_t cmd, uint8_t arg1, uint8_t arg2) {
+  i2cStart();
+  if (i2cWriteByte(static_cast<uint8_t>(AHT20_ADDRESS << 1))) { i2cStop(); return false; }
+  if (i2cWriteByte(cmd)) { i2cStop(); return false; }
+  if (i2cWriteByte(arg1)) { i2cStop(); return false; }
+  if (i2cWriteByte(arg2)) { i2cStop(); return false; }
+  i2cStop();
+  return true;
+}
+
+static bool ahtReadBytes(uint8_t* out, size_t len) {
+  i2cStart();
+  if (i2cWriteByte(static_cast<uint8_t>((AHT20_ADDRESS << 1) | 1))) { i2cStop(); return false; }
+  for (size_t i = 0; i < len; i++) {
+    const int ack = (i + 1 < len) ? 0 : 1;
+    out[i] = i2cReadByte(ack);
+  }
+  i2cStop();
+  return true;
+}
+
+static bool ahtReadStatus(uint8_t& status) {
+  i2cStart();
+  if (i2cWriteByte(static_cast<uint8_t>((AHT20_ADDRESS << 1) | 1))) { i2cStop(); return false; }
+  status = i2cReadByte(1);
+  i2cStop();
+  return true;
+}
+
+static bool ahtEnsureInitialized() {
+  uint8_t status = 0;
+  if (!ahtReadStatus(status)) return false;
+  if ((status & AHT20_STATUS_CALIBRATED) != 0) return true;
+
+  if (!ahtWriteCmd3(AHT20_CMD_INIT, 0x08, 0x00)) return false;
+  delay(12);
+  if (!ahtReadStatus(status)) return false;
+  return (status & AHT20_STATUS_CALIBRATED) != 0;
+}
+
+static bool ahtReadMeasurement(Aht20Reading& out) {
+  out.valid = false;
+
+  if (!ahtWriteCmd3(AHT20_CMD_MEASURE, 0x33, 0x00)) return false;
+  delay(80);
+
+  uint8_t status = 0;
+  const uint32_t deadline = millis() + 120;
+  while (millis() < deadline) {
+    if (!ahtReadStatus(status)) return false;
+    if ((status & AHT20_STATUS_BUSY) == 0) break;
+    delay(10);
+  }
+  if ((status & AHT20_STATUS_BUSY) != 0) return false;
+
+  // AHT20 readout frame: [status][hum20:3 bytes][temp20:3 bytes][crc]
+  uint8_t frame[7] = {0};
+  if (!ahtReadBytes(frame, sizeof(frame))) return false;
+
+  const uint32_t raw_h =
+      (static_cast<uint32_t>(frame[1]) << 12) |
+      (static_cast<uint32_t>(frame[2]) << 4) |
+      ((static_cast<uint32_t>(frame[3]) & 0xF0) >> 4);
+  const uint32_t raw_t =
+      ((static_cast<uint32_t>(frame[3]) & 0x0F) << 16) |
+      (static_cast<uint32_t>(frame[4]) << 8) |
+      static_cast<uint32_t>(frame[5]);
+
+  out.humidity_pct = (static_cast<float>(raw_h) * 100.0f) / 1048576.0f;
+  out.temperature_C = (static_cast<float>(raw_t) * 200.0f) / 1048576.0f - 50.0f;
+  out.status = frame[0];
+  out.valid = true;
+  return true;
+}
+
+void pollAht20() {
+  if (!inaPing(AHT20_ADDRESS)) {
+    if (millis() - g_last_aht_print_ms >= AHT_PRINT_INTERVAL_MS) {
+      Serial.println("AHT20 0x38: no response");
+      g_last_aht_print_ms = millis();
+    }
+    return;
+  }
+
+  bool init_ok = ahtEnsureInitialized();
+  if (!init_ok) {
+    // Recovery path for startup edge cases.
+    ahtWriteCmd1(AHT20_CMD_SOFT_RESET);
+    delay(25);
+    init_ok = ahtEnsureInitialized();
+  }
+
+  if (!init_ok) {
+    if (millis() - g_last_aht_print_ms >= AHT_PRINT_INTERVAL_MS) {
+      Serial.println("AHT20 0x38: init/calibration failed");
+      g_last_aht_print_ms = millis();
+    }
+    return;
+  }
+
+  Aht20Reading sample;
+  if (!ahtReadMeasurement(sample)) {
+    if (millis() - g_last_aht_print_ms >= AHT_PRINT_INTERVAL_MS) {
+      Serial.println("AHT20 0x38: measurement read failed");
+      g_last_aht_print_ms = millis();
+    }
+    return;
+  }
+
+  g_aht20 = sample;
+  if (millis() - g_last_aht_print_ms >= AHT_PRINT_INTERVAL_MS) {
+    Serial.printf("AHT20 0x38: T=%.2f C RH=%.2f %% status=0x%02X\n",
+                  g_aht20.temperature_C,
+                  g_aht20.humidity_pct,
+                  static_cast<unsigned>(g_aht20.status));
+    g_last_aht_print_ms = millis();
+  }
+}
+
+void printCommandHelp() {
+  Serial.println("Commands: HELP | SRTEST | AHTNOW | AHTRESET | SRSTATE | 3V3LOWON | 3V3LOWOFF");
+}
+
+void handleSerialCommands() {
+  if (!Serial.available()) return;
+
+  const String cmd = Serial.readStringUntil('\n');
+  String normalized = cmd;
+  normalized.trim();
+  normalized.toUpperCase();
+  if (normalized.length() == 0) return;
+
+  if (normalized == "HELP") {
+    printCommandHelp();
+    return;
+  }
+  if (normalized == "SRTEST") {
+    runShiftRegisterSelfTest();
+    return;
+  }
+  if (normalized == "AHTNOW") {
+    pollAht20();
+    if (g_aht20.valid) {
+      Serial.printf("AHT20 sample: T=%.2f C RH=%.2f %% status=0x%02X\n",
+                    g_aht20.temperature_C,
+                    g_aht20.humidity_pct,
+                    static_cast<unsigned>(g_aht20.status));
+    } else {
+      Serial.println("AHT20 sample unavailable");
+    }
+    return;
+  }
+  if (normalized == "AHTRESET") {
+    if (!ahtWriteCmd1(AHT20_CMD_SOFT_RESET)) {
+      Serial.println("AHT20 reset command failed");
+      return;
+    }
+    delay(25);
+    const bool init_ok = ahtEnsureInitialized();
+    Serial.printf("AHT20 reset done, init=%s\n", init_ok ? "OK" : "FAIL");
+    return;
+  }
+  if (normalized == "SRSTATE") {
+    applyShiftRegisterState("query");
+    return;
+  }
+  if (normalized == "3V3LOWON") {
+    set3v3LowRange(true);
+    return;
+  }
+  if (normalized == "3V3LOWOFF") {
+    set3v3LowRange(false);
+    return;
+  }
+
+  Serial.print("Unknown command: ");
+  Serial.println(normalized);
+  printCommandHelp();
+}
 
 float shuntOhmsForTap(uint8_t address, int ch) {
   // Shunt resistor map — confirmed from DSP Regulator_hat.net netlist + bench measurements.
@@ -320,19 +569,25 @@ void setup() {
   digitalWrite(SR_CLK_PIN,   LOW);
   digitalWrite(SR_LATCH_PIN, LOW);
   enableAllChannels();
+  if (SR_SELF_TEST_ENABLED) {
+    runShiftRegisterSelfTest();
+  }
 
-  // Bring up the HAT -> CrowPanel display link as an IDF v5 hardware I²C slave
-  // at 0x42 on HP_I2C0 (GPIO0/GPIO7).  See disp_link.h for the frame format.
+  // Bring up the HAT -> CrowPanel display link using UART transport.
   disp_link::begin();
 
-  Serial.println("\nI2C Scanner Starting (INA3221 bit-bang on GPIO5/GPIO6)...");
+  Serial.println("\nI2C scanner starting (bit-bang on GPIO5/GPIO6 for INA3221 + AHT20)...");
+  printCommandHelp();
 }
 
 void loop() {
+  handleSerialCommands();
+
   Serial.println("Scanning INA3221 target addresses...");
   for (uint8_t i = 0; i < sizeof(BUS_CANDIDATES) / sizeof(BUS_CANDIDATES[0]); i++) {
     scanBus(BUS_CANDIDATES[i]);
   }
+  pollAht20();
 
   // Publish latest 12V input reading to the CrowPanel over the UART link.
   if (g_last_12v.valid) {
