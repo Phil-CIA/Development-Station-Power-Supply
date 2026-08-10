@@ -1,24 +1,5 @@
-ERC report (2026-06-19T03:15:13-0500, Encoding UTF8)
+ERC report (2026-07-29T04:06:57-0500, Encoding UTF8)
 
 ***** Sheet /
-[pin_to_pin]: Pins of type Unspecified and Passive are connected
-    ; warning
-    @(7400 mils, 10500 mils): Symbol U5 Pin 2 [VDD, Unspecified, Line]
-    @(7300 mils, 11750 mils): Symbol C39 Pin 2 [Passive, Line]
-[pin_to_pin]: Pins of type Unspecified and Passive are connected
-    ; warning
-    @(7400 mils, 10600 mils): Symbol U5 Pin 3 [SCL, Unspecified, Line]
-    @(9000 mils, 10550 mils): Symbol R75 Pin 1 [Passive, Line]
-[lib_symbol_issues]: The current configuration does not include the symbol library 'easyeda2kicad'
-    ; warning
-    @(7750 mils, 10500 mils): Symbol U5 [AHT20_C2757850]
-[pin_to_pin]: Pins of type Unspecified and Power input are connected
-    ; warning
-    @(8100 mils, 10500 mils): Symbol U5 Pin 5 [GND, Unspecified, Line]
-    @(8250 mils, 10450 mils): Symbol #PWR012 Pin 1 [Power input, Line]
-[pin_to_pin]: Pins of type Unspecified and Passive are connected
-    ; warning
-    @(8100 mils, 10600 mils): Symbol U5 Pin 4 [SDA, Unspecified, Line]
-    @(9250 mils, 10550 mils): Symbol R76 Pin 1 [Passive, Line]
 
- ** ERC messages: 5  Errors 0  Warnings 5
+ ** ERC messages: 0  Errors 0  Warnings 0

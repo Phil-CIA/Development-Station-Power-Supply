@@ -58,6 +58,37 @@ Option 2: Add pre-charge circuit (capacitive divider + small series resistor)
 
 ---
 
+### RB-010 — VSENSE_5V+ Open/Floating Dominance Risk In Feedback Selector
+**Status:** 🔴 Open  
+**Severity:** High (regulation and safety behavior risk)  
+**Found by:** SPICE selector crossover and fault-case simulations (`hardware/sim/5v_reg_selector_sweep.cir`, `hardware/sim/5v_reg_selector_fault_cases.cir`)  
+**Board Impact:** Rev-C routing blocker (must close before PCB routing starts)  
+**Description:**  
+The 5V selector path can be pulled by a floating `VSENSE_5V+` node if leakage or injected current raises that node above the local fallback setpoint. This can force `5V_reg` to follow a false-high remote sense condition.
+
+Simulation checkpoint from current model set:
+- `VSENSE_5V+` low/off: `5V_reg` remains near local fallback (~5.043V)
+- `VSENSE_5V+` disconnected with no leakage: `5V_reg` remains near local fallback
+- `VSENSE_5V+` disconnected with injected leakage: selector crossover occurs once the floating node exceeds fallback threshold
+- With current 10Mohm bias model: crossover near 0.504uA (`5.043V / 10Mohm`)
+
+**Root Cause:** Floating remote-sense node is not strongly constrained during open-line conditions; selector architecture currently allows the remote path to dominate once leakage/noise lifts that node above fallback.
+
+**Required Before Rev-C Routing:**
+1. Select and implement hardening strategy for `VSENSE_5V+` open-line behavior (stronger bias network and/or clamp/buffer/selector change).
+2. Re-run the two SPICE validation decks and record pass/fail:
+	- `hardware/sim/5v_reg_selector_sweep.cir`
+	- `hardware/sim/5v_reg_selector_fault_cases.cir`
+3. Confirm schematic/netlist/ERC consistency after hardening edits.
+4. Capture one bench validation plan for forced low/open-sense scenarios.
+
+**Recommendation:** Treat this as a pre-routing electrical gate. Do not begin Rev-C routing until the selected mitigation demonstrates deterministic fallback behavior under low/open/leakage cases.
+
+**Design Owner:** TBD (power supply redesign cycle)
+**Next Step:** Implement bias/clamp hardening in schematic, re-export netlist/ERC, rerun SPICE decks, then clear this blocker explicitly in handoff notes.
+
+---
+
 ### RB-002 — USB Vbus Backfeed: HAT/ESP32 USB 5V Fights Regulator 5V Rail
 **Status:** 🟡 In progress (workaround active)  
 **Severity:** Medium (current limiting during stacked operation)  
@@ -240,6 +271,7 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 | RB-007 (Stack connector) | TBD (mechanical review) | Measure height; confirm alignment pins | Low |
 | RB-008 (Buck output LED) | `dsp-regulator-next-iter/` | Design review + firmware pin assignment | Low |
 | RB-009 (TS5A3157 footprint) | `dsp-regulator-next-iter/` | Fix footprint and symbol pin mapping | High |
+| RB-010 (VSENSE open/floating dominance) | `dsp-regulator-next-iter/` | Harden VSENSE_5V+ fallback behavior and validate by SPICE before routing | High (Rev-C routing blocker) |
 
 ---
 
@@ -249,4 +281,5 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 |------|-------|--------|
 | 2026-05-10 | Tracker created; RB-001 and RB-002 opened | Bench bring-up session |
 | 2026-05-10 | Added RB-003 through RB-009 from bench bring-up findings | Bench bring-up session |
+| 2026-08-10 | Added RB-010 from SPICE fault-case results; marked as Rev-C routing blocker | Simulation and handoff session |
 | TBD | Design review and next-iter file creation | TBD |

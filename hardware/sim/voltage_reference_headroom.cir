@@ -1,0 +1,41 @@
+* Voltage reference / selector headroom check
+* Behavioral testbench for the 5V-supplied LMV358-class stage
+* Purpose:
+* - show the output ceiling when the buffer is powered from 5V
+* - compare against a 12V supply with the same requested 5V reference
+* - include a Schottky selector drop so the converter-facing node is visible too
+*
+* Node map:
+*   REQ     = requested reference input (ideal 5V command)
+*   RAWx    = op-amp output before selector diode
+*   OUTx    = selector node / converter-facing node after diode drop
+*   VCCx    = op-amp supply rail
+
+.model DBAT54 D(Is=2n N=1.2 Rs=0.6 Cjo=10p M=0.33 Bv=30 Ibv=10u Eg=0.69)
+
+.subckt REF_STAGE IN RAW OUT VCC 0
+* Supply-limited output swing model.
+* This approximates the LM358-class behavior that cannot swing fully to the rail.
+EOUT RAW 0 TABLE {V(VCC)} = (5, 4.3) (12, 5.0)
+DSEL RAW OUT DBAT54
+RBLEED OUT 0 1Meg
+.ends REF_STAGE
+
+VCC5 VCC5 0 5
+VCC12 VCC12 0 12
+
+VREQ REQ 0 5
+
+X5  REQ RAW5  OUT5  VCC5  0 REF_STAGE
+X12 REQ RAW12 OUT12 VCC12 0 REF_STAGE
+
+RLOAD5  OUT5  0 100k
+RLOAD12 OUT12 0 100k
+
+.control
+op
+print v(req) v(raw5) v(out5) v(raw12) v(out12)
+quit
+.endc
+
+.end

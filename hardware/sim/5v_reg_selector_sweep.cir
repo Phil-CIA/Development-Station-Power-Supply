@@ -1,0 +1,35 @@
+* 5V regulator selector sweep
+* Goal: show 5V_reg behavior when VSENSE_5V+ is below and above the 5V setpoint
+* Model:
+* - LM2596 feedback divider establishes a nominal 5.04V local regulation point
+* - selector chooses the higher of local regulation or remote sense
+* - DC sweep on VSENSE_5V+ shows the crossover
+
+.param RFB_TOP=3100
+.param RFB_BOT=1000
+.param VREF=1.23
+.param VSET={VREF*(1+RFB_TOP/RFB_BOT)}
+
+VVSENSE VSENSE_5VPLUS 0 4.0
+
+* Local converter setpoint derived from the divider ratio shown in schematic
+* This is the nominal 5V_reg value when the remote sense is not dominant.
+BLOCAL VLOCAL 0 V={VSET}
+
+* Selector output follows whichever input is higher.
+* This approximates the BAT54C common-cathode combine behavior.
+BSEL 5V_reg 0 V={max(V(VLOCAL), V(VSENSE_5VPLUS))}
+
+RLOAD 5V_reg 0 10k
+
+.control
+set noaskquit
+op
+print v(vsense_5vplus) v(vlocal) v(5v_reg)
+
+dc VVSENSE 4.0 6.0 0.05
+wrdata hardware/sim/5v_reg_selector_sweep.csv v(vsense_5vplus) v(vlocal) v(5v_reg)
+quit
+.endc
+
+.end

@@ -1,0 +1,38 @@
+* NMOS high-side Vgs collapse check (conceptual)
+* Approximation of gate pull-up + NMOS pull-down drive topology
+* Node map:
+*  VIN      = source rail (PV_IN_POS)
+*  VOUT     = switched rail to load
+*  GATE     = common gate node of pass FET pair
+*  CTRL     = control node driving pull-down transistor gate
+
+.param VIN=12
+.param RLOAD=24
+V1 VIN 0 {VIN}
+
+* Gate pull-up toward input rail (similar role to R43)
+RPU VIN GATE 100k
+
+* Gate pull-down transistor (similar role to Q2 + drive)
+VCTRL CTRL 0 PULSE(0 5 2m 1u 1u 5m 10m)
+MDRV GATE CTRL 0 0 NMDRV
+.model NMDRV NMOS (VTO=1.5 KP=0.03 LAMBDA=0.02)
+
+* Back-to-back NMOS pass pair (common-source arrangement)
+* Generic model used because vendor model is not included.
+* Left FET: D=VIN, S=SMID, G=GATE
+* Right FET: D=VOUT, S=SMID, G=GATE
+MP1 VIN GATE SMID 0 NMPASS
+MP2 VOUT GATE SMID 0 NMPASS
+.model NMPASS NMOS (VTO=2.2 KP=8 LAMBDA=0.01 RD=0.01 RS=0.01)
+
+RLOAD VOUT 0 {RLOAD}
+
+* Track the effective Vgs seen by each pass FET
+.save V(VIN) V(VOUT) V(GATE) V(SMID) I(RLOAD)
+.tran 20u 30m 0 20u
+.meas tran VGS_ON_MIN  MIN  par('V(GATE)-V(SMID)') FROM=8m TO=14m
+.meas tran VGS_OFF_MAX MAX  par('V(GATE)-V(SMID)') FROM=18m TO=24m
+.meas tran VOUT_ON_AVG AVG V(VOUT) FROM=8m TO=14m
+.meas tran ILOAD_ON_AVG AVG par('-I(V1)') FROM=8m TO=14m
+.end

@@ -1,0 +1,73 @@
+* 5V selector fault cases: low and disconnected VSENSE_5V+
+* Purpose:
+* - quantify what 5V_reg does when VSENSE_5V+ is low
+* - quantify what 5V_reg does when VSENSE_5V+ is effectively disconnected
+* - sweep injected leakage current into floating VSENSE_5V+
+
+.param RFB_TOP=3100
+.param RFB_BOT=1000
+.param VREF=1.23
+.param VSET={VREF*(1+RFB_TOP/RFB_BOT)}
+.param RPATHVAL=0.01
+
+* Remote sense source and connection path
+VVSENSE VSENSE_SRC 0 5.0
+RPATH VSENSE_SRC VSENSE_5VPLUS {RPATHVAL}
+
+* Floating-line bias and optional injected leakage current
+RBIAS VSENSE_5VPLUS 0 10Meg
+IINJ 0 VSENSE_5VPLUS 0
+
+* Local converter setpoint from divider ratio
+BLOCAL VLOCAL 0 V={VSET}
+
+* Selector chooses higher of local or remote path
+BSEL 5V_reg 0 V={max(V(VLOCAL), V(VSENSE_5VPLUS))}
+
+RLOAD 5V_reg 0 10k
+
+.control
+set noaskquit
+
+* Case 1: VSENSE connected but low/off
+alterparam RPATHVAL=0.01
+reset
+alter @VVSENSE[dc]=0
+alter @IINJ[dc]=0
+op
+echo CASE_1_CONNECTED_LOW
+print v(vsense_5vplus) v(vlocal) v(5v_reg)
+
+* Case 2: VSENSE connected and above setpoint
+alterparam RPATHVAL=0.01
+reset
+alter @VVSENSE[dc]=5.20
+alter @IINJ[dc]=0
+op
+echo CASE_2_CONNECTED_HIGH
+print v(vsense_5vplus) v(vlocal) v(5v_reg)
+
+* Case 3: VSENSE disconnected (high path resistance), no leakage
+alterparam RPATHVAL=1e12
+reset
+alter @VVSENSE[dc]=5.20
+alter @IINJ[dc]=0
+op
+echo CASE_3_DISCONNECTED_NO_LEAK
+print v(vsense_5vplus) v(vlocal) v(5v_reg)
+
+* Case 4: VSENSE disconnected + leakage injection sweep
+* Current is injected from ground into VSENSE_5V+ (0 to 1 uA)
+alterparam RPATHVAL=1e12
+reset
+alter @VVSENSE[dc]=0
+
+* Save a curve to inspect when floating VSENSE starts to dominate
+* Columns include VSENSE_5V+ and 5V_reg.
+dc IINJ 0 1u 0.05u
+wrdata hardware/sim/5v_reg_selector_fault_sweep.csv v(vsense_5vplus) v(vlocal) v(5v_reg)
+
+quit
+.endc
+
+.end

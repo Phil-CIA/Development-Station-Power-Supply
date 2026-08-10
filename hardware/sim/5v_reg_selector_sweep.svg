@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="80.0" y="20.0" font-family="Segoe UI, Arial, sans-serif" font-size="20" text-anchor="start" fill="#1f2937">5V selector crossover</text>
+<line x1="80.00" y1="28" x2="80.00" y2="480" stroke="#eef2f7" stroke-width="1"/>
+<text x="80.0" y="512.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#475569">4.00</text>
+<line x1="294.00" y1="28" x2="294.00" y2="480" stroke="#eef2f7" stroke-width="1"/>
+<text x="294.0" y="512.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#475569">4.50</text>
+<line x1="508.00" y1="28" x2="508.00" y2="480" stroke="#eef2f7" stroke-width="1"/>
+<text x="508.0" y="512.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#475569">5.00</text>
+<line x1="722.00" y1="28" x2="722.00" y2="480" stroke="#eef2f7" stroke-width="1"/>
+<text x="722.0" y="512.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#475569">5.50</text>
+<line x1="936.00" y1="28" x2="936.00" y2="480" stroke="#eef2f7" stroke-width="1"/>
+<text x="936.0" y="512.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#475569">6.00</text>
+<line x1="80" y1="480.00" x2="936" y2="480.00" stroke="#eef2f7" stroke-width="1"/>
+<text x="70.0" y="484.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="end" fill="#475569">3.90</text>
+<line x1="80" y1="367.00" x2="936" y2="367.00" stroke="#eef2f7" stroke-width="1"/>
+<text x="70.0" y="371.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="end" fill="#475569">4.45</text>
+<line x1="80" y1="254.00" x2="936" y2="254.00" stroke="#eef2f7" stroke-width="1"/>
+<text x="70.0" y="258.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="end" fill="#475569">5.00</text>
+<line x1="80" y1="141.00" x2="936" y2="141.00" stroke="#eef2f7" stroke-width="1"/>
+<text x="70.0" y="145.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="end" fill="#475569">5.55</text>
+<line x1="80" y1="28.00" x2="936" y2="28.00" stroke="#eef2f7" stroke-width="1"/>
+<text x="70.0" y="32.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="end" fill="#475569">6.10</text>
+<line x1="80" y1="480" x2="936" y2="480" stroke="#111827" stroke-width="1.5"/>
+<line x1="80" y1="28" x2="80" y2="480" stroke="#111827" stroke-width="1.5"/>
+<polyline points="80.00,459.45 101.40,449.18 122.80,438.91 144.20,428.64 165.60,418.36 187.00,408.09 208.40,397.82 229.80,387.55 251.20,377.27 272.60,367.00 294.00,356.73 315.40,346.45 336.80,336.18 358.20,325.91 379.60,315.64 401.00,305.36 422.40,295.09 443.80,284.82 465.20,274.55 486.60,264.27 508.00,254.00 529.40,243.73 550.80,233.45 572.20,223.18 593.60,212.91 615.00,202.64 636.40,192.36 657.80,182.09 679.20,171.82 700.60,161.55 722.00,151.27 743.40,141.00 764.80,130.73 786.20,120.45 807.60,110.18 829.00,99.91 850.40,89.64 871.80,79.36 893.20,69.09 914.60,58.82 936.00,48.55" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+<polyline points="80.00,245.17 101.40,245.17 122.80,245.17 144.20,245.17 165.60,245.17 187.00,245.17 208.40,245.17 229.80,245.17 251.20,245.17 272.60,245.17 294.00,245.17 315.40,245.17 336.80,245.17 358.20,245.17 379.60,245.17 401.00,245.17 422.40,245.17 443.80,245.17 465.20,245.17 486.60,245.17 508.00,245.17 529.40,245.17 550.80,245.17 572.20,245.17 593.60,245.17 615.00,245.17 636.40,245.17 657.80,245.17 679.20,245.17 700.60,245.17 722.00,245.17 743.40,245.17 764.80,245.17 786.20,245.17 807.60,245.17 829.00,245.17 850.40,245.17 871.80,245.17 893.20,245.17 914.60,245.17 936.00,245.17" fill="none" stroke="#0b7285" stroke-width="3"/>
+<text x="926.0" y="46.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" text-anchor="end" fill="#0b7285">5V_reg</text>
+<text x="926.0" y="66.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" text-anchor="end" fill="#64748b">VSENSE_5V+</text>
+<text x="480.0" y="522.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#1f2937">VSENSE_5V+ (V)</text>
+<g transform="translate(22,270.0) rotate(-90)"><text x="0.0" y="0.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#1f2937">Voltage (V)</text></g>
+<line x1="526.40" y1="28" x2="526.40" y2="480" stroke="#f08c00" stroke-width="1.5" stroke-dasharray="4 4"/>
+<line x1="80" y1="245.17" x2="936" y2="245.17" stroke="#f08c00" stroke-width="1.5" stroke-dasharray="4 4"/>
+<text x="532.4" y="239.2" font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="start" fill="#b45309">Setpoint 5.043 V</text>
+</svg>
