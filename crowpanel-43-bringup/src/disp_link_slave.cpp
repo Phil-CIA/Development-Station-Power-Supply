@@ -1,5 +1,9 @@
 #include "disp_link_slave.h"
 
+#include <driver/gpio.h>
+#include <soc/soc.h>
+#include <soc/usb_serial_jtag_reg.h>
+
 constexpr uint32_t kUartBaud  = 115200;
 
 namespace disp_link_slave {
@@ -9,6 +13,8 @@ namespace {
 constexpr uint8_t kSof1         = 0xAA;
 constexpr uint8_t kSof2         = 0x55;
 constexpr uint8_t kFrameTagTlm  = 'T';
+constexpr int kUartRxPin = 19;
+constexpr int kUartTxPin = 20;
 constexpr uint8_t kFrameLenTlm  = 6;
 constexpr uint8_t kFrameLenExtMin = 13;
 constexpr size_t  kFrameSizeLegacy = 10;
@@ -87,17 +93,24 @@ void parseFrame(const uint8_t* f, size_t frame_size) {
 void begin() {
   if (s_begun) return;
 
-  // UART0-only mode: listen on shared Serial stream (UART0-IN path, IO44/IO43).
-  // Keep console TX quiet in this mode to avoid mixing diagnostics with host traffic.
-  s_rx_stream = &Serial;
-  Serial.printf("disp_link_slave: UART0 listening @%lu baud on Serial (UART0-IN path)\n",
-                static_cast<unsigned long>(kUartBaud));
+  // Release IO19/20 from USB-Serial-JTAG pad ownership so Serial1 can bind
+  // to the dedicated CrowPanel UART1-OUT path.
+  REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, BIT(14));
+  gpio_reset_pin(static_cast<gpio_num_t>(kUartRxPin));
+  gpio_reset_pin(static_cast<gpio_num_t>(kUartTxPin));
+  Serial1.begin(kUartBaud, SERIAL_8N1, kUartRxPin, kUartTxPin);
+
+  s_rx_stream = &Serial1;
+  Serial.printf("disp_link_slave: UART1 listening @%lu baud on IO%d/IO%d\n",
+                static_cast<unsigned long>(kUartBaud),
+                kUartRxPin,
+                kUartTxPin);
 
   s_begun = true;
 }
 
 void poll() {
-  // Byte-by-byte SOF state machine on Serial1. Supports variable-length
+  // Byte-by-byte SOF state machine on the selected UART stream. Supports variable-length
   // telemetry frames while preserving legacy 10-byte compatibility.
   static uint8_t  buf[kFrameSizeMax];
   static size_t   idx = 0;
@@ -151,11 +164,11 @@ void poll() {
 }
 
 TransportMode transportMode() {
-  return TransportMode::Uart0;
+  return TransportMode::Uart1;
 }
 
 bool telemetryOnConsoleSerial() {
-  return true;
+  return false;
 }
 
 Telemetry snapshot() {

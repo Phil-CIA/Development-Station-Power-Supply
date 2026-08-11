@@ -1,6 +1,6 @@
 # STM32 Blue Pill Bring-up (First Flash)
 
-This project is a minimal first-flash target for STM32F103C8 (Blue Pill).
+This project is the active bench-controller firmware baseline for STM32F103C8 (Blue Pill) on the current Rev-B HAT bring-up branch.
 
 ## Behavior
 
@@ -12,6 +12,26 @@ This project is a minimal first-flash target for STM32F103C8 (Blue Pill).
 - Emits heartbeat on USB/USART monitor (`Serial`) at 115200.
 - Emits extended binary telemetry on USART3 via `HardwareSerial SerialU3(PB11, PB10)` at 115200.
 
+## Current role in this repo
+
+- This is the controller-of-record for current bench bring-up and worksheet command checks.
+- The active command shell lives in `src/main.cpp`.
+- The root-repo ESP32-C6 HAT environments are not the active control path for the current Rev-B bypass worksheet.
+
+## Command shell
+
+- `HELP`
+- `FTEST`
+- `AHTNOW`
+- `AHTRESET`
+- `SRTEST`
+- `D9FLASH`
+- `D9ON`
+- `D9OFF`
+- `INAPROBE`
+- `INANOW`
+- `INARAILS`
+
 ## Telemetry
 
 - Current bring-up firmware publishes an extended UART frame once per second.
@@ -21,7 +41,12 @@ This project is a minimal first-flash target for STM32F103C8 (Blue Pill).
   - temperature
   - status byte
   - protection flags byte
-- Values are still placeholders for UI and transport bring-up, not real ADC-backed measurements yet.
+
+## Bench connections
+
+- Flash path: ST-Link using `upload_protocol = stlink`
+- Debug shell: USART1/CH340 path at 115200 8N1
+- Historical monitor port in prior captures: COM7
 
 ## Build
 

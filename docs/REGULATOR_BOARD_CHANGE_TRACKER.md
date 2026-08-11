@@ -258,6 +258,53 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 
 ---
 
+### RB-011 — 3.3V Regulator Output Depends On R25 In Selector/Reference Path
+**Status:** 🔴 Open  
+**Severity:** High (rail setpoint accuracy and overvoltage risk on 3.3V path)  
+**Found by:** Rev-B bypass bench validation (2026-08-11)  
+**Board Impact:** Rev-B bring-up requires explicit population state control; Rev-C schematic review required  
+**Description:**  
+Bench measurements show a strong dependency of `+3.3V_Reg` setpoint on `R25` participation in the feedback selector/reference network around U6 and D5.
+
+Observed behavior during no-load bring-up:
+- `R25` removed/not effective: `+3.3V_Reg` rises to approximately `3.52V`
+- `R25` installed/effective: `+3.3V_Reg` returns near target at approximately `3.335V`
+
+Additional consistency checks:
+- CrowPanel channel readback matched DMM trend (`~3.52V` high state).
+- 5V path did not show the same behavior in this session because the current jumper state effectively bypassed selector influence on that rail.
+
+**Technical Interpretation (working hypothesis):**  
+Reference/selector path drop and node biasing at the BAT54/U6 network can under-drive the effective feedback node seen by LM2596 FB, causing the regulator to raise output above nominal until FB threshold is met.
+
+**Current Workaround (bench):**
+1. Keep `R25` populated for all ongoing Rev-B bring-up tests.
+2. Treat `+3.3V_Reg` around `3.52V` state as HOLD (do not proceed to extended dwell/load in that state).
+3. Continue worksheet phases only when `+3.3V_Reg` is restored near expected class (`~3.3V`, currently observed `~3.335V`).
+
+**Required Closure Work (next revision):**
+1. Re-derive selector/reference transfer for the 3.3V branch including diode forward-drop range and bias currents.
+2. Decide whether `R25` function is required permanently (keep and document) or whether topology should be changed so rail accuracy does not depend on this recovery path.
+3. Capture a schematic-level correction with explicit tolerance analysis for `+3.3V_Reg` target across component variation and temperature.
+4. Revalidate on bench with and without remote-sense perturbations; document final pass criteria.
+
+**Recommendation:** Keep this as an explicit open design issue and gate Rev-C sign-off for the 3.3V selector block until deterministic setpoint behavior is demonstrated without ambiguity.
+
+**Design Owner:** TBD (power supply redesign cycle)
+**Next Step:** Open a schematic action item on the 3.3V selector/reference network and attach the 2026-08-11 bench evidence set.
+
+**Execution Checklist (RB-011):**
+- [ ] Capture direct node voltages in both states (`R25` effective vs non-effective): LM2596 FB, D5 pins, U6A/U6B outputs, `+3.3V_Reg`.
+- [ ] Build a reduced transfer worksheet for the 3.3V selector/reference path including BAT54 forward-drop assumptions across temperature/current.
+- [ ] Choose disposition:
+	- keep `R25` as required element and document as intentional, or
+	- redesign selector/reference topology so nominal 3.3V does not depend on `R25` recovery behavior.
+- [ ] Apply chosen schematic correction in Rev-C regulator project and regenerate netlist/ERC.
+- [ ] Bench revalidate corrected path with no-load and loaded checks (target: no `~3.52V` recurrence in normal mode).
+- [ ] Close RB-011 only after pass criteria and final rationale are captured in handoff + tracker.
+
+---
+
 ## Summary of Next-Iter Deliverables
 
 | Issue | Next-Iter File | Action | Priority |
@@ -272,6 +319,7 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 | RB-008 (Buck output LED) | `dsp-regulator-next-iter/` | Design review + firmware pin assignment | Low |
 | RB-009 (TS5A3157 footprint) | `dsp-regulator-next-iter/` | Fix footprint and symbol pin mapping | High |
 | RB-010 (VSENSE open/floating dominance) | `dsp-regulator-next-iter/` | Harden VSENSE_5V+ fallback behavior and validate by SPICE before routing | High (Rev-C routing blocker) |
+| RB-011 (3.3V selector/reference dependency on R25) | `dsp-regulator-next-iter/` | Remove ambiguity in 3.3V feedback selector path; keep-or-redesign decision with bench revalidation | High |
 
 ---
 
@@ -282,4 +330,5 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 | 2026-05-10 | Tracker created; RB-001 and RB-002 opened | Bench bring-up session |
 | 2026-05-10 | Added RB-003 through RB-009 from bench bring-up findings | Bench bring-up session |
 | 2026-08-10 | Added RB-010 from SPICE fault-case results; marked as Rev-C routing blocker | Simulation and handoff session |
+| 2026-08-11 | Added RB-011 from bypass bench evidence; conditional keep-bypass rule recorded | Bench validation session |
 | TBD | Design review and next-iter file creation | TBD |

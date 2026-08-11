@@ -1560,7 +1560,7 @@ void dumpLogCsv(int limit) {
 }
 
 // PROBE <pin> [ms]  — raw digitalRead loop on the given GPIO pin.
-// Use 'PROBE 20 7000' to verify the HAT UART TX signal arrives on IO20.
+// Use 'PROBE 19 7000' to verify the STM32 USART3 TX signal arrives on CrowPanel IO19.
 void handleProbe(const String& rawArgs) {
   String args = rawArgs;
   args.trim();
@@ -1717,7 +1717,7 @@ void handleCommand(const String& rawLine) {
 void setup() {
   Serial.begin(115200);
   Serial.println("policy: OTA disabled");
-  Serial.println("transport: UART0-IN (IO44/IO43), shared with Serial console");
+  Serial.println("transport: UART1 dedicated telemetry (IO19 RX / IO20 TX), console stays on USB Serial");
 
   Wire.begin(15, 16);
   delay(50);
@@ -1766,8 +1766,8 @@ void setup() {
 void loop() {
   disp_link_slave::poll();
 
-  // In UART0 transport mode telemetry shares Serial, so command parsing must
-  // stay off to avoid consuming telemetry bytes as CLI input.
+  // In dedicated UART1 transport mode the USB Serial console remains available
+  // for commands and logging without consuming telemetry bytes.
   if (!disp_link_slave::telemetryOnConsoleSerial()) {
     while (Serial.available() > 0) {
       const char ch = static_cast<char>(Serial.read());
