@@ -4,7 +4,17 @@ Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-08-10.md](docs/DEV_STATION
 
 Previous handoff: [docs/DEV_STATION_HANDOFF_2026-07-20-session2.md](docs/DEV_STATION_HANDOFF_2026-07-20-session2.md)
 
-Session status: STM32 command-path debug completed; hardware behavior points to 3.3V pass-path polarity/orientation issue on current PCB, with board rework vs board revision decision pending.
+Session status: STM32 command-path debug completed; post-session bench rework moved the board into temporary jumper-bypass mode after range MOSFET configuration was found incorrect.
+
+## Post-Session Bench Update (2026-08-10, later)
+
+1. Range MOSFET stage was identified as incorrectly configured for current bring-up intent.
+2. Range MOSFET devices on the affected path were removed for temporary bypass-mode validation.
+3. Hard jumpers were installed to bypass the removed range-switch stage:
+   - `+5V_Reg` -> `R19`
+   - `+3.3V_Reg` -> `R17`
+4. Current Rev-B bring-up state should be treated as **jumper-bypass baseline**, not switched-path baseline.
+5. Until the range-switch network is reintroduced, command-path checks (`D9ON`, `D9OFF`, `D9FLASH`) remain useful for firmware/control visibility but are no longer proof of end-to-end switched-path behavior.
 
 ## 2026-08-10 Session Outcome
 
@@ -38,13 +48,52 @@ Session status: STM32 command-path debug completed; hardware behavior points to 
 
 ## Open Work For Next Session
 
-1. Decide hardware path forward for current PCB:
-   - temporary bodge/rework for bring-up continuation, or
-   - direct board revision path.
-2. If choosing rework: define exact pad-level rework plan for Q1/Q2/Q7/Q8 path and capture before/after measurements.
-3. If choosing revision: lock corrective orientation/net mapping in next PCB spin package and continue validation on revised hardware.
-4. Keep firmware command hooks (`D9ON`, `D9OFF`, `D9FLASH`) as bench diagnostics for retest on revised hardware.
+1. Validate temporary jumper-bypass baseline stability first:
+   - verify VIN, `+5V_Boot`, `+5V_Reg`, and `+3.3V_Reg` under no-load and light-load dwell.
+2. Capture a bypass-mode measurement table at the installed jumpers:
+   - voltage at `R19` feed point from `+5V_Reg`
+   - voltage at `R17` feed point from `+3.3V_Reg`
+   - any unexpected droop/heating at jumper wires or destination nodes.
+3. Reclassify firmware command tests in this mode:
+   - use `D9ON`, `D9OFF`, `D9FLASH` only as command/telemetry checks while switched hardware is bypassed.
+4. Decide forward path once bypass baseline is characterized:
+   - keep bypass for continued subsystem bring-up, or
+   - reintroduce corrected range-switch topology via controlled rework/revision.
 
 ## Suggested Restart Prompt
 
 Resume from [docs/DEV_STATION_HANDOFF_2026-08-10.md](docs/DEV_STATION_HANDOFF_2026-08-10.md). Assume STM32 command control is working and focus on PCB-level correction strategy for the 3.3V switch path (Q1/Q2/Q7/Q8 network). Provide a concrete rework-or-revision execution plan and measurement checklist for validation.
+
+## Rev-C Split Kickoff (2026-08-10)
+
+1. Created isolated Rev-C KiCad project folders for both boards:
+   - [hardware/kicad/dsp-regulator-rev-c](hardware/kicad/dsp-regulator-rev-c)
+   - [hardware/kicad/dsp-regulator-hat-rev-c](hardware/kicad/dsp-regulator-hat-rev-c)
+2. Renamed project roots to `RevC` across primary KiCad files (`.kicad_sch`, `.kicad_pcb`, `.kicad_pro`, `.kicad_prl`, `.net`) in both Rev-C folders.
+3. Updated schematic title blocks to Rev C with date `2026-08-10`:
+   - [hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.kicad_sch](hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.kicad_sch)
+   - [hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch](hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch)
+4. Isolated manufacturing output paths to OneDrive Rev-C locations:
+   - Regulator Gerber path now targets `.../Regulator board/Rev C/Gerbers/`
+   - HAT plot/BOM paths now target `.../Regulator Hat/REV C/...`
+5. Created external Rev-C manufacturing directories:
+   - `C:\Users\forch\OneDrive\JLCPCB files\Development station supply\Regulator board\Rev C\Gerbers`
+   - `C:\Users\forch\OneDrive\JLCPCB files\Development station supply\Regulator Hat\REV C\KiCad Files`
+
+### Next Immediate Rev-C Tasks
+
+1. Open both Rev-C projects in KiCad and run fresh ERC/DRC (copied Rev-B reports were intentionally removed in Rev-C folders).
+2. Re-export both Rev-C netlists and run connector-contract verification against Rev-C netlist paths.
+3. Apply/confirm RB-010 mitigation edits only in Rev-C projects before layout start.
+
+## Session Close Transition (for next chat)
+
+1. This session is closed with Rev-C file separation completed and validated at the net-contract level.
+2. The next chat should focus on continued Rev-B bring-up issue discovery and bench evidence capture.
+3. Keep change hygiene strict:
+   - Rev-B folders for bench debug and measurement correlation.
+   - Rev-C folders for redesign implementation only.
+
+### Next Chat Prompt (Rev-B bring-up)
+
+Resume from [docs/DEV_STATION_HANDOFF_2026-08-10.md](docs/DEV_STATION_HANDOFF_2026-08-10.md). Assume Rev-B is now in temporary jumper-bypass mode with range MOSFETs removed on the affected path and hard jumpers installed from `+5V_Reg` to `R19` and `+3.3V_Reg` to `R17`. Focus first on proving bypass-mode electrical stability and documenting exact node voltages/thermal behavior, then define the decision gate for when to keep bypass for continued bring-up versus when to reintroduce corrected switching hardware.

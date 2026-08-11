@@ -1,10 +1,12 @@
 # Development Station Power Supply - Handoff
 
-Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-07-29.md](docs/DEV_STATION_HANDOFF_2026-07-29.md)
+Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-08-11.md](docs/DEV_STATION_HANDOFF_2026-08-11.md)
 
-Previous handoff: [docs/DEV_STATION_HANDOFF_2026-07-03.md](docs/DEV_STATION_HANDOFF_2026-07-03.md)
+Previous handoff: [docs/DEV_STATION_HANDOFF_2026-08-10.md](docs/DEV_STATION_HANDOFF_2026-08-10.md)
 
-Session status: LM74502H high-side NMOS range-switch driver integration validated at netlist/ERC level; next step is layout + single-channel bench validation.
+Session status: Rev-B HAT bring-up is in temporary jumper-bypass mode after range-switch MOSFET misconfiguration findings; use the bypass worksheet first.
+
+Primary bench worksheet: [docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md](docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md)
 
 ## Session Closeout - 2026-08-10
 
@@ -82,6 +84,6 @@ Note: a KiCad lock file is present and should be ignored/removed before commit i
 
 ## Next Chat Start
 
-1. Open [docs/DEV_STATION_HANDOFF_2026-07-20-session2.md](docs/DEV_STATION_HANDOFF_2026-07-20-session2.md).
-2. Verify the CrowPanel is on the main dashboard and the counts are visible on-screen.
-3. If needed, inspect the LVGL update path in `crowpanel-43-bringup/src/main.cpp`.
+1. Open [docs/DEV_STATION_HANDOFF_2026-08-11.md](docs/DEV_STATION_HANDOFF_2026-08-11.md).
+2. Execute [docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md](docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md) in order and log pass/fail per phase.
+3. Keep Rev-B bring-up and Rev-C design work separated: test/debug on Rev-B paths, and apply redesign edits only in Rev-C project folders.
