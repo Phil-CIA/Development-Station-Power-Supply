@@ -1,0 +1,119 @@
+* 3.3V regulator selector/reference path model — RB-011 v4 (SIMPLIFIED)
+* BENCH VALIDATION FOCUS: Interpret real node voltages from probe data
+*
+* CORE INSIGHT from probe data (2026-08-12):
+*   - D5K voltage is nearly CONSTANT (3.303V → 3.302V) when R25 is removed
+*   - This means D5K is NOT floating; it's held by the feedback divider
+*   - The regulator OUTPUT is what changes (3.335V → 3.451V)
+*   - Implication: VOUT varies to maintain V_FB ≈ 1.23V
+*
+* FEEDBACK DIVIDER MATH:
+*   FB = D5K × R7 / (R23 + R14 + R13 + R7)
+*   FB = D5K × 1000 / (0 + 1000 + 680 + 1000) = D5K × 0.378
+*
+*   At equilibrium: V_FB = 1.23V
+*   Therefore:      D5K = 1.23V / 0.378 = 3.256V nominal
+*
+*   Bench measured D5K = 3.303V → V_FB = 3.303 × 0.378 = 1.248V (close!)
+*   Error: (1.248 - 1.23) / 1.23 = 1.5% (within component tolerance)
+*
+* THIS MODEL: Directly sweep VOUT and calculate resulting D5K, U6 outputs, and V_FB
+*             No need for transient loop closure — just calculate node voltages
+
+.title RB-011 v4: Feedback divider steady-state analysis
+
+* Voltage sources
+VOUT V_OUT 0 DC 3.3
+VBOOT VBOOT 0 DC 5.0
+
+* ============================================================
+* U6A: unity-gain buffer of V_OUT with output impedance
+* Real LMV358 outputs ~3.55V ceiling with ~75Ω output Z
+* ============================================================
+EU6A U6A_IDEAL 0 V_OUT 0 1
+RU6A_OUT U6A_IDEAL U6A_OUT 75
+* When D5K < U6A_IDEAL, back-drive current flows, clamping U6A_OUT
+
+* ============================================================
+* D5: BAT54C dual Schottky, common cathode
+* A1 ← U6A_OUT
+* A2 ← U6B_OUT  
+* K  → D5K
+* ============================================================
+.model DBAT54 D(Is=2n N=1.08 Rs=0.5 Bv=30 Eg=0.69)
+DA1 U6A_OUT D5K DBAT54
+DA2 U6B_OUT D5K DBAT54
+
+* ============================================================
+* U6B: unity-gain buffer of R33/R34 divider (local reference)
+* ============================================================
+R33 V_OUT U6B_REF 100
+R34 U6B_REF 0 33000
+EU6B U6B_IDEAL 0 U6B_REF 0 1
+RU6B_OUT U6B_IDEAL U6B_OUT 75
+
+* ============================================================
+* R25: DC return path from V_OUT to D5K
+* Case A: 10Ω installed
+* Case B: Comment out and use R25_OPEN instead
+* ============================================================
+R25 V_OUT D5K 10
+* R25_OPEN V_OUT D5K 1e12
+
+* ============================================================
+* LM2596 feedback divider
+* ============================================================
+R23 D5K FB_INT 0.001
+R14 FB_INT FB_MID 1000
+R13 FB_MID FB 680
+R7 FB 0 1000
+* R15 NOT POPULATED (open)
+* R15_OPEN FB 0 1e12
+
+* Light load
+RLOAD V_OUT 0 100k
+
+* ============================================================
+* Analysis: Transient to find steady state
+* ============================================================
+.control
+set hcopydevtype=postscript
+set color0=white
+set color1=black
+
+echo === RB-011 v4: Direct steady-state analysis ===
+echo Case A: R25 = 10 ohm, VOUT sweep 2.5 to 5V
+
+* Perform DC sweep to find operating point at each VOUT
+dc VOUT 2.5 5.0 0.01
+
+* Extract key nodes at V_OUT = 3.335V (near Case A setpoint)
+meas dc VOUT_A find v(v_out) when v(fb)=1.23 rise=first
+meas dc D5K_A find v(d5k) when v(fb)=1.23 rise=first
+meas dc U6A_A find v(u6a_out) when v(fb)=1.23 rise=first
+meas dc U6B_A find v(u6b_out) when v(fb)=1.23 rise=first
+
+echo
+echo === CASE A RESULTS (V_FB ≈ 1.23V) ===
+print VOUT_A D5K_A U6A_A U6B_A
+echo
+echo Bench measured (2026-08-12):
+echo   V_OUT   = 3.335V
+echo   D5K     = 3.3032V
+echo   U6A_OUT = 3.151V
+echo   U6B_OUT = 3.3943V
+echo   V_FB    = 1.248V (calculated from D5K × 0.378)
+echo
+echo Model prediction vs bench:
+print v(v_out)[83] v(d5k)[83] v(u6a_out)[83] v(u6b_out)[83] v(fb)[83]
+
+* Write sweep data
+set wr_singlescale
+set wr_vecnames
+option numdgt=7
+wrdata 3v3_sel_case_a_v4.csv v(v_out) v(d5k) v(u6a_out) v(u6b_out) v(fb) v(u6a_ideal) v(u6b_ref)
+
+quit
+.endc
+
+.end

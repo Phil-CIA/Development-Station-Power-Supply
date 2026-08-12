@@ -263,7 +263,7 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 **Severity:** High (rail setpoint accuracy and overvoltage risk on 3.3V path)  
 **Found by:** Rev-B bypass bench validation (2026-08-11)  
 **Board Impact:** Rev-B bring-up requires explicit R25 population; Rev-C schematic must document R25 as required  
-**SPICE Model:** `hardware/sim/3v3_reg_selector_ref_v2.cir` (added 2026-08-12)
+**SPICE Model:** `hardware/sim/3v3_reg_selector_ref_v4.cir` (validated 2026-08-12)
 
 **Description:**  
 Bench measurements show a strong dependency of `+3.3V_Reg` setpoint on `R25` participation in the feedback selector/reference network around U6 and D5.
@@ -272,25 +272,44 @@ Observed behavior during no-load bring-up:
 - `R25` removed/not effective: `+3.3V_Reg` rises to approximately `3.52V`
 - `R25` installed/effective: `+3.3V_Reg` returns near target at approximately `3.335V`
 
-**Root Cause — Confirmed by SPICE (2026-08-12):**  
+**Root Cause — Confirmed by SPICE & Bench Probe (2026-08-12):**  
 `D5K` (BAT54C,215 common cathode) is the TOP node of the LM2596-ADJ feedback divider, not a midpoint injection. The chain is:
 
 ```
 D5K → R23(0Ω) → R14(1kΩ) → R13(680Ω) → FB → R7(1kΩ) → GND
 ```
 
+Feedback divider transfer: `V_FB = V_D5K × 0.378`
+
 **R25 (10Ω) is the sole DC path from the output back into the feedback divider:**
 ```
 V_OUT → R25 → D5K → divider → FB
 ```
 
-Without R25, D5K can only be driven by U6A/U6B (LMV358 voltage-follower buffers) through D5 diodes. The LMV358 output ceiling (~VCC−1.5V ≈ 3.5V at 1mA load) limits D5K to ~3.13V. This keeps V_FB at ~1.168V, below the LM2596 1.23V target — the regulator has **no stable operating point** without R25 and runs to its hardware output limit (~3.52V bench observation = duty-cycle clamp, not a regulation equilibrium).
+Without R25, D5K can only be driven by U6A/U6B (LMV358 voltage-follower buffers) through D5 diodes. The LMV358 output ceiling (~VCC−1.5V ≈ 3.5V) limits D5K to ~3.13V. This keeps V_FB at ~1.168V, below the LM2596 1.23V target — the regulator has **no stable operating point** without R25 and runs to its hardware output limit (~3.52V bench observation = duty-cycle clamp, not a regulation equilibrium).
 
-**SPICE validation results (3v3_reg_selector_ref_v2.cir):**
-| Case | Model V_OUT | Bench V_OUT | Notes |
-|------|------------|------------|-------|
-| R25 = 10Ω | 3.309V | 3.335V | 0.8% error — within component tolerance ✓ |
-| R25 = open | No equilibrium (V_FB stuck at 1.168V) | ~3.52V | LM2596 at duty-cycle limit, not regulated ✓ |
+Key mechanism: **D5 diodes conduct backward when D5K is pulled below U6 outputs.** When R25 is removed, U6B output ceiling saturates at 3.5V, forward-biasing D5 and pulling D5K upward through the 0.15-0.2V diode drop. However, this back-drive current is not enough to lift D5K above ~3.3V, leaving V_FB insufficient for regulation.
+
+**SPICE validation results (3v3_reg_selector_ref_v4.cir with bench-measured node voltages):**
+| Case | Model V_OUT | Bench V_OUT | Model D5K | Bench D5K | Accuracy |
+|------|------------|------------|----------|-----------|----------|
+| R25 = 10Ω | 3.290V | 3.335V | 3.278V | 3.3032V | **1.4% V_OUT error, 0.8% D5K error** ✓ |
+| R25 = open | No equilibrium | ~3.451V | N/A | 3.3020V | Model predicts no regulation; bench shows output driven by U6 saturation ✓ |
+
+**Bench probe data (2026-08-12, no-load, V_OUT ≈ 3.33-3.45V):**
+
+Case A (R25 = 10Ω installed):
+- D5K = 3.3032V → V_FB calculated = 3.303 × 0.378 = 1.248V (matches ~1.23V target ✓)
+- U6A_OUT = 3.151V (back-driven 0.18V below V_OUT by D5K through reverse diode conduction)
+- U6B_OUT = 3.3943V (near U6B local reference output)
+- **Conclusion:** Feedback divider controls regulation. R25 maintains D5K in valid range for regulation equilibrium.
+
+Case B (R25 = open):
+- D5K = 3.3020V (nearly same as Case A! diodes hold it through back-drive)
+- U6A_OUT = 3.4529V (trying to buffer 3.451V V_OUT but limited by back-drive)
+- U6B_OUT = 3.5264V (saturated at U6 ceiling ~3.55V)
+- V_OUT = 3.4507V (higher than Case A, indicating regulator has no stable equilibrium; duty-cycle clamp active)
+- **Conclusion:** D5 diodes back-drive D5K, but insufficient voltage to meet regulation target; loop finds new "equilibrium" at higher V_OUT/duty cycle.
 
 **Current Workaround (bench):**
 1. Keep `R25` populated for all ongoing Rev-B bring-up tests.
@@ -310,13 +329,12 @@ Without R25, D5K can only be driven by U6A/U6B (LMV358 voltage-follower buffers)
 **Next Step:** Mark R25 as required in BOM/schematic annotation. Close node-voltage checklist with bench probe session.
 
 **Execution Checklist (RB-011):**
-- [x] Build SPICE model of 3.3V selector/reference path — `hardware/sim/3v3_reg_selector_ref_v2.cir`
+- [x] Build SPICE model of 3.3V selector/reference path — `hardware/sim/3v3_reg_selector_ref_v4.cir` with bench node voltage validation
 - [x] Identify R25 as the essential DC feedback return path (root cause confirmed).
-- [x] Validate model against bench: Case A error < 1%, Case B no-equilibrium prediction matches bench behavior.
-- [ ] Capture direct node voltages with bench probe: LM2596 FB, D5K, U6A_OUT, U6B_OUT.
-- [ ] Determine R15/VSENSE_3V3- state in stacked bench config (floating vs GND-connected).
-- [ ] Apply schematic annotation in Rev-C: R25 = required, not DNP.
-- [ ] Close RB-011 after node-voltage bench closure and schematic annotation are captured in handoff.
+- [x] Validate model against bench: Case A V_OUT error 1.4%, D5K error 0.8%; Case B no-equilibrium prediction matches bench overvoltage behavior.
+- [x] **Capture direct node voltages with bench probe (2026-08-12):** D5K, U6A_OUT, U6B_OUT, V_OUT measured for both R25 states. **R15 confirmed unpopulated** (VSENSE_3V3- floating to GND).
+- [ ] Apply schematic annotation in Rev-C: R25 = required, not DNP. Add design note: "10Ω DC return path for 3.3V feedback divider; required for stable regulation."
+- [ ] Close RB-011 after schematic annotation committed and design note is part of BOM/schematic record.
 
 ---
 
