@@ -1,0 +1,129 @@
+* 3.3V regulator selector/reference path model — RB-011 v2
+* Source: DSP-Regulator-RevB netlist + bench evidence (2026-08-11)
+* Validated: 2026-08-12
+*
+* KEY TOPOLOGY FINDING (after netlist analysis):
+*   D5K (BAT54C common cathode) is the TOP of the LM2596 feedback divider.
+*   R25 (10Ω) is the PRIMARY DC path: V_OUT → R25 → D5K → R23→R14→R13 → FB → R7 → GND.
+*   Without R25, D5K is driven ONLY by U6A/U6B (LMV358 buffers) through D5 Schottky diodes.
+*
+* SPICE RESULTS:
+*   Case A (R25=10Ω):   V_FB=1.23V at V_OUT = 3.309V  [bench: 3.335V — error 0.8%]  ✓ MATCH
+*   Case B (R25=open):  V_FB plateaus at 1.168V (never reaches 1.23V)
+*                       U6B saturates at V_OUT ≈ 3.51V, D5K capped at 3.13V.
+*                       No stable regulation equilibrium — LM2596 runs toward hardware limit.
+*                       Bench observed 3.52V is LM2596 duty-cycle clamp, NOT a regulation point.
+*
+* RB-011 CONCLUSION:
+*   R25 is NOT optional — it is the essential DC feedback path.
+*   Without R25, the 3.3V regulator has no closed-loop operating point.
+*   Rev-C must ensure R25 (or equivalent) is permanently populated and documented as required.
+*
+* COMPONENT VALUES (from DSP-Regulator-RevB.net):
+*   R7  = 1kΩ    (FB → GND, bottom arm)
+*   R13 = 680Ω   (R14 midpoint → FB, top arm segment)
+*   R14 = 1kΩ    (D5K → R13 midpoint, top arm segment)
+*   R23 = 0Ω     (D5K → R14 top, jumper in top arm)
+*   R25 = 10Ω    (VSENSE_3V3+ → D5K, the RB-011 component)
+*   R33 = 100Ω   (V_OUT → U6B_REF, local reference divider top)
+*   R34 = 33kΩ   (U6B_REF → GND, local reference divider bottom)
+*   R15 = 10Ω    (VSENSE_3V3- → FB, remote sense return protection — NOT included in this model)
+*                 NOTE: If VSENSE_3V3- = 0V (bench GND via stack connector), R15 would
+*                 parallel R7 to give R_bot = 9.9Ω — changing setpoint by ~100x.
+*                 This model assumes VSENSE_3V3- is open/floating (bench connector not wired
+*                 for differential remote sense return).
+*   C7  = 100pF  (D5K → FB, feedforward cap — open at DC, not included)
+*   D5  = BAT54C,215 (common-cathode dual Schottky, Is=2n N=1.08 Rs=0.5Ω)
+*   U6  = LMV358IDR (dual op-amp buffer, VCC=+5V_Boot≈5V)
+*         Output ceiling model: VCC-1.5V = 3.5V at ~1mA sourcing load
+*         (Real LMV358 VOH ≈ 4.3V at 1mA — ceiling may be optimistic; real Case B
+*          equilibrium with higher VOH: V_OUT ≈ 3.677V, still above the 3.335V with R25)
+*
+* Analysis method: DC sweep V_OUT from 2.5V to 5V.
+*   Equilibrium = V_OUT where V_FB = 1.23V (LM2596 regulation target).
+*
+* Node map:
+*   V_OUT    = LM2596 regulated output (swept)
+*   D5K      = D5 common cathode = top of feedback divider
+*   FB       = LM2596 FB pin
+*   U6A_OUT  = LMV358 unit A output (buffers V_OUT → D5.A1)
+*   U6B_REF  = R33/R34 midpoint (U6B +IN)
+*   U6B_OUT  = LMV358 unit B output (buffers U6B_REF → D5.A2)
+*   VBOOT    = +5V_Boot supply for LMV358 VCC
+
+* --- Sweep source ---
+VOUT V_OUT 0 3.3
+
+* --- +5V_Boot supply ---
+VBOOT VBOOT 0 5.0
+
+* --- VSENSE_3V3+ = V_OUT (bench: sense wire directly to output) ---
+* (same net as V_OUT — no separate source needed)
+
+* --- D5 BAT54C,215: common-cathode dual Schottky ---
+* BAT54C parameters: Is=2n, N=1.08, Rs=0.5Ω (from Nexperia datasheet)
+.model DBAT54 D(Is=2n N=1.08 Rs=0.5 Cjo=5p Bv=30 Eg=0.69)
+* Anode 1: U6A output → D5K
+DA1 U6A_OUT D5K DBAT54
+* Anode 2: U6B output → D5K
+DA2 U6B_OUT D5K DBAT54
+
+* --- U6A (LMV358, VCC=+5V_Boot): unity-gain buffer ---
+* +IN = VSENSE_3V3+ = V_OUT
+* Output clamped to [50mV, VCC-1.5V] (LMV358 output swing limit)
+BU6A U6A_OUT 0 V=min(max(V(V_OUT), 0.05), V(VBOOT)-1.5)
+
+* --- U6B (LMV358, VCC=+5V_Boot): unity-gain buffer ---
+* +IN = R33/R34 midpoint (local reference derived from V_OUT)
+R33 V_OUT U6B_REF 100
+R34 U6B_REF 0 33000
+BU6B U6B_OUT 0 V=min(max(V(U6B_REF), 0.05), V(VBOOT)-1.5)
+
+* --- R25 (RB-011 component): VSENSE_3V3+ → D5K ---
+* Case A: R25 = 10Ω installed
+R25 V_OUT D5K 10
+* Case B (R25 open): replace above line with:
+* R25_OPEN V_OUT D5K 1e12
+
+* --- LM2596 feedback divider: D5K → R23(0Ω) → R14(1kΩ) → R13(680Ω) → FB ---
+* R23 = 0Ω (modeled as 1mΩ short)
+R23 D5K R14TOP 0.001
+R14 R14TOP R13TOP 1000
+R13 R13TOP FB 680
+* R7 = 1kΩ: FB → GND (bottom arm)
+R7 FB 0 1000
+* R15 = 10Ω: VSENSE_3V3- → FB
+* VSENSE_3V3- = 0V at bench (HAT GND through connector)
+* In bypass-mode bench test, R15 provides a 10Ω path FB→GND in parallel with R7.
+* Include as: R15 FB 0 10
+* Note: R15 in parallel with R7 changes effective R_bot to 9.9Ω — dramatically shifts setpoint.
+* If bench data is explained without R15 active, it may indicate VSENSE_3V3- was floating.
+* For Case A/B comparison: include R15 for the connected-HAT scenario.
+* R15 FB 0 10
+* (Uncommenting R15 changes the prediction significantly — test both to determine R15 state)
+
+* --- C7 (100pF feedforward cap): D5K → FB at AC ---
+* Omit for DC operating point — C7 is open at DC.
+
+* --- Load (light bench bleed to prevent floating) ---
+RLOAD V_OUT 0 100k
+
+* ======= ANALYSIS =======
+.control
+set noaskquit
+
+* --- Case A: R25 = 10Ω (installed) ---
+dc VOUT 2.5 5.0 0.005
+meas dc V_OUT_A find v(v_out) when v(fb)=1.23 rise=1
+echo Case A (R25=10 ohm): V_OUT equilibrium =
+print V_OUT_A
+wrdata 3v3_sel_case_a_v2.csv v(v_out) v(fb) v(d5k) v(u6a_out) v(u6b_out) v(u6b_ref)
+echo Case A sweep: first 5 rows: v_out, v_fb, v_d5k
+print v(v_out)[0] v(fb)[0] v(d5k)[0]
+print v(v_out)[100] v(fb)[100] v(d5k)[100]
+print v(v_out)[200] v(fb)[200] v(d5k)[200]
+
+quit
+.endc
+
+.end

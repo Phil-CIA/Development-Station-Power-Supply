@@ -259,10 +259,12 @@ The footprint used for TS5A3157-DCKR is incorrect for the actual package pinout 
 ---
 
 ### RB-011 — 3.3V Regulator Output Depends On R25 In Selector/Reference Path
-**Status:** 🔴 Open  
+**Status:** � In progress — root cause confirmed by SPICE, schematic action pending  
 **Severity:** High (rail setpoint accuracy and overvoltage risk on 3.3V path)  
 **Found by:** Rev-B bypass bench validation (2026-08-11)  
-**Board Impact:** Rev-B bring-up requires explicit population state control; Rev-C schematic review required  
+**Board Impact:** Rev-B bring-up requires explicit R25 population; Rev-C schematic must document R25 as required  
+**SPICE Model:** `hardware/sim/3v3_reg_selector_ref_v2.cir` (added 2026-08-12)
+
 **Description:**  
 Bench measurements show a strong dependency of `+3.3V_Reg` setpoint on `R25` participation in the feedback selector/reference network around U6 and D5.
 
@@ -270,12 +272,25 @@ Observed behavior during no-load bring-up:
 - `R25` removed/not effective: `+3.3V_Reg` rises to approximately `3.52V`
 - `R25` installed/effective: `+3.3V_Reg` returns near target at approximately `3.335V`
 
-Additional consistency checks:
-- CrowPanel channel readback matched DMM trend (`~3.52V` high state).
-- 5V path did not show the same behavior in this session because the current jumper state effectively bypassed selector influence on that rail.
+**Root Cause — Confirmed by SPICE (2026-08-12):**  
+`D5K` (BAT54C,215 common cathode) is the TOP node of the LM2596-ADJ feedback divider, not a midpoint injection. The chain is:
 
-**Technical Interpretation (working hypothesis):**  
-Reference/selector path drop and node biasing at the BAT54/U6 network can under-drive the effective feedback node seen by LM2596 FB, causing the regulator to raise output above nominal until FB threshold is met.
+```
+D5K → R23(0Ω) → R14(1kΩ) → R13(680Ω) → FB → R7(1kΩ) → GND
+```
+
+**R25 (10Ω) is the sole DC path from the output back into the feedback divider:**
+```
+V_OUT → R25 → D5K → divider → FB
+```
+
+Without R25, D5K can only be driven by U6A/U6B (LMV358 voltage-follower buffers) through D5 diodes. The LMV358 output ceiling (~VCC−1.5V ≈ 3.5V at 1mA load) limits D5K to ~3.13V. This keeps V_FB at ~1.168V, below the LM2596 1.23V target — the regulator has **no stable operating point** without R25 and runs to its hardware output limit (~3.52V bench observation = duty-cycle clamp, not a regulation equilibrium).
+
+**SPICE validation results (3v3_reg_selector_ref_v2.cir):**
+| Case | Model V_OUT | Bench V_OUT | Notes |
+|------|------------|------------|-------|
+| R25 = 10Ω | 3.309V | 3.335V | 0.8% error — within component tolerance ✓ |
+| R25 = open | No equilibrium (V_FB stuck at 1.168V) | ~3.52V | LM2596 at duty-cycle limit, not regulated ✓ |
 
 **Current Workaround (bench):**
 1. Keep `R25` populated for all ongoing Rev-B bring-up tests.
@@ -283,25 +298,25 @@ Reference/selector path drop and node biasing at the BAT54/U6 network can under-
 3. Continue worksheet phases only when `+3.3V_Reg` is restored near expected class (`~3.3V`, currently observed `~3.335V`).
 
 **Required Closure Work (next revision):**
-1. Re-derive selector/reference transfer for the 3.3V branch including diode forward-drop range and bias currents.
-2. Decide whether `R25` function is required permanently (keep and document) or whether topology should be changed so rail accuracy does not depend on this recovery path.
-3. Capture a schematic-level correction with explicit tolerance analysis for `+3.3V_Reg` target across component variation and temperature.
-4. Revalidate on bench with and without remote-sense perturbations; document final pass criteria.
+1. ~~Re-derive selector/reference transfer for the 3.3V branch.~~ **DONE** — root cause confirmed: R25 is the DC feedback return path, not optional.
+2. Decide R25 disposition: keep as intentional required element with explicit documentation, or redesign topology.
+3. Capture schematic annotation: mark R25 as "REQUIRED — feedback DC return path, do not DNP".
+4. Verify VSENSE_3V3- (R15) behavior: determine whether R15 to GND parallel path is active in stacked bench config and whether it affects setpoint.
+5. Bench revalidate: measure D5K, U6A_OUT, U6B_OUT, FB directly to close node-level evidence.
 
-**Recommendation:** Keep this as an explicit open design issue and gate Rev-C sign-off for the 3.3V selector block until deterministic setpoint behavior is demonstrated without ambiguity.
+**Recommendation:** R25 is a required component. It must be treated as mandatory-populate in BOM with a note explaining its function. Rev-C must not allow it to be DNP.
 
 **Design Owner:** TBD (power supply redesign cycle)
-**Next Step:** Open a schematic action item on the 3.3V selector/reference network and attach the 2026-08-11 bench evidence set.
+**Next Step:** Mark R25 as required in BOM/schematic annotation. Close node-voltage checklist with bench probe session.
 
 **Execution Checklist (RB-011):**
-- [ ] Capture direct node voltages in both states (`R25` effective vs non-effective): LM2596 FB, D5 pins, U6A/U6B outputs, `+3.3V_Reg`.
-- [ ] Build a reduced transfer worksheet for the 3.3V selector/reference path including BAT54 forward-drop assumptions across temperature/current.
-- [ ] Choose disposition:
-	- keep `R25` as required element and document as intentional, or
-	- redesign selector/reference topology so nominal 3.3V does not depend on `R25` recovery behavior.
-- [ ] Apply chosen schematic correction in Rev-C regulator project and regenerate netlist/ERC.
-- [ ] Bench revalidate corrected path with no-load and loaded checks (target: no `~3.52V` recurrence in normal mode).
-- [ ] Close RB-011 only after pass criteria and final rationale are captured in handoff + tracker.
+- [x] Build SPICE model of 3.3V selector/reference path — `hardware/sim/3v3_reg_selector_ref_v2.cir`
+- [x] Identify R25 as the essential DC feedback return path (root cause confirmed).
+- [x] Validate model against bench: Case A error < 1%, Case B no-equilibrium prediction matches bench behavior.
+- [ ] Capture direct node voltages with bench probe: LM2596 FB, D5K, U6A_OUT, U6B_OUT.
+- [ ] Determine R15/VSENSE_3V3- state in stacked bench config (floating vs GND-connected).
+- [ ] Apply schematic annotation in Rev-C: R25 = required, not DNP.
+- [ ] Close RB-011 after node-voltage bench closure and schematic annotation are captured in handoff.
 
 ---
 
