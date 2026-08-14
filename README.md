@@ -13,7 +13,7 @@ This is the active working repo for the full bench-supply platform, not just a s
 - USB hub board files and next-iter reference cleanup
 - bring-up notes, pin maps, and display evaluation references
 
-## Current direction (2026-06-16)
+## Current direction (2026-08-14)
 
 The project has shifted to a bring-up-first path.
 
@@ -24,12 +24,21 @@ The project has shifted to a bring-up-first path.
 
 Current plan:
 1. Use the hardware already built as the learning and validation baseline
-2. Bring up the power-supply control path on the bench
-3. Continue front-panel work inside this repo
-4. Evaluate two display paths in parallel:
+2. Keep Rev-B bench work in proven bypass states while Rev-C electrical issues are closed
+3. Complete Rev-C regulator and HAT design validation before PCB fabrication release
+4. Continue front-panel work inside this repo
+5. Evaluate two display paths in parallel:
    - the existing custom front-panel hardware already designed
    - the Elecrow CrowPanel Advance 4.3 inch HMI display
-5. Avoid any new display redesign until bench results show it is needed
+6. Avoid any new display redesign until bench results show it is needed
+
+Current power-hardware status:
+
+- The 3.3V regulator selector redesign is bench-proven in normal remote-sense operation; fallback and 5V TLV9352 checks remain open.
+- The Rev-B HAT current-range switch remains bypassed pending MOSFET pinout and Vgs validation.
+- HAT Rev-C implements four-channel differential OCP with dual INA2180A2 amplifiers and dual TLV1702 comparators.
+- HAT Rev-C ERC is clean, but RB-012 remains a PCB release gate for Kelvin routing, bypassing, thresholds, hysteresis, footprints, and final DRC/connectivity validation.
+- See `docs/DEV_STATION_HANDOFF_2026-08-14.md` for the active restart state.
 
 ## Hardware scope in this repo
 
@@ -52,7 +61,7 @@ Current plan:
 - Latest netlist export: 2026-06-11 01:10:51
 - Design: Single +5V_Boot rail (simplified from adjustable 3-channel architecture)
 
-Next steps: DRC validation, gerber/drill file generation, finalize order placement
+These Rev-B files remain the built/bench baseline. Active redesign work now lives in the corresponding Rev-C project folders; do not release Rev-C fabrication outputs until its tracker gates are closed.
 
 ## Firmware status
 
