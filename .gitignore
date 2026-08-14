@@ -13,6 +13,7 @@ pio_*.log
 *.kicad_pcb.lck
 *.kicad_sch.lck
 *.kicad_pro.lck
+*.kicad_prl
 **/*-backups/
 **/backups/
 /KiCad/
@@ -28,3 +29,10 @@ hardware/sim/*.log
 hardware/sim/*.raw
 hardware/sim/tmp_*.cir
 hardware/sim/tmp_*.net
+hardware/sim/3v3_reg_selector_ref.cir
+hardware/sim/3v3_reg_selector_ref_v2b.cir
+hardware/sim/3v3_reg_selector_ref_v3.cir
+hardware/sim/3v3_sel_case_a_v2.csv
+hardware/sim/3v3_sel_case_a_v3.csv
+hardware/sim/3v3_sel_case_b_v2.csv
+hardware/sim/3v3_sel*_out.txt
