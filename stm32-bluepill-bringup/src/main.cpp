@@ -27,6 +27,12 @@ static const uint8_t I2C_SDA_PIN = PB9;
 static const uint8_t AHT20_ADDRESS = 0x38;
 static const uint8_t INA3221_ADDR_5V = 0x40;
 static const uint8_t INA3221_ADDR_3V3 = 0x41;
+static const uint8_t AW95XX_ADDR_MIN = 0x58;
+static const uint8_t AW95XX_ADDR_MAX = 0x5B;
+static const uint8_t AW95XX_ADDR_ACTIVE = 0x58;
+static const uint8_t AW95XX_REG_OUTPUT_P1 = 0x03;
+static const uint8_t AW95XX_REG_CONFIG_P1 = 0x05;
+static const uint8_t AW95XX_P10_MASK = 0x01;
 static const uint8_t INA3221_REG_CONFIG = 0x00;
 static const uint8_t INA3221_REG_SHUNTVOLTAGE_1 = 0x01;
 static const uint8_t INA3221_REG_BUSVOLTAGE_1 = 0x02;
@@ -146,6 +152,7 @@ bool loadPersistentConfig(bool verbose);
 bool erasePersistentConfig(bool verbose);
 void printPersistentConfig();
 void pollUdiCommands();
+void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms);
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -217,7 +224,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 }
 
 void printCommandHelp() {
-  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE");
+  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE | AWPROBE | AWHB | AWP10ON | AWP10OFF");
   logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:GET OUTPUT | CMD:GET ILIM <CH1|CH2>");
 }
 
@@ -232,6 +239,26 @@ bool i2cWriteReg16(uint8_t address, uint8_t reg, uint16_t value) {
   Wire.write(static_cast<uint8_t>((value >> 8) & 0xFF));
   Wire.write(static_cast<uint8_t>(value & 0xFF));
   return Wire.endTransmission() == 0;
+}
+
+bool i2cWriteReg8(uint8_t address, uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
+
+bool i2cReadReg8(uint8_t address, uint8_t reg, uint8_t& value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+  if (Wire.requestFrom(static_cast<int>(address), 1) != 1) {
+    return false;
+  }
+  value = static_cast<uint8_t>(Wire.read());
+  return true;
 }
 
 bool i2cReadReg16(uint8_t address, uint8_t reg, uint16_t& value) {
@@ -323,6 +350,83 @@ void printInaProbeSummary() {
            found_5v ? "ACK" : "MISS",
            found_3v3 ? "ACK" : "MISS");
   logBoth(msg);
+}
+
+void printAw95xxProbeSummary() {
+  bool found_any = false;
+  char msg[96];
+
+  for (uint8_t addr = AW95XX_ADDR_MIN; addr <= AW95XX_ADDR_MAX; addr++) {
+    if (i2cPing(addr)) {
+      snprintf(msg,
+               sizeof(msg),
+               "aw95xx: candidate ACK at 0x%02X",
+               addr);
+      logBoth(msg);
+      found_any = true;
+    }
+  }
+
+  if (!found_any) {
+    logBoth("aw95xx: no ACK in 0x58-0x5B");
+  }
+}
+
+bool aw95xxSetP10OutputMode(uint8_t& saved_cfg, uint8_t& saved_out) {
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, saved_cfg)) {
+    return false;
+  }
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, saved_out)) {
+    return false;
+  }
+
+  const uint8_t new_cfg = static_cast<uint8_t>(saved_cfg & ~AW95XX_P10_MASK); // 0=output
+  return i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, new_cfg);
+}
+
+bool aw95xxWriteP10(bool high) {
+  uint8_t out_reg = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, out_reg)) {
+    return false;
+  }
+  if (high) {
+    out_reg = static_cast<uint8_t>(out_reg | AW95XX_P10_MASK);
+  } else {
+    out_reg = static_cast<uint8_t>(out_reg & ~AW95XX_P10_MASK);
+  }
+  return i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, out_reg);
+}
+
+void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
+    logBoth("aw95xx: 0x58 not responding");
+    return;
+  }
+
+  uint8_t saved_cfg = 0;
+  uint8_t saved_out = 0;
+  if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
+    logBoth("aw95xx: failed to set P1.0 output mode");
+    return;
+  }
+
+  for (uint8_t i = 0; i < blinks; i++) {
+    if (!aw95xxWriteP10(true)) {
+      logBoth("aw95xx: write fail during heartbeat ON");
+      break;
+    }
+    delay(on_ms);
+    if (!aw95xxWriteP10(false)) {
+      logBoth("aw95xx: write fail during heartbeat OFF");
+      break;
+    }
+    delay(off_ms);
+  }
+
+  // Restore pre-test state.
+  i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, saved_out);
+  i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, saved_cfg);
+  logBoth("aw95xx: P1.0 heartbeat complete");
 }
 
 void printInaReading(const Ina3221Reading& reading, const char* label) {
@@ -720,6 +824,48 @@ void handleCommand(const String& cmd_in) {
     if (erasePersistentConfig(true)) {
       resetPersistentConfigDefaults();
       setD9PathEnabled(g_config.d9_path_enabled != 0);
+    }
+    return;
+  }
+
+  if (cmd == "AWPROBE") {
+    printAw95xxProbeSummary();
+    return;
+  }
+
+  if (cmd == "AWHB") {
+    runAwP10Heartbeat(8, 200, 200);
+    return;
+  }
+
+  if (cmd == "AWP10ON") {
+    uint8_t saved_cfg = 0;
+    uint8_t saved_out = 0;
+    (void)saved_out;
+    if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
+      logBoth("aw95xx: failed to set P1.0 output mode");
+      return;
+    }
+    if (aw95xxWriteP10(true)) {
+      logBoth("aw95xx: P1.0 forced HIGH");
+    } else {
+      logBoth("aw95xx: failed to write P1.0 HIGH");
+    }
+    return;
+  }
+
+  if (cmd == "AWP10OFF") {
+    uint8_t saved_cfg = 0;
+    uint8_t saved_out = 0;
+    (void)saved_out;
+    if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
+      logBoth("aw95xx: failed to set P1.0 output mode");
+      return;
+    }
+    if (aw95xxWriteP10(false)) {
+      logBoth("aw95xx: P1.0 forced LOW");
+    } else {
+      logBoth("aw95xx: failed to write P1.0 LOW");
     }
     return;
   }

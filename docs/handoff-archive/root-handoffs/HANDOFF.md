@@ -1,15 +1,15 @@
 # Development Station Power Supply - Handoff
 
-Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-08-14.md](docs/DEV_STATION_HANDOFF_2026-08-14.md)
+Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-09-21.md](docs/DEV_STATION_HANDOFF_2026-09-21.md)
 
-Previous handoff: [docs/DEV_STATION_HANDOFF_2026-08-13.md](docs/DEV_STATION_HANDOFF_2026-08-13.md)
+Previous handoff: [docs/DEV_STATION_HANDOFF_2026-08-14.md](docs/DEV_STATION_HANDOFF_2026-08-14.md)
 
-Session status: HAT Rev-C now has a four-channel INA2180A2/TLV1702 differential OCP architecture with clean ERC and netlist validation. PCB completion and bench calibration remain blocked by the mandatory RB-012 layout checklist. The Rev-B range switch remains bypassed.
+Session status: Blue Pill helper path is stable (AHT20 PASS, AW9523 ACK at 0x58, AW9523 P1.0 LED heartbeat PASS). Regulator Rev-C remains HOLD with downstream rail-path faults despite buck-core regulation when forced enabled.
 
 Controller-of-record for the current bench branch: STM32F103C8T6 Blue Pill in `stm32-bluepill-bringup/`.
 The root `hat_c6_i2c_probe` ESP32-C6 environment is not the active command-shell path for this worksheet.
 
-Primary restart document: [docs/DEV_STATION_HANDOFF_2026-08-14.md](docs/DEV_STATION_HANDOFF_2026-08-14.md)
+Primary restart document: [docs/DEV_STATION_HANDOFF_2026-09-21.md](docs/DEV_STATION_HANDOFF_2026-09-21.md)
 
 ## Session Closeout - 2026-08-10
 

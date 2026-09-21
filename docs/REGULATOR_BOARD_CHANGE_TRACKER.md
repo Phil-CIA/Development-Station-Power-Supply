@@ -382,6 +382,34 @@ This demonstrates correct remote-sense regulation with R25 removed. The remainin
 3. Keep any direct bypass footprint DNP and label it service-only.
 4. Perform one open-remote-sense fallback check and confirm the rail remains stable and in range.
 
+**New bench evidence (Rev-C continuation, 2026-09-21):**
+With R11 and R35 removed as a tracked bypass state, first-power continuation shows rails out of expected range despite low input current.
+
+Measured:
+- VIN about 12.032V
+- +5V rail about 4.010V
+- +5V_reg about 4.08V
+- +3.3V rail about 0.0633V
+- +3.3V_Reg about 0V
+- Input current about 25mA with about 20mA attributed to indicator paths
+
+Interpretation for tracker status:
+1. This does not satisfy RB-011 closure criteria for a stable 3.3V class output.
+2. +5V_reg being below nominal while 3.3V is collapsed is consistent with a partial feed or backfeed state, not validated normal regulation.
+3. Open-sense fallback verification for RB-010 remains pending by explicit bench deferral.
+
+Action note:
+Treat this as a HOLD state for Rev-C bring-up. Resolve the present +5V_reg feed path and 3.3V collapse before attempting stacked tests or RB-010/RB-011 closure.
+
+Additional forced-enable evidence (same date):
+1. With U2/U4 pin 5 manually grounded, both buck cores started and remained stable.
+2. U2 readings: pin1 about 11.09V, pin2 about 5.0736V, pin4 about 1.2544V while board V_out+5 remained about 4.011V.
+3. U4 readings: pin1 about 11.89V, pin2 about 3.428V, pin4 about 1.2347V while board V_out+3.3 remained about 0.063V.
+4. Input current change was small (brief about +10mA jump, then about +3mA to +4mA over baseline).
+
+Implication:
+Primary buck control loops appear functional when enabled; failure remains in downstream rail distribution/select path to output nodes.
+
 **Design Owner:** TBD (power supply redesign cycle)
 **Next Step:** Finish Rev-C metadata/netlist cleanup and capture the brief fallback check when the bench is available.
 
@@ -424,4 +452,6 @@ This demonstrates correct remote-sense regulation with R25 removed. The remainin
 | 2026-08-11 | Added RB-011 from bypass bench evidence; conditional keep-bypass rule recorded | Bench validation session |
 | 2026-08-13 | Corrected RB-011 interpretation; recorded remote-sense redesign bench pass and RB-010 TLV9352 plan | Bench validation and Rev-C schematic session |
 | 2026-08-14 | Implemented dual INA2180A2/TLV1702 four-channel Rev-C OCP, corrected supply and open-collector definitions, validated ERC/netlist, and added mandatory PCB completion gate | Rev-C OCP design session |
+| 2026-09-21 | Logged Rev-C first-power continuation HOLD: +5V_reg about 4.08V, +5V about 4.01V, +3.3V rails collapsed, with R11/R35 removed bypass state | Rev-C bench continuation session |
+| 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
 | TBD | Design review and next-iter file creation | TBD |
