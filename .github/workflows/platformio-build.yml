@@ -1,0 +1,62 @@
+name: PlatformIO Build
+
+# Compiles each project's primary PlatformIO environment on every push/PR so a
+# non-building change is caught before merge. See
+# docs/SYSTEM_DEVELOPMENT_WORKFLOW.md for the branch/PR workflow this supports.
+#
+# This intentionally builds only the default/primary environment per project,
+# not every diagnostic bring-up variant in each platformio.ini — those are
+# bench-probe scratch environments, not maintained build targets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root (ESP32-C6 display_board)
+            working-directory: .
+            env: display_board
+            allow-failure: false
+          - name: crowpanel-43-bringup (ESP32-S3 crowpanel43)
+            working-directory: crowpanel-43-bringup
+            env: crowpanel43
+            allow-failure: false
+          - name: stm32-bluepill-bringup (bluepill_f103c8)
+            working-directory: stm32-bluepill-bringup
+            env: bluepill_f103c8
+            # Known broken as of 2026-09: HardwareSerial(rx, tx) constructor
+            # mismatch with the STM32duino Arduino core. Tracked in issue #3;
+            # flip to false once fixed so this becomes a required check.
+            allow-failure: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ matrix.working-directory }}-${{ hashFiles(format('{0}/platformio.ini', matrix.working-directory)) }}
+          restore-keys: |
+            pio-${{ matrix.working-directory }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build ${{ matrix.env }}
+        working-directory: ${{ matrix.working-directory }}
+        continue-on-error: ${{ matrix.allow-failure }}
+        run: pio run -e ${{ matrix.env }}
