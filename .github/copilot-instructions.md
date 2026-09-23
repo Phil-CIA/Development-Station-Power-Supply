@@ -14,9 +14,14 @@ This repository is the active working source for the Development Station Power S
 ## Before answering new chats in this workspace
 Review these files first for current context:
 - README.md
+- docs/SYSTEM_DEVELOPMENT_WORKFLOW.md for how work should be branched, reviewed, and merged
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md when front-panel signals are discussed
 - docs/USB_HUB_CHANGE_TRACKER.md when USB hub hardware is discussed
+
+## Workflow rules
+- Do not commit directly to main; use a branch per subsystem and open a PR (see docs/SYSTEM_DEVELOPMENT_WORKFLOW.md).
+- Do not create new root-level dated HANDOFF_*/`*_SUMMARY.md` files; update the relevant tracker doc instead.
 
 ## Working style for this repo
 - Prefer continuing from the current repo state rather than relying on handoff prose

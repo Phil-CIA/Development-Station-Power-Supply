@@ -84,6 +84,7 @@ Current firmware work in this repo includes:
 
 ## Useful project references
 
+- docs/SYSTEM_DEVELOPMENT_WORKFLOW.md — branch/PR workflow now in effect
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
