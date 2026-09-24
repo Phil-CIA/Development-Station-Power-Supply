@@ -50,10 +50,10 @@ Defines a reusable, copy-paste connector standard for attaching any display modu
 ### Message framing
 
 ```
-CMD:<command>\n       Host → Display  (command request)
-ACK:<response>\n      Display → Host  (success response)
-ERR:<message>\n       Display → Host  (error response)
-EVT:<event>\n         Display → Host  (unsolicited event, e.g. button press)
+CMD:<command>\n       Display → Host  (command request)
+ACK:<response>\n      Host → Display  (success response)
+ERR:<message>\n       Host → Display  (error response)
+EVT:<event>\n         Host → Display  (unsolicited event/state update)
 ```
 
 ---

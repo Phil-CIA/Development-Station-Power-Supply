@@ -23,8 +23,10 @@ constexpr size_t  kFrameSizeMax    = 40;
 
 portMUX_TYPE       s_mux   = portMUX_INITIALIZER_UNLOCKED;
 volatile Telemetry s_state = {};
+CommandLink        s_cmd   = {};
 bool               s_begun = false;
 Stream*            s_rx_stream = nullptr;
+Print*             s_tx_stream = nullptr;
 
 uint8_t crc8(const uint8_t* data, size_t len) {
   uint8_t crc = 0x00;
@@ -42,6 +44,49 @@ void bumpErr() {
   portENTER_CRITICAL(&s_mux);
   s_state.err_count++;
   portEXIT_CRITICAL(&s_mux);
+}
+
+void copyBounded(char* dst, size_t dst_len, const char* src) {
+  if (dst_len == 0) return;
+  if (src == nullptr) {
+    dst[0] = '\0';
+    return;
+  }
+  size_t i = 0;
+  for (; src[i] != '\0' && i + 1 < dst_len; ++i) {
+    dst[i] = src[i];
+  }
+  dst[i] = '\0';
+}
+
+void consumeControlLine(const char* line) {
+  if (line == nullptr || line[0] == '\0') return;
+
+  const uint32_t now_ms = millis();
+  if (strncmp(line, "ACK:", 4) == 0) {
+    portENTER_CRITICAL(&s_mux);
+    s_cmd.ack_count++;
+    s_cmd.last_rx_ms = now_ms;
+    copyBounded(s_cmd.last_ack, sizeof(s_cmd.last_ack), line + 4);
+    portEXIT_CRITICAL(&s_mux);
+    return;
+  }
+  if (strncmp(line, "ERR:", 4) == 0) {
+    portENTER_CRITICAL(&s_mux);
+    s_cmd.err_count++;
+    s_cmd.last_rx_ms = now_ms;
+    copyBounded(s_cmd.last_err, sizeof(s_cmd.last_err), line + 4);
+    portEXIT_CRITICAL(&s_mux);
+    return;
+  }
+  if (strncmp(line, "EVT:", 4) == 0) {
+    portENTER_CRITICAL(&s_mux);
+    s_cmd.evt_count++;
+    s_cmd.last_rx_ms = now_ms;
+    copyBounded(s_cmd.last_evt, sizeof(s_cmd.last_evt), line + 4);
+    portEXIT_CRITICAL(&s_mux);
+    return;
+  }
 }
 
 void parseFrame(const uint8_t* f, size_t frame_size) {
@@ -101,6 +146,7 @@ void begin() {
   Serial1.begin(kUartBaud, SERIAL_8N1, kUartRxPin, kUartTxPin);
 
   s_rx_stream = &Serial1;
+  s_tx_stream = &Serial1;
   Serial.printf("disp_link_slave: UART1 listening @%lu baud on IO%d/IO%d\n",
                 static_cast<unsigned long>(kUartBaud),
                 kUartRxPin,
@@ -115,6 +161,8 @@ void poll() {
   static uint8_t  buf[kFrameSizeMax];
   static size_t   idx = 0;
   static size_t   expected_total = 0;
+  static char     ctrl_line[128];
+  static size_t   ctrl_len = 0;
 
   if (!s_begun || s_rx_stream == nullptr) return;
 
@@ -123,6 +171,25 @@ void poll() {
     portENTER_CRITICAL(&s_mux);
     s_state.uart_bytes++;
     portEXIT_CRITICAL(&s_mux);
+
+    if (b == '\r') {
+      // Ignore CR in text control lines.
+    } else if (b == '\n') {
+      if (ctrl_len > 0) {
+        ctrl_line[ctrl_len] = '\0';
+        consumeControlLine(ctrl_line);
+      }
+      ctrl_len = 0;
+    } else if (b >= 0x20 && b <= 0x7E) {
+      if (ctrl_len + 1 < sizeof(ctrl_line)) {
+        ctrl_line[ctrl_len++] = static_cast<char>(b);
+      } else {
+        ctrl_len = 0;
+      }
+    } else {
+      // Binary telemetry bytes are expected; reset text parser on non-printable bytes.
+      ctrl_len = 0;
+    }
 
     if (idx == 0) {
       if (b == kSof1) { buf[0] = b; idx = 1; }
@@ -177,6 +244,28 @@ Telemetry snapshot() {
   copy = const_cast<const Telemetry&>(s_state);
   portEXIT_CRITICAL(&s_mux);
   return copy;
+}
+
+CommandLink commandSnapshot() {
+  CommandLink copy;
+  portENTER_CRITICAL(&s_mux);
+  copy = s_cmd;
+  portEXIT_CRITICAL(&s_mux);
+  return copy;
+}
+
+bool sendCommand(const char* payload) {
+  if (!s_begun || s_tx_stream == nullptr || payload == nullptr || payload[0] == '\0') {
+    return false;
+  }
+  s_tx_stream->print("CMD:");
+  s_tx_stream->print(payload);
+  s_tx_stream->print('\n');
+
+  portENTER_CRITICAL(&s_mux);
+  s_cmd.tx_count++;
+  portEXIT_CRITICAL(&s_mux);
+  return true;
 }
 
 }  // namespace disp_link_slave

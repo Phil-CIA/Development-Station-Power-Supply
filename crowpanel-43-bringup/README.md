@@ -44,8 +44,10 @@ C:/Users/user/.platformio/penv/Scripts/platformio.exe device monitor -b 115200
 - `HELP`
 - `PING`
 - `STATUS`
-- `CMD:LABEL text="hello world"`
-- `CMD:COLOR r=255 g=0 b=0`
+- `RX`
+- `UDI_STATUS`
+- `UDI_OUTPUT ON|OFF` (sends `CMD:OUTPUT ...` over UDI UART)
+- `UDI_ILIM CH1|CH2 <mA>` (sends `CMD:ILIM ...` over UDI UART)
 
 ## Notes
 

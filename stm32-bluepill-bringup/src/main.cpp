@@ -60,16 +60,24 @@ static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
 static const uint16_t CH1_ENABLED_MIN_MV = 1000;
 static const uint16_t CH2_ENABLED_MIN_MV = 1000;
-static const uint16_t CH1_CC_THRESHOLD_MA = 1200;
-static const uint16_t CH2_CC_THRESHOLD_MA = 900;
 static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
 static const uint16_t CH2_OVP_THRESHOLD_MV = 3600;
 static const uint8_t OTP_THRESHOLD_C = 75;
 static const uint8_t THERMAL_WARN_THRESHOLD_C = 70;
+static const uint16_t UDI_CH1_LIMIT_MIN_MA = 0;
+static const uint16_t UDI_CH1_LIMIT_MAX_MA = 3000;
+static const uint16_t UDI_CH2_LIMIT_MIN_MA = 0;
+static const uint16_t UDI_CH2_LIMIT_MAX_MA = 2000;
+static const size_t UDI_MAX_LINE = 120;
 static uint8_t frame_seq = 0;
 static bool flash_test_passed = false;
 static uint32_t flash_test_runs = 0;
 static uint16_t g_sr_state = 0x0000;
+static bool g_output_enabled = false;
+static uint16_t g_current_limit_ch1_mA = 2500;
+static uint16_t g_current_limit_ch2_mA = 1500;
+static char g_udi_line_buf[UDI_MAX_LINE + 1] = {};
+static size_t g_udi_line_len = 0;
 
 struct RailCalibrationConfig {
   float voltage_gain;
@@ -137,6 +145,7 @@ bool savePersistentConfig(bool verbose);
 bool loadPersistentConfig(bool verbose);
 bool erasePersistentConfig(bool verbose);
 void printPersistentConfig();
+void pollUdiCommands();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -209,6 +218,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE");
+  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA>");
 }
 
 bool i2cPing(uint8_t address) {
@@ -383,6 +393,118 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
   }
 }
 
+void sendUdiAck(const char* payload) {
+  SerialU3.print("ACK:");
+  SerialU3.println(payload);
+}
+
+void sendUdiErr(const char* payload) {
+  SerialU3.print("ERR:");
+  SerialU3.println(payload);
+}
+
+void sendUdiEvt(const char* payload) {
+  SerialU3.print("EVT:");
+  SerialU3.println(payload);
+}
+
+void handleUdiCommandLine(const String& line_in) {
+  String line = line_in;
+  line.trim();
+  if (line.length() == 0) return;
+
+  if (!line.startsWith("CMD:")) {
+    sendUdiErr("FORMAT expected CMD:<command>");
+    return;
+  }
+
+  String cmd = line.substring(4);
+  cmd.trim();
+  cmd.toUpperCase();
+  if (cmd.length() == 0) {
+    sendUdiErr("FORMAT empty command");
+    return;
+  }
+
+  if (cmd == "OUTPUT ON") {
+    g_output_enabled = true;
+    setD9PathEnabled(true);
+    g_config.d9_path_enabled = 1;
+    savePersistentConfig(false);
+    sendUdiAck("OUTPUT ON");
+    sendUdiEvt("OUTPUT ON");
+    return;
+  }
+
+  if (cmd == "OUTPUT OFF") {
+    g_output_enabled = false;
+    setD9PathEnabled(false);
+    g_config.d9_path_enabled = 0;
+    savePersistentConfig(false);
+    sendUdiAck("OUTPUT OFF");
+    sendUdiEvt("OUTPUT OFF");
+    return;
+  }
+
+  char channel_token[8] = {0};
+  int limit_mA = -1;
+  if (sscanf(cmd.c_str(), "ILIM %7s %d", channel_token, &limit_mA) == 2) {
+    if (limit_mA < 0) {
+      sendUdiErr("ILIM mA must be >= 0");
+      return;
+    }
+
+    uint16_t* target_limit = nullptr;
+    uint16_t min_mA = 0;
+    uint16_t max_mA = 0;
+    if (strcmp(channel_token, "CH1") == 0) {
+      target_limit = &g_current_limit_ch1_mA;
+      min_mA = UDI_CH1_LIMIT_MIN_MA;
+      max_mA = UDI_CH1_LIMIT_MAX_MA;
+    } else if (strcmp(channel_token, "CH2") == 0) {
+      target_limit = &g_current_limit_ch2_mA;
+      min_mA = UDI_CH2_LIMIT_MIN_MA;
+      max_mA = UDI_CH2_LIMIT_MAX_MA;
+    } else {
+      sendUdiErr("ILIM channel must be CH1 or CH2");
+      return;
+    }
+
+    if (limit_mA < static_cast<int>(min_mA) || limit_mA > static_cast<int>(max_mA)) {
+      char msg[64];
+      snprintf(msg,
+               sizeof(msg),
+               "ILIM %s range %u..%u mA",
+               channel_token,
+               static_cast<unsigned>(min_mA),
+               static_cast<unsigned>(max_mA));
+      sendUdiErr(msg);
+      return;
+    }
+
+    *target_limit = static_cast<uint16_t>(limit_mA);
+
+    char ack_msg[40];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "ILIM %s %u",
+             channel_token,
+             static_cast<unsigned>(*target_limit));
+    sendUdiAck(ack_msg);
+
+    char evt_msg[48];
+    snprintf(evt_msg,
+             sizeof(evt_msg),
+             "ILIM %s %u mA",
+             channel_token,
+             static_cast<unsigned>(*target_limit));
+    sendUdiEvt(evt_msg);
+    return;
+  }
+
+  sendUdiErr("UNKNOWN unsupported CMD");
+}
+
 void handleCommand(const String& cmd_in) {
   String cmd = cmd_in;
   cmd.trim();
@@ -451,6 +573,7 @@ void handleCommand(const String& cmd_in) {
   }
 
   if (cmd == "D9ON") {
+    g_output_enabled = true;
     setD9PathEnabled(true);
     g_config.d9_path_enabled = 1;
     savePersistentConfig(false);
@@ -458,6 +581,7 @@ void handleCommand(const String& cmd_in) {
   }
 
   if (cmd == "D9OFF") {
+    g_output_enabled = false;
     setD9PathEnabled(false);
     g_config.d9_path_enabled = 0;
     savePersistentConfig(false);
@@ -589,6 +713,36 @@ void pollCommands() {
   if (SerialDbg.available()) {
     const String cmd = SerialDbg.readStringUntil('\n');
     handleCommand(cmd);
+  }
+  pollUdiCommands();
+}
+
+void pollUdiCommands() {
+  while (SerialU3.available() > 0) {
+    const char ch = static_cast<char>(SerialU3.read());
+    if (ch == '\r') {
+      continue;
+    }
+    if (ch == '\n') {
+      if (g_udi_line_len > 0) {
+        g_udi_line_buf[g_udi_line_len] = '\0';
+        handleUdiCommandLine(String(g_udi_line_buf));
+      }
+      g_udi_line_len = 0;
+      continue;
+    }
+
+    if (ch < 0x20 || ch > 0x7E) {
+      g_udi_line_len = 0;
+      continue;
+    }
+
+    if (g_udi_line_len < UDI_MAX_LINE) {
+      g_udi_line_buf[g_udi_line_len++] = ch;
+    } else {
+      g_udi_line_len = 0;
+      sendUdiErr("FORMAT line too long");
+    }
   }
 }
 
@@ -1216,6 +1370,7 @@ void setup() {
     logBoth("[CFG] Flash not healthy; using volatile defaults only");
   }
   setD9PathEnabled(g_config.d9_path_enabled != 0);
+  g_output_enabled = (g_config.d9_path_enabled != 0);
   printPersistentConfig();
 
   Aht20Sample boot_sample;
@@ -1310,10 +1465,10 @@ void loop() {
     const uint8_t temp_C = g_aht20.valid
         ? static_cast<uint8_t>(constrain(static_cast<int>(g_aht20.temp_C + 0.5f), 0, 125))
         : 31;
-    const bool ch1_enabled = ok_5v && (v5_mV >= CH1_ENABLED_MIN_MV);
-    const bool ch2_enabled = ok_3v3 && is3v3PathEnabled() && (v3v3_mV >= CH2_ENABLED_MIN_MV);
-    const bool ch1_cc = static_cast<uint16_t>(abs(i5_mA)) >= CH1_CC_THRESHOLD_MA;
-    const bool ch2_cc = static_cast<uint16_t>(abs(i3v3_mA)) >= CH2_CC_THRESHOLD_MA;
+    const bool ch1_enabled = g_output_enabled && ok_5v && (v5_mV >= CH1_ENABLED_MIN_MV);
+    const bool ch2_enabled = g_output_enabled && ok_3v3 && is3v3PathEnabled() && (v3v3_mV >= CH2_ENABLED_MIN_MV);
+    const bool ch1_cc = static_cast<uint16_t>(abs(i5_mA)) >= g_current_limit_ch1_mA;
+    const bool ch2_cc = static_cast<uint16_t>(abs(i3v3_mA)) >= g_current_limit_ch2_mA;
     const bool thermal_warn = temp_C >= THERMAL_WARN_THRESHOLD_C;
     const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
     const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
