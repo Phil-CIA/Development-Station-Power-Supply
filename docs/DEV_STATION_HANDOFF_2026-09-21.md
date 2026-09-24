@@ -69,3 +69,49 @@ Existing key commands still in use:
 1. Do not use ESP32-C6 upload/build tasks for this bench branch.
 2. Do not stack HAT on regulator until regulator-only rails pass.
 3. Keep strict flash-target safety checks for any future upload action.
+
+## Continuation Update - 2026-09-22
+
+### Firmware/Test Implementation Status
+
+1. Added targeted range-toggle shell commands on the Blue Pill path for current-range validation:
+   - Q39ON / Q39OFF (Q3 and Q9 pair)
+   - Q612ON / Q612OFF (Q6 and Q12 pair)
+   - QSTATE (reports SR state with decoded pair ON/OFF)
+   - QSEQ (optional macro sequence: baseline, then S1..S6 with INA snapshots)
+2. Updated HAT standalone Rev-C runsheet with a dedicated Phase 5 sequence for:
+   - Q3/Q9 first
+   - Q6/Q12 second
+   - INARAILS capture at each transition.
+
+### Build/Flash Verification (2026-09-22)
+
+1. Blue Pill firmware build succeeded using:
+   - py -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8
+2. Blue Pill upload via ST-Link succeeded using:
+   - py -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload
+3. OpenOCD reported programming complete, verify OK, and target reset.
+
+### Immediate Bench Execution Order
+
+1. AWPROBE
+2. SRTEST
+3. QSTATE
+4. INARAILS
+5. QSEQ
+6. Fill Phase 5 capture table in docs/HAT_FIRST_POWER_RUNSHEET_REVC_2026-09-21.md from tagged serial output.
+
+### Notes
+
+1. This branch remains STM32 Blue Pill controller-of-record.
+2. ESP32-C6 guarded flash tasks remain out-of-scope for this bench branch.
+
+### Continuation Update - AW9523 Control Path Pivot (2026-09-22)
+
+1. Bench evidence from `QSEQ` showed command-state toggling with no physical converter response while SR state changed.
+2. Root cause: `Q39/Q612` commands were driving legacy shift-register emulation in firmware, but current hardware control path is AW9523.
+3. Firmware was updated so:
+   - `Q39ON/OFF` drives AW9523 `P0.3` (`ESP- GPIO 3.3V High`)
+   - `Q612ON/OFF` drives AW9523 `P0.1` (`ESP- GPIO 5V Hi`)
+   - `QSTATE` now reports AW9523 `P0` output/config decode first (SR only as fallback)
+4. Build and ST-Link upload both passed after this pivot.

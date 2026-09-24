@@ -94,6 +94,68 @@ Gate to continue:
 | I2C/telemetry output present | PASS | Runtime status stream includes AHT response and telemetry state lines |
 | Helper path usable for regulator diagnostics | PASS | JTAG active; serial helper path confirmed |
 
+## Phase 5 - Range Pair Toggle + INA Correlation
+
+Goal: toggle Q3/Q9 first, then Q6/Q12, and capture INA data after each state change.
+
+Preconditions:
+1. Keep current-limit protection active on the bench PSU.
+2. Keep AW95xx control path healthy before toggle testing.
+3. Run `AWPROBE` and confirm active-device ACK at 0x58.
+4. Run `SRTEST` and confirm self-test completes without reset loop.
+
+Command notes:
+1. AW9523 enable logic on this path is active-high: output high = ON, output low = OFF.
+2. `Q39ON`/`Q39OFF` control AW9523 `P0.0` (`ISET_MPU_5V`, Q3 path) and `P0.5` (`ISET_MPU_3V3`, Q9 path) together.
+3. `Q612ON`/`Q612OFF` control AW9523 `P0.1` (`ESP- GPIO 5V Hi`) for Q6/Q12 tests.
+4. `QSTATE` prints AW9523 `P0` output/config state and decoded pair states.
+5. Optional: `QSEQ` runs the full sequence (B0, S1..S6) and emits tagged INA snapshots for each step.
+
+Execution sequence:
+1. Capture baseline:
+	- `QSTATE`
+	- `INARAILS`
+2. Q3/Q9 cycle (first):
+	- `Q39OFF`, then `QSTATE`, then `INARAILS`
+	- `Q39ON`, then `QSTATE`, then `INARAILS`
+	- `Q39OFF`, then `QSTATE`, then `INARAILS`
+3. Q6/Q12 cycle (second):
+	- `Q612OFF`, then `QSTATE`, then `INARAILS`
+	- `Q612ON`, then `QSTATE`, then `INARAILS`
+	- `Q612OFF`, then `QSTATE`, then `INARAILS`
+
+Optional shortcut:
+1. Run `QSEQ` to execute the same S1..S6 transition order automatically.
+2. If using `QSEQ`, still complete the table using tagged log lines from the sequence output.
+
+Stop rules for this phase:
+1. Stop immediately if either rail exits expected safe range.
+2. Stop immediately if PSU current spikes unexpectedly or foldback occurs.
+3. Stop if command shell resets, hangs, or starts brownout loops.
+
+Capture table:
+
+| Step | Command | SR state (from `QSTATE`) | INA 0x40 CH1/CH2 | INA 0x41 CH1/CH2/CH3 | Expected delta class | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|---|
+| B0 | Baseline `QSTATE` + `INARAILS` | | | | Baseline only | | |
+| S1 | `Q39OFF` + `QSTATE` + `INARAILS` | | | | Q3/Q9 OFF reference | | |
+| S2 | `Q39ON` + `QSTATE` + `INARAILS` | | | | Directional change vs S1 | | |
+| S3 | `Q39OFF` + `QSTATE` + `INARAILS` | | | | Return toward S1 trend | | |
+| S4 | `Q612OFF` + `QSTATE` + `INARAILS` | | | | Q6/Q12 OFF reference | | |
+| S5 | `Q612ON` + `QSTATE` + `INARAILS` | | | | Directional change vs S4 | | |
+| S6 | `Q612OFF` + `QSTATE` + `INARAILS` | | | | Return toward S4 trend | | |
+
+Pass criteria:
+1. Each command is acknowledged with expected pair/state text.
+2. `QSTATE` bit decode matches commanded ON/OFF state.
+3. INA snapshots show repeatable directional behavior between OFF and ON states for each tested pair.
+4. No stop-rule events are triggered.
+
+Disposition tags:
+1. PASS: command path + state reporting + INA correlation all consistent.
+2. HOLD: command path works but INA behavior is inconclusive/noisy.
+3. FAIL: command/state mismatch, unstable power behavior, or shell instability.
+
 ## Optional Firmware Refresh (only if needed)
 
 Use Blue Pill workflow only for this run.

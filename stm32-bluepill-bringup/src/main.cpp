@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <string.h>
+#include <Adafruit_AW9523.h>
 
 // NOTE: STM32duino's concrete serial class is `Uart`, not `HardwareSerial`.
 // `HardwareSerial` here is only the abstract ArduinoCore-API base class and
@@ -21,6 +22,7 @@ static const uint8_t PIN_SR_LATCH = PA4;
 // U4 shift-register bits controlling 3.3V rail path (PMOS: 0=ON, 1=OFF)
 static const uint8_t SR_BIT_3V3_HI = 3;
 static const uint8_t SR_BIT_3V3_LO = 4;
+static const uint8_t SR_BIT_ADJ_LO = 5;
 
 static const uint8_t I2C_SCL_PIN = PB8;
 static const uint8_t I2C_SDA_PIN = PB9;
@@ -30,9 +32,32 @@ static const uint8_t INA3221_ADDR_3V3 = 0x41;
 static const uint8_t AW95XX_ADDR_MIN = 0x58;
 static const uint8_t AW95XX_ADDR_MAX = 0x5B;
 static const uint8_t AW95XX_ADDR_ACTIVE = 0x58;
+static const uint8_t AW95XX_REG_OUTPUT_P0 = 0x02;
 static const uint8_t AW95XX_REG_OUTPUT_P1 = 0x03;
+static const uint8_t AW95XX_REG_INPUT_P0 = 0x00;
+static const uint8_t AW95XX_REG_CONFIG_P0 = 0x04;
 static const uint8_t AW95XX_REG_CONFIG_P1 = 0x05;
+static const uint8_t AW95XX_REG_GCR = 0x11;      // Global control register
+static const uint8_t AW95XX_REG_LED_MODE_P0 = 0x12; // 1=GPIO, 0=LED current mode (per bit)
+static const uint8_t AW95XX_REG_LED_MODE_P1 = 0x13; // 1=GPIO, 0=LED current mode (per bit)
+static const uint8_t AW95XX_GCR_PORT_MODE_BIT = 0x10; // 1=push-pull, 0=open-drain
+static const uint8_t AW95XX_CFG_P0_POLICY = 0xC0; // P0.0..P0.5 output, P0.6..P0.7 input
 static const uint8_t AW95XX_P10_MASK = 0x01;
+static const uint8_t AW95XX_P01_MASK = 0x02; // P0.1: ESP- GPIO 5V Hi
+static const uint8_t AW95XX_P02_MASK = 0x04; // P0.2: ESP- GPIO 5V Low (Q1/Q7 path)
+static const uint8_t AW95XX_P03_MASK = 0x08; // P0.3: Channel 3 Hi-Range (Q5/Q11 path)
+static const uint8_t AW95XX_P04_MASK = 0x10; // P0.4: ESP- GPIO 3V3 Low (Q4/Q10 path)
+static const uint8_t AW95XX_P00_MASK = 0x01; // P0.0: ISET_MPU_5V -> Q3 gate path
+static const uint8_t AW95XX_P05_MASK = 0x20; // P0.5: ISET_MPU_3V3 -> Q9 gate path
+static const uint8_t AW95XX_PIN_P0_0 = 0;
+static const uint8_t AW95XX_PIN_P0_1 = 1;
+static const uint8_t AW95XX_PIN_P0_2 = 2;
+static const uint8_t AW95XX_PIN_P0_3 = 3;
+static const uint8_t AW95XX_PIN_P0_4 = 4;
+static const uint8_t AW95XX_PIN_P0_5 = 5;
+static const uint8_t AW95XX_PIN_P0_6 = 6;
+static const uint8_t AW95XX_PIN_P0_7 = 7;
+static const uint8_t AW95XX_PIN_P1_0 = 8;
 static const uint8_t INA3221_REG_CONFIG = 0x00;
 static const uint8_t INA3221_REG_SHUNTVOLTAGE_1 = 0x01;
 static const uint8_t INA3221_REG_BUSVOLTAGE_1 = 0x02;
@@ -108,6 +133,19 @@ struct PersistentConfigRecord {
   PersistentConfigPayload payload;
   uint32_t crc32;
 };
+static bool g_hb_print_enabled = false;
+
+enum AwBootInitState : uint8_t {
+  AW_BOOT_UNKNOWN = 0,
+  AW_BOOT_SKIP = 1,
+  AW_BOOT_PASS = 2,
+  AW_BOOT_HOLD = 3
+};
+
+static AwBootInitState g_aw_boot_state = AW_BOOT_UNKNOWN;
+
+static Adafruit_AW9523 g_aw;
+static bool g_aw_inited = false;
 
 struct Aht20Sample {
   bool valid;
@@ -152,7 +190,27 @@ bool loadPersistentConfig(bool verbose);
 bool erasePersistentConfig(bool verbose);
 void printPersistentConfig();
 void pollUdiCommands();
+void setRangePairEnabled(uint8_t bit, const char* label, bool enabled);
+void setQ3OnlyEnabled(bool enabled);
+void setQ9OnlyEnabled(bool enabled);
+void setAwP0GatePathEnabled(uint8_t mask, uint8_t pin, const char* label, bool enabled);
+void setQ1PathEnabled(bool enabled);
+void setQ2PathEnabled(bool enabled);
+void setQ4PathEnabled(bool enabled);
+void setQ5PathEnabled(bool enabled);
+void runQ9ElectricalDiagnostic();
+void printRangePairStates();
+void runRangePairSequence();
+void captureRangeSequenceSnapshot(const char* step);
 void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms);
+bool aw95xxSetP0MaskOutputMode(uint8_t mask);
+bool aw95xxWriteP0Mask(uint8_t mask, bool high, uint8_t& out_after);
+bool aw95xxEnsureGpioPushPull();
+void aw95xxPrintModeRegs();
+bool aw95xxEnsureDriver();
+void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_high);
+void aw95xxBootInit();
+const char* awBootStateString();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -373,6 +431,12 @@ void printAw95xxProbeSummary() {
 }
 
 bool aw95xxSetP10OutputMode(uint8_t& saved_cfg, uint8_t& saved_out) {
+  if (!aw95xxEnsureGpioPushPull()) {
+    return false;
+  }
+
+  g_aw.pinMode(AW95XX_PIN_P1_0, OUTPUT);
+
   if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, saved_cfg)) {
     return false;
   }
@@ -384,17 +448,212 @@ bool aw95xxSetP10OutputMode(uint8_t& saved_cfg, uint8_t& saved_out) {
   return i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, new_cfg);
 }
 
+bool aw95xxSetP0MaskOutputMode(uint8_t mask) {
+  if (!aw95xxEnsureGpioPushPull()) {
+    return false;
+  }
+
+  if (mask & AW95XX_P00_MASK) g_aw.pinMode(AW95XX_PIN_P0_0, OUTPUT);
+  if (mask & AW95XX_P01_MASK) g_aw.pinMode(AW95XX_PIN_P0_1, OUTPUT);
+  if (mask & AW95XX_P02_MASK) g_aw.pinMode(AW95XX_PIN_P0_2, OUTPUT);
+  if (mask & AW95XX_P03_MASK) g_aw.pinMode(AW95XX_PIN_P0_3, OUTPUT);
+  if (mask & AW95XX_P04_MASK) g_aw.pinMode(AW95XX_PIN_P0_4, OUTPUT);
+  if (mask & AW95XX_P05_MASK) g_aw.pinMode(AW95XX_PIN_P0_5, OUTPUT);
+
+  uint8_t cfg_reg = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, cfg_reg)) {
+    return false;
+  }
+
+  const uint8_t new_cfg = static_cast<uint8_t>(cfg_reg & ~mask); // 0=output
+  return i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, new_cfg);
+}
+
+bool aw95xxWriteP0Mask(uint8_t mask, bool high, uint8_t& out_after) {
+  if (!aw95xxEnsureGpioPushPull()) {
+    return false;
+  }
+
+  const uint8_t level = high ? HIGH : LOW;
+  if (mask & AW95XX_P00_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_0, level);
+  if (mask & AW95XX_P01_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_1, level);
+  if (mask & AW95XX_P02_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_2, level);
+  if (mask & AW95XX_P03_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_3, level);
+  if (mask & AW95XX_P04_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_4, level);
+  if (mask & AW95XX_P05_MASK) g_aw.digitalWrite(AW95XX_PIN_P0_5, level);
+
+  uint8_t out_reg = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P0, out_reg)) {
+    return false;
+  }
+  out_after = out_reg;
+  return true;
+}
+
+void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_high) {
+  uint8_t p0_out = 0;
+  uint8_t p0_in = 0;
+  uint8_t p0_cfg = 0;
+
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P0, p0_out) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, p0_cfg)) {
+    logBoth("aw95xx diag: failed reading P0 output/input/config registers");
+    return;
+  }
+
+  const unsigned want = expected_high ? 1u : 0u;
+  const unsigned out_bit = (p0_out & mask) ? 1u : 0u;
+  const unsigned in_bit = (p0_in & mask) ? 1u : 0u;
+  const unsigned is_out = (p0_cfg & mask) ? 0u : 1u;
+
+  char msg[176];
+  snprintf(msg,
+           sizeof(msg),
+           "aw95xx diag %s: want=%u out=%u in=%u dir=%s (p0_out=0x%02X p0_in=0x%02X cfg0=0x%02X)",
+           tag,
+           want,
+           out_bit,
+           in_bit,
+           is_out ? "OUT" : "IN",
+           static_cast<unsigned>(p0_out),
+           static_cast<unsigned>(p0_in),
+           static_cast<unsigned>(p0_cfg));
+  logBoth(msg);
+
+  if (is_out == 0u) {
+    logBoth("aw95xx diag: pin not configured as output");
+    return;
+  }
+
+  if ((out_bit == want) && (in_bit != want)) {
+    logBoth("aw95xx diag: output register matches command, but input latch disagrees (possible external pull/load)");
+  }
+}
+
+bool aw95xxEnsureDriver() {
+  if (g_aw_inited) {
+    return true;
+  }
+
+  if (!g_aw.begin(AW95XX_ADDR_ACTIVE, &Wire)) {
+    return false;
+  }
+
+  g_aw_inited = true;
+  return true;
+}
+
+bool aw95xxEnsureGpioPushPull() {
+  if (!aw95xxEnsureDriver()) {
+    return false;
+  }
+
+  // Adafruit driver API: false = push-pull for port0.
+  g_aw.openDrainPort0(false);
+  g_aw.pinMode(AW95XX_PIN_P0_0, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_1, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_2, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_3, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_4, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_5, OUTPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_6, INPUT);
+  g_aw.pinMode(AW95XX_PIN_P0_7, INPUT);
+  g_aw.pinMode(AW95XX_PIN_P1_0, OUTPUT);
+
+  uint8_t gcr = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_GCR, gcr)) {
+    return false;
+  }
+
+  // Datasheet + Adafruit driver behavior: bit set = push-pull, bit clear = open-drain.
+  const uint8_t gcr_push_pull = static_cast<uint8_t>(gcr | AW95XX_GCR_PORT_MODE_BIT);
+  if (!i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_GCR, gcr_push_pull)) {
+    return false;
+  }
+
+  uint8_t gcr_after = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_GCR, gcr_after)) {
+    return false;
+  }
+  if ((gcr_after & AW95XX_GCR_PORT_MODE_BIT) == 0) {
+    return false;
+  }
+
+  // Force both ports into GPIO mode (set LED mode bits high).
+  if (!i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P0, 0xFF)) {
+    return false;
+  }
+  if (!i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P1, 0xFF)) {
+    return false;
+  }
+
+  // Enforce board policy from bench findings:
+  // P0.0..P0.5 are control outputs, P0.6..P0.7 are input lines.
+  if (!i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, AW95XX_CFG_P0_POLICY)) {
+    return false;
+  }
+
+  return true;
+}
+
+void aw95xxPrintModeRegs() {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
+    logBoth("aw95xx: 0x58 not responding");
+    return;
+  }
+
+  uint8_t gcr = 0;
+  uint8_t cfg_p0 = 0;
+  uint8_t cfg_p1 = 0;
+  uint8_t mode_p0 = 0;
+  uint8_t mode_p1 = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_GCR, gcr) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, cfg_p0) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, cfg_p1) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P0, mode_p0) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P1, mode_p1)) {
+    logBoth("aw95xx: failed reading mode registers");
+    return;
+  }
+
+  char msg[192];
+  snprintf(msg,
+           sizeof(msg),
+           "aw95xx mode: GCR=0x%02X (port=%s) CFG_P0=0x%02X CFG_P1=0x%02X LEDMODE_P0=0x%02X LEDMODE_P1=0x%02X (1=GPIO)",
+           static_cast<unsigned>(gcr),
+           (gcr & AW95XX_GCR_PORT_MODE_BIT) ? "push-pull" : "open-drain",
+           static_cast<unsigned>(cfg_p0),
+           static_cast<unsigned>(cfg_p1),
+           static_cast<unsigned>(mode_p0),
+           static_cast<unsigned>(mode_p1));
+  logBoth(msg);
+
+  if (cfg_p0 != AW95XX_CFG_P0_POLICY) {
+    char warn[96];
+    snprintf(warn,
+             sizeof(warn),
+             "aw95xx warn: CFG_P0 policy mismatch (expected 0x%02X)",
+             static_cast<unsigned>(AW95XX_CFG_P0_POLICY));
+    logBoth(warn);
+  }
+}
+
 bool aw95xxWriteP10(bool high) {
+  if (!aw95xxEnsureGpioPushPull()) {
+    return false;
+  }
+
+  g_aw.pinMode(AW95XX_PIN_P1_0, OUTPUT);
+  g_aw.digitalWrite(AW95XX_PIN_P1_0, high ? HIGH : LOW);
+
   uint8_t out_reg = 0;
   if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, out_reg)) {
     return false;
   }
-  if (high) {
-    out_reg = static_cast<uint8_t>(out_reg | AW95XX_P10_MASK);
-  } else {
-    out_reg = static_cast<uint8_t>(out_reg & ~AW95XX_P10_MASK);
-  }
-  return i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, out_reg);
+
+  const bool bit_set = (out_reg & AW95XX_P10_MASK) != 0;
+  return bit_set == high;
 }
 
 void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
@@ -717,6 +976,113 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+  if (cmd == "HBON") {
+    g_hb_print_enabled = true;
+    logBoth("hb: periodic serial output ENABLED");
+    return;
+  }
+
+  if (cmd == "HBOFF") {
+    g_hb_print_enabled = false;
+    logBoth("hb: periodic serial output DISABLED");
+    return;
+  }
+
+  if (cmd == "Q3ON") {
+    setQ3OnlyEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q3OFF") {
+    setQ3OnlyEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q1ON") {
+    setQ1PathEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q1OFF") {
+    setQ1PathEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q2ON") {
+    setQ2PathEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q2OFF") {
+    setQ2PathEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q4ON") {
+    setQ4PathEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q4OFF") {
+    setQ4PathEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q5ON") {
+    setQ5PathEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q5OFF") {
+    setQ5PathEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q9ON") {
+    setQ9OnlyEnabled(true);
+    return;
+  }
+
+  if (cmd == "Q9OFF") {
+    setQ9OnlyEnabled(false);
+    return;
+  }
+
+  if (cmd == "Q9DIAG") {
+    runQ9ElectricalDiagnostic();
+    return;
+  }
+
+  if (cmd == "Q39ON") {
+    setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", true);
+    return;
+  }
+
+  if (cmd == "Q39OFF") {
+    setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", false);
+    return;
+  }
+
+  if (cmd == "Q612ON") {
+    setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", true);
+    return;
+  }
+
+  if (cmd == "Q612OFF") {
+    setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+    return;
+  }
+
+  if (cmd == "QSTATE") {
+    printRangePairStates();
+    return;
+  }
+
+  if (cmd == "QSEQ") {
+    runRangePairSequence();
+    return;
+  }
+
   if (cmd == "INAPROBE") {
     printInaProbeSummary();
     return;
@@ -830,6 +1196,16 @@ void handleCommand(const String& cmd_in) {
 
   if (cmd == "AWPROBE") {
     printAw95xxProbeSummary();
+    return;
+  }
+
+  if (cmd == "AWMODE") {
+    if (aw95xxEnsureGpioPushPull()) {
+      logBoth("aw95xx: forced GPIO + push-pull mode");
+    } else {
+      logBoth("aw95xx: failed forcing GPIO + push-pull mode");
+    }
+    aw95xxPrintModeRegs();
     return;
   }
 
@@ -999,6 +1375,13 @@ void srShiftOut16(uint16_t value) {
 }
 
 void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
+  if (i2cPing(AW95XX_ADDR_ACTIVE)) {
+    logBoth("d9: using aw95xx P1.0 backend");
+    runAwP10Heartbeat(blinks, on_ms, off_ms);
+    return;
+  }
+
+  logBoth("d9: using SR fallback backend");
   const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
   const uint16_t saved = g_sr_state;
   // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
@@ -1026,6 +1409,23 @@ void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
 }
 
 void setD9PathEnabled(bool enabled) {
+  if (i2cPing(AW95XX_ADDR_ACTIVE)) {
+    uint8_t saved_cfg = 0;
+    uint8_t saved_out = 0;
+    (void)saved_out;
+    if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
+      logBoth("aw95xx: failed to set P1.0 output mode");
+      return;
+    }
+    if (aw95xxWriteP10(enabled)) {
+      logBoth(enabled ? "d9: aw95xx P1.0 forced ON" : "d9: aw95xx P1.0 forced OFF");
+    } else {
+      logBoth(enabled ? "d9: aw95xx P1.0 ON write failed" : "d9: aw95xx P1.0 OFF write failed");
+    }
+    return;
+  }
+
+  logBoth("d9: aw95xx unavailable, using SR fallback backend");
   const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
   // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
   const uint16_t on_state = static_cast<uint16_t>(g_sr_state & ~mask);
@@ -1041,6 +1441,382 @@ void setD9PathEnabled(bool enabled) {
   }
 
   logBoth(enabled ? "d9: path forced ON" : "d9: path forced OFF");
+}
+
+void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
+  uint8_t p0_mask = 0;
+  const char* p0_desc = "";
+  if (bit == SR_BIT_3V3_HI) {
+    // From Rev-C netlist provided by operator:
+    // Q3 gate path is tied to ISET_MPU_5V (U5 P0.0),
+    // Q9 gate path is tied to ISET_MPU_3V3 (U5 P0.5).
+    p0_mask = static_cast<uint8_t>(AW95XX_P00_MASK | AW95XX_P05_MASK);
+    p0_desc = "P0.0+P0.5";
+  } else if (bit == SR_BIT_ADJ_LO) {
+    p0_mask = AW95XX_P01_MASK; // P0.1 = ESP- GPIO 5V Hi (Q6/Q12 path)
+    p0_desc = "P0.1";
+  }
+
+  if (p0_mask != 0 && i2cPing(AW95XX_ADDR_ACTIVE)) {
+    if (!aw95xxSetP0MaskOutputMode(p0_mask)) {
+      logBoth("aw95xx: failed to set P0 pin output mode for range control");
+      return;
+    }
+
+    // EN nets are active-high on this Rev-C path.
+    uint8_t p0_out_after = 0;
+    if (!aw95xxWriteP0Mask(p0_mask, enabled, p0_out_after)) {
+      logBoth("aw95xx: failed to write P0 pin for range control");
+      return;
+    }
+
+    char msg[128];
+    snprintf(msg,
+             sizeof(msg),
+             "range: %s forced %s via aw95xx %s (p0=0x%02X)",
+             label,
+             enabled ? "ON" : "OFF",
+             p0_desc,
+             static_cast<unsigned>(p0_out_after));
+    logBoth(msg);
+    return;
+  }
+
+  // Fallback for legacy hardware paths that still use the shift-register chain.
+  const uint16_t mask = static_cast<uint16_t>(1u << bit);
+  const uint16_t on_state = static_cast<uint16_t>(g_sr_state & ~mask);
+  const uint16_t off_state = static_cast<uint16_t>(g_sr_state | mask);
+  srShiftOut16(enabled ? on_state : off_state);
+
+  char msg[112];
+  snprintf(msg,
+           sizeof(msg),
+           "range: %s forced %s via SR fallback (bit%u=%u, sr=0x%04X)",
+           label,
+           enabled ? "ON" : "OFF",
+           static_cast<unsigned>(bit),
+           static_cast<unsigned>((g_sr_state >> bit) & 0x1u),
+           static_cast<unsigned>(g_sr_state));
+  logBoth(msg);
+}
+
+void setQ3OnlyEnabled(bool enabled) {
+  if (i2cPing(AW95XX_ADDR_ACTIVE)) {
+    if (!aw95xxSetP0MaskOutputMode(AW95XX_P00_MASK)) {
+      logBoth("aw95xx: failed to set P0.0 output mode for Q3-only control");
+      return;
+    }
+
+    uint8_t p0_out_after = 0;
+    if (!aw95xxWriteP0Mask(AW95XX_P00_MASK, enabled, p0_out_after)) {
+      logBoth("aw95xx: failed to write P0.0 for Q3-only control");
+      return;
+    }
+
+    char msg[120];
+    snprintf(msg,
+             sizeof(msg),
+             "range: Q3-only forced %s via aw95xx P0.0 (p0=0x%02X)",
+             enabled ? "ON" : "OFF",
+             static_cast<unsigned>(p0_out_after));
+    logBoth(msg);
+    logAwP0MaskElectricalState("Q3/P0.0", AW95XX_P00_MASK, enabled);
+    return;
+  }
+
+  logBoth("range: Q3-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
+}
+
+void setQ9OnlyEnabled(bool enabled) {
+  if (i2cPing(AW95XX_ADDR_ACTIVE)) {
+    if (!aw95xxSetP0MaskOutputMode(AW95XX_P05_MASK)) {
+      logBoth("aw95xx: failed to set P0.5 output mode for Q9-only control");
+      return;
+    }
+
+    uint8_t p0_out_after = 0;
+    if (!aw95xxWriteP0Mask(AW95XX_P05_MASK, enabled, p0_out_after)) {
+      logBoth("aw95xx: failed to write P0.5 for Q9-only control");
+      return;
+    }
+
+    char msg[120];
+    snprintf(msg,
+             sizeof(msg),
+             "range: Q9-only forced %s via aw95xx P0.5 (p0=0x%02X)",
+             enabled ? "ON" : "OFF",
+             static_cast<unsigned>(p0_out_after));
+    logBoth(msg);
+    logAwP0MaskElectricalState("Q9/P0.5", AW95XX_P05_MASK, enabled);
+    return;
+  }
+
+  logBoth("range: Q9-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
+}
+
+void setAwP0GatePathEnabled(uint8_t mask, uint8_t pin, const char* label, bool enabled) {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
+    logBoth("range: aw95xx unavailable for direct gate-path control");
+    return;
+  }
+
+  if (!aw95xxSetP0MaskOutputMode(mask)) {
+    logBoth("aw95xx: failed to set P0 output mode for direct gate-path control");
+    return;
+  }
+
+  uint8_t p0_out_after = 0;
+  if (!aw95xxWriteP0Mask(mask, enabled, p0_out_after)) {
+    logBoth("aw95xx: failed to write P0 output for direct gate-path control");
+    return;
+  }
+
+  char msg[136];
+  snprintf(msg,
+           sizeof(msg),
+           "range: %s forced %s via aw95xx P0.%u (p0=0x%02X)",
+           label,
+           enabled ? "ON" : "OFF",
+           static_cast<unsigned>(pin),
+           static_cast<unsigned>(p0_out_after));
+  logBoth(msg);
+  logAwP0MaskElectricalState(label, mask, enabled);
+}
+
+void setQ1PathEnabled(bool enabled) {
+  setAwP0GatePathEnabled(AW95XX_P02_MASK, AW95XX_PIN_P0_2, "Q1/Q7", enabled);
+}
+
+void setQ2PathEnabled(bool enabled) {
+  setAwP0GatePathEnabled(AW95XX_P01_MASK, AW95XX_PIN_P0_1, "Q2/Q8", enabled);
+}
+
+void setQ4PathEnabled(bool enabled) {
+  setAwP0GatePathEnabled(AW95XX_P04_MASK, AW95XX_PIN_P0_4, "Q4/Q10", enabled);
+}
+
+void setQ5PathEnabled(bool enabled) {
+  setAwP0GatePathEnabled(AW95XX_P03_MASK, AW95XX_PIN_P0_3, "Q5/Q11", enabled);
+}
+
+void runQ9ElectricalDiagnostic() {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
+    logBoth("q9 diag: aw95xx unavailable");
+    return;
+  }
+
+  if (!aw95xxEnsureGpioPushPull()) {
+    logBoth("q9 diag: failed to enforce push-pull mode");
+    return;
+  }
+
+  logBoth("q9 diag: start (P0.5 low -> high -> input)");
+
+  g_aw.pinMode(AW95XX_PIN_P0_5, OUTPUT);
+  g_aw.digitalWrite(AW95XX_PIN_P0_5, LOW);
+  delay(5);
+  logAwP0MaskElectricalState("Q9/P0.5 LOW", AW95XX_P05_MASK, false);
+
+  g_aw.pinMode(AW95XX_PIN_P0_5, OUTPUT);
+  g_aw.digitalWrite(AW95XX_PIN_P0_5, HIGH);
+  delay(5);
+  logAwP0MaskElectricalState("Q9/P0.5 HIGH", AW95XX_P05_MASK, true);
+
+  g_aw.pinMode(AW95XX_PIN_P0_5, INPUT);
+  delay(5);
+
+  uint8_t p0_in = 0;
+  uint8_t p0_cfg = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in) ||
+      !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, p0_cfg)) {
+    logBoth("q9 diag: failed reading input/config after Hi-Z");
+  } else {
+    const unsigned in_bit = (p0_in & AW95XX_P05_MASK) ? 1u : 0u;
+    const unsigned is_input = (p0_cfg & AW95XX_P05_MASK) ? 1u : 0u;
+    char msg[144];
+    snprintf(msg,
+             sizeof(msg),
+             "q9 diag: Hi-Z sample in=%u dir=%s (p0_in=0x%02X cfg0=0x%02X)",
+             in_bit,
+             is_input ? "IN" : "OUT",
+             static_cast<unsigned>(p0_in),
+             static_cast<unsigned>(p0_cfg));
+    logBoth(msg);
+  }
+
+  // Restore default board policy after test.
+  if (aw95xxEnsureGpioPushPull()) {
+    logBoth("q9 diag: end (policy restored)");
+  } else {
+    logBoth("q9 diag: end (failed restoring policy)");
+  }
+}
+
+void aw95xxBootInit() {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
+    g_aw_boot_state = AW_BOOT_SKIP;
+    logBoth("aw95xx boot: 0x58 not detected, skipping init");
+    return;
+  }
+
+  if (!aw95xxEnsureGpioPushPull()) {
+    g_aw_boot_state = AW_BOOT_HOLD;
+    logBoth("aw95xx boot: failed to enforce GPIO + push-pull policy");
+    return;
+  }
+
+  // Default control outputs low at boot for deterministic inactive state.
+  uint8_t p0_out_after = 0;
+  const uint8_t boot_mask = static_cast<uint8_t>(AW95XX_P00_MASK | AW95XX_P01_MASK | AW95XX_P02_MASK |
+                                                 AW95XX_P03_MASK | AW95XX_P04_MASK | AW95XX_P05_MASK);
+  if (!aw95xxWriteP0Mask(boot_mask, false, p0_out_after)) {
+    g_aw_boot_state = AW_BOOT_HOLD;
+    logBoth("aw95xx boot: failed forcing P0.0/P0.1/P0.5 low");
+  } else {
+    g_aw_boot_state = AW_BOOT_PASS;
+    char msg[96];
+    snprintf(msg,
+             sizeof(msg),
+             "aw95xx boot: policy latched, P0 outputs forced low (p0=0x%02X)",
+             static_cast<unsigned>(p0_out_after));
+    logBoth(msg);
+  }
+
+  // Keep P1.0 low by default as well.
+  (void)aw95xxWriteP10(false);
+  aw95xxPrintModeRegs();
+}
+
+const char* awBootStateString() {
+  switch (g_aw_boot_state) {
+    case AW_BOOT_SKIP:
+      return "SKIP";
+    case AW_BOOT_PASS:
+      return "PASS";
+    case AW_BOOT_HOLD:
+      return "HOLD";
+    case AW_BOOT_UNKNOWN:
+    default:
+      return "UNK";
+  }
+}
+
+void printRangePairStates() {
+  uint8_t p0_cfg = 0;
+  uint8_t p0_out = 0;
+  if (i2cPing(AW95XX_ADDR_ACTIVE) &&
+      i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, p0_cfg) &&
+      i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P0, p0_out)) {
+    const unsigned q39_q3 = static_cast<unsigned>((p0_out & AW95XX_P00_MASK) != 0);
+    const unsigned q2_q8 = static_cast<unsigned>((p0_out & AW95XX_P01_MASK) != 0);
+    const unsigned q1_q7 = static_cast<unsigned>((p0_out & AW95XX_P02_MASK) != 0);
+    const unsigned q5_q11 = static_cast<unsigned>((p0_out & AW95XX_P03_MASK) != 0);
+    const unsigned q4_q10 = static_cast<unsigned>((p0_out & AW95XX_P04_MASK) != 0);
+    const unsigned q39_q9 = static_cast<unsigned>((p0_out & AW95XX_P05_MASK) != 0);
+    const unsigned q612 = static_cast<unsigned>((p0_out & AW95XX_P01_MASK) != 0);
+    const unsigned q39_q3_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P00_MASK) == 0);
+    const unsigned q2_q8_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P01_MASK) == 0);
+    const unsigned q1_q7_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P02_MASK) == 0);
+    const unsigned q5_q11_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P03_MASK) == 0);
+    const unsigned q4_q10_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P04_MASK) == 0);
+    const unsigned q39_q9_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P05_MASK) == 0);
+    const unsigned q612_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P01_MASK) == 0);
+
+    char msg[320];
+    snprintf(msg,
+             sizeof(msg),
+       "range: aw95xx p0=0x%02X cfg0=0x%02X | Q1/Q7 P0.2=%u(%s,%s) | Q2/Q8 P0.1=%u(%s,%s) | Q3 P0.0=%u(%s,%s) | Q4/Q10 P0.4=%u(%s,%s) | Q5/Q11 P0.3=%u(%s,%s) | Q9 P0.5=%u(%s,%s) | Q6/Q12 P0.1=%u(%s,%s)",
+             static_cast<unsigned>(p0_out),
+             static_cast<unsigned>(p0_cfg),
+       q1_q7,
+       q1_q7 ? "ON" : "OFF",
+       q1_q7_is_out ? "OUT" : "IN",
+       q2_q8,
+       q2_q8 ? "ON" : "OFF",
+       q2_q8_is_out ? "OUT" : "IN",
+         q39_q3,
+         q39_q3 ? "ON" : "OFF",
+         q39_q3_is_out ? "OUT" : "IN",
+       q4_q10,
+       q4_q10 ? "ON" : "OFF",
+       q4_q10_is_out ? "OUT" : "IN",
+       q5_q11,
+       q5_q11 ? "ON" : "OFF",
+       q5_q11_is_out ? "OUT" : "IN",
+         q39_q9,
+         q39_q9 ? "ON" : "OFF",
+         q39_q9_is_out ? "OUT" : "IN",
+             q612,
+             q612 ? "ON" : "OFF",
+             q612_is_out ? "OUT" : "IN");
+    logBoth(msg);
+    return;
+  }
+
+  char msg[120];
+  const unsigned q39_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_3V3_HI) & 0x1u);
+  const unsigned q612_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_ADJ_LO) & 0x1u);
+  snprintf(msg,
+           sizeof(msg),
+           "range: aw95xx unavailable, SR fallback sr=0x%04X | Q3/Q9 bit%u=%u(%s) | Q6/Q12 bit%u=%u(%s)",
+           static_cast<unsigned>(g_sr_state),
+           static_cast<unsigned>(SR_BIT_3V3_HI),
+           q39_bit,
+           q39_bit == 0 ? "ON" : "OFF",
+           static_cast<unsigned>(SR_BIT_ADJ_LO),
+           q612_bit,
+           q612_bit == 0 ? "ON" : "OFF");
+  logBoth(msg);
+}
+
+void captureRangeSequenceSnapshot(const char* step) {
+  char tag[64];
+  snprintf(tag, sizeof(tag), "range seq: %s", step);
+  logBoth(tag);
+  printRangePairStates();
+
+  Ina3221Reading ina_5v = {};
+  Ina3221Reading ina_3v3 = {};
+  const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
+  const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
+  if (!ok_5v && !ok_3v3) {
+    logBoth("ina rails: no expected devices responded");
+    return;
+  }
+  printInaRailsSummary(ok_5v ? &ina_5v : nullptr, ok_3v3 ? &ina_3v3 : nullptr);
+}
+
+void runRangePairSequence() {
+  logBoth("range seq: begin (Q3/Q9 then Q6/Q12)");
+  captureRangeSequenceSnapshot("B0 baseline");
+
+  setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", false);
+  delay(40);
+  captureRangeSequenceSnapshot("S1 Q39OFF");
+
+  setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", true);
+  delay(40);
+  captureRangeSequenceSnapshot("S2 Q39ON");
+
+  setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", false);
+  delay(40);
+  captureRangeSequenceSnapshot("S3 Q39OFF");
+
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+  delay(40);
+  captureRangeSequenceSnapshot("S4 Q612OFF");
+
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", true);
+  delay(40);
+  captureRangeSequenceSnapshot("S5 Q612ON");
+
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+  delay(40);
+  captureRangeSequenceSnapshot("S6 Q612OFF");
+
+  logBoth("range seq: complete");
 }
 
 void runShiftRegisterSelfTest() {
@@ -1079,8 +1855,9 @@ void logHealthSummary() {
     formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aht=%s Vin=%sV Iin=%smA T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             "status: flash=%s aw=%s aht=%s Vin=%sV Iin=%smA T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
              flash_test_passed ? "PASS" : "HOLD",
+             awBootStateString(),
              "PASS",
              vin,
              iin,
@@ -1094,8 +1871,9 @@ void logHealthSummary() {
     formatAhtValues(g_aht20, t_whole, t_frac, h_whole, h_frac);
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aht=%s T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             "status: flash=%s aw=%s aht=%s T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
              flash_test_passed ? "PASS" : "HOLD",
+             awBootStateString(),
              "PASS",
              static_cast<long>(t_whole),
              static_cast<long>(t_frac),
@@ -1108,16 +1886,18 @@ void logHealthSummary() {
     formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aht=HOLD Vin=%sV Iin=%smA runs=%lu",
+             "status: flash=%s aw=%s aht=HOLD Vin=%sV Iin=%smA runs=%lu",
              flash_test_passed ? "PASS" : "HOLD",
+             awBootStateString(),
              vin,
              iin,
              static_cast<unsigned long>(flash_test_runs));
   } else {
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aht=HOLD runs=%lu",
+             "status: flash=%s aw=%s aht=HOLD runs=%lu",
              flash_test_passed ? "PASS" : "HOLD",
+             awBootStateString(),
              static_cast<unsigned long>(flash_test_runs));
   }
   logBoth(msg);
@@ -1524,6 +2304,8 @@ void setup() {
   Serial.println("stm32-bluepill bringup: boot");
   SerialDbg.println("stm32-bluepill bringup: boot");
 
+  aw95xxBootInit();
+
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
   SerialU3.begin(115200);
   SerialU3.println("stm32-bluepill usart3: ready");
@@ -1567,7 +2349,7 @@ void loop() {
   static uint32_t lastSummaryMs = 0;
   uint32_t now = millis();
 
-  if (now - lastMs >= 1000) {
+  if (now - lastMs >= 5000) {
     lastMs = now;
     digitalWrite(PIN_STATUS_LED, LOW);
     delay(40);
@@ -1575,27 +2357,29 @@ void loop() {
 
     refreshIncomingRailSample();
 
-    Serial.println("hb");
-    SerialDbg.println("hb");
+    if (g_hb_print_enabled) {
+      Serial.println("hb");
+      SerialDbg.println("hb");
 
-    if (g_incoming_rail.valid) {
-      char ina_hb_msg[96];
-      char vin[16], iin[16];
-      formatVoltageValue(g_incoming_rail.bus_V, vin, sizeof(vin));
-      formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
-      snprintf(ina_hb_msg,
-               sizeof(ina_hb_msg),
-               "ina hb: Vin=%sV Iin=%smA",
-               vin,
-               iin);
-      logBoth(ina_hb_msg);
-    } else {
-      logBoth("ina hb: HOLD");
-    }
+      if (g_incoming_rail.valid) {
+        char ina_hb_msg[96];
+        char vin[16], iin[16];
+        formatVoltageValue(g_incoming_rail.bus_V, vin, sizeof(vin));
+        formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
+        snprintf(ina_hb_msg,
+                 sizeof(ina_hb_msg),
+                 "ina hb: Vin=%sV Iin=%smA",
+                 vin,
+                 iin);
+        logBoth(ina_hb_msg);
+      } else {
+        logBoth("ina hb: HOLD");
+      }
 
-    if (!flash_test_passed) {
-      Serial.println("flash: HOLD (bring-up test failed)");
-      SerialDbg.println("flash: HOLD (bring-up test failed)");
+      if (!flash_test_passed) {
+        Serial.println("flash: HOLD (bring-up test failed)");
+        SerialDbg.println("flash: HOLD (bring-up test failed)");
+      }
     }
     
     // Publish live telemetry from INA3221 rails when available.

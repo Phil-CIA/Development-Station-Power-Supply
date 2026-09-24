@@ -3,6 +3,8 @@
 #include <lvgl.h>
 #include <cstring>
 #include <cmath>
+#include <driver/gpio.h>
+#include <soc/usb_serial_jtag_reg.h>
 
 #include "CrowPanel43Display.h"
 #include "disp_link_slave.h"
@@ -2231,7 +2233,7 @@ void dumpLogCsv(int limit) {
 }
 
 // PROBE <pin> [ms]  — raw digitalRead loop on the given GPIO pin.
-// Use 'PROBE 19 7000' to verify the STM32 USART3 TX signal arrives on CrowPanel IO19.
+// Use 'PROBE 20 7000' to verify the HAT UART TX signal arrives on IO20.
 void handleProbe(const String& rawArgs) {
   String args = rawArgs;
   args.trim();
@@ -2466,7 +2468,17 @@ void handleCommand(const String& rawLine) {
 void setup() {
   Serial.begin(115200);
   Serial.println("policy: OTA disabled");
-  Serial.println("transport: UART1 dedicated telemetry (IO19 RX / IO20 TX), console stays on USB Serial");
+
+  if (disp_link_slave::transportMode() == disp_link_slave::TransportMode::Uart1) {
+    // IO19/IO20 are S3 USB-JTAG D-/D+ pads. Release them so Serial1 can own
+    // them as UART1 TX/RX. Must happen before Serial1.begin().
+    REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+    gpio_reset_pin(GPIO_NUM_19);
+    gpio_reset_pin(GPIO_NUM_20);
+    Serial.println("transport: UART1 (IO19/IO20), K1 expected 0,1");
+  } else {
+    Serial.println("transport: UART0-IN (IO44/IO43), shared with Serial console");
+  }
 
   Wire.begin(15, 16);
   delay(50);
@@ -2515,8 +2527,8 @@ void setup() {
 void loop() {
   disp_link_slave::poll();
 
-  // In dedicated UART1 transport mode the USB Serial console remains available
-  // for commands and logging without consuming telemetry bytes.
+  // In UART0 transport mode telemetry shares Serial, so command parsing must
+  // stay off to avoid consuming telemetry bytes as CLI input.
   if (!disp_link_slave::telemetryOnConsoleSerial()) {
     while (Serial.available() > 0) {
       const char ch = static_cast<char>(Serial.read());

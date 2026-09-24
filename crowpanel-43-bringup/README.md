@@ -2,12 +2,6 @@
 
 This is a standalone PlatformIO starter target for the Elecrow CrowPanel Advance 4.3 inch board.
 
-Current transport baseline for the active bench branch:
-- Incoming telemetry: dedicated UART1 on `IO19` (RX) / `IO20` (TX)
-- Source controller: STM32F103 Blue Pill USART3 (`PB10`/`PB11`)
-- USB Serial remains the console path for CrowPanel commands and logs
-- The temporary UART0 shared-console intake path is historical only
-
 ## Why this folder exists
 
 - The official Elecrow repo is Arduino-sketch oriented.

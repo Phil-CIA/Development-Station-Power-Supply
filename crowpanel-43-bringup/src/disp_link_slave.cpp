@@ -1,9 +1,21 @@
 #include "disp_link_slave.h"
 
 #include <driver/gpio.h>
-#include <soc/soc.h>
 #include <soc/usb_serial_jtag_reg.h>
 
+// Compile-time transport switch:
+//   0 = UART1 (IO19/IO20, requires K1 switch path)
+//   1 = UART0 (IO44/IO43 on UART0-IN)
+#ifndef DISP_LINK_SLAVE_USE_UART0
+#define DISP_LINK_SLAVE_USE_UART0 1
+#endif
+
+// UART1 wiring to HAT (CrowPanel side of HY2.0-4P UART1-OUT, K1=0,1):
+// Live probe result on this session:
+//   IO19 = RX, IO20 = TX.
+// The earlier reversed mapping was not receiving frames.
+constexpr int      kUartRxPin = 19;
+constexpr int      kUartTxPin = 20;
 constexpr uint32_t kUartBaud  = 115200;
 
 namespace disp_link_slave {
@@ -13,8 +25,6 @@ namespace {
 constexpr uint8_t kSof1         = 0xAA;
 constexpr uint8_t kSof2         = 0x55;
 constexpr uint8_t kFrameTagTlm  = 'T';
-constexpr int kUartRxPin = 19;
-constexpr int kUartTxPin = 20;
 constexpr uint8_t kFrameLenTlm  = 6;
 constexpr uint8_t kFrameLenExtMin = 13;
 constexpr size_t  kFrameSizeLegacy = 10;
@@ -27,6 +37,13 @@ CommandLink        s_cmd   = {};
 bool               s_begun = false;
 Stream*            s_rx_stream = nullptr;
 Print*             s_tx_stream = nullptr;
+
+constexpr TransportMode kTransportMode =
+#if DISP_LINK_SLAVE_USE_UART0
+  TransportMode::Uart0;
+#else
+  TransportMode::Uart1;
+#endif
 
 uint8_t crc8(const uint8_t* data, size_t len) {
   uint8_t crc = 0x00;
@@ -138,25 +155,33 @@ void parseFrame(const uint8_t* f, size_t frame_size) {
 void begin() {
   if (s_begun) return;
 
-  // Release IO19/20 from USB-Serial-JTAG pad ownership so Serial1 can bind
-  // to the dedicated CrowPanel UART1-OUT path.
-  REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, BIT(14));
-  gpio_reset_pin(static_cast<gpio_num_t>(kUartRxPin));
-  gpio_reset_pin(static_cast<gpio_num_t>(kUartTxPin));
-  Serial1.begin(kUartBaud, SERIAL_8N1, kUartRxPin, kUartTxPin);
-
-  s_rx_stream = &Serial1;
-  s_tx_stream = &Serial1;
-  Serial.printf("disp_link_slave: UART1 listening @%lu baud on IO%d/IO%d\n",
-                static_cast<unsigned long>(kUartBaud),
-                kUartRxPin,
-                kUartTxPin);
+  if (kTransportMode == TransportMode::Uart1) {
+    // Bring up UART1 on IO19(RX)/IO20(TX). IO19/IO20 are the S3's USB-Serial-JTAG
+    // D-/D+ pads at boot; release them from USB-JTAG so the UART peripheral can
+    // drive them. Without this, IO19/IO20 are held by the USB-JTAG block and the
+    // UART RX line reads as a floating-high constant.
+    REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+    gpio_reset_pin(static_cast<gpio_num_t>(kUartRxPin));
+    gpio_reset_pin(static_cast<gpio_num_t>(kUartTxPin));
+    Serial1.begin(kUartBaud, SERIAL_8N1, kUartRxPin, kUartTxPin);
+    s_rx_stream = &Serial1;
+    s_tx_stream = &Serial1;
+    Serial.printf("disp_link_slave: UART1 listening @%lu baud RX=IO%d TX=IO%d (K1 must be 0,1)\n",
+                  static_cast<unsigned long>(kUartBaud), kUartRxPin, kUartTxPin);
+  } else {
+    // UART0 mode listens on the shared Serial stream (UART0-IN path, IO44/IO43).
+    // Keep console TX quiet in this mode to avoid mixing diagnostics with host traffic.
+    s_rx_stream = &Serial;
+    s_tx_stream = &Serial;
+    Serial.printf("disp_link_slave: UART0 listening @%lu baud on Serial (UART0-IN path)\n",
+                  static_cast<unsigned long>(kUartBaud));
+  }
 
   s_begun = true;
 }
 
 void poll() {
-  // Byte-by-byte SOF state machine on the selected UART stream. Supports variable-length
+  // Byte-by-byte SOF state machine on Serial1. Supports variable-length
   // telemetry frames while preserving legacy 10-byte compatibility.
   static uint8_t  buf[kFrameSizeMax];
   static size_t   idx = 0;
@@ -231,11 +256,11 @@ void poll() {
 }
 
 TransportMode transportMode() {
-  return TransportMode::Uart1;
+  return kTransportMode;
 }
 
 bool telemetryOnConsoleSerial() {
-  return false;
+  return kTransportMode == TransportMode::Uart0;
 }
 
 Telemetry snapshot() {
