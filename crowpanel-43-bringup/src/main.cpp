@@ -1501,6 +1501,52 @@ void printRxStatus() {
                 static_cast<unsigned long>(t.uart_bytes));
 }
 
+void printUdiLinkStatus() {
+  const auto c = disp_link_slave::commandSnapshot();
+  const uint32_t age_ms = (c.last_rx_ms == 0) ? 0 : (millis() - c.last_rx_ms);
+  Serial.printf("udi tx=%lu ack=%lu err=%lu evt=%lu age=%lu ms last_ack=%s last_err=%s last_evt=%s\n",
+                static_cast<unsigned long>(c.tx_count),
+                static_cast<unsigned long>(c.ack_count),
+                static_cast<unsigned long>(c.err_count),
+                static_cast<unsigned long>(c.evt_count),
+                static_cast<unsigned long>(age_ms),
+                c.last_ack[0] ? c.last_ack : "--",
+                c.last_err[0] ? c.last_err : "--",
+                c.last_evt[0] ? c.last_evt : "--");
+}
+
+void sendUdiOutputCommand(bool enabled) {
+  const bool ok = disp_link_slave::sendCommand(enabled ? "OUTPUT ON" : "OUTPUT OFF");
+  if (!ok) {
+    Serial.println("ERR UDI_OUTPUT: link not ready");
+    return;
+  }
+  Serial.printf("ACK UDI_OUTPUT %s\n", enabled ? "ON" : "OFF");
+}
+
+void sendUdiCurrentLimitCommand(const String& channel, uint16_t limit_mA) {
+  const uint16_t max_mA = channel.equalsIgnoreCase("CH1") ? 3000u : 2000u;
+  if (limit_mA > max_mA) {
+    Serial.printf("ERR UDI_ILIM: %s out of range (0..%u mA)\n",
+                  channel.c_str(),
+                  static_cast<unsigned>(max_mA));
+    return;
+  }
+
+  char payload[48];
+  snprintf(payload,
+           sizeof(payload),
+           "ILIM %s %u",
+           channel.c_str(),
+           static_cast<unsigned>(limit_mA));
+  const bool ok = disp_link_slave::sendCommand(payload);
+  if (!ok) {
+    Serial.println("ERR UDI_ILIM: link not ready");
+    return;
+  }
+  Serial.printf("ACK UDI_ILIM %s %u\n", channel.c_str(), static_cast<unsigned>(limit_mA));
+}
+
 void printOtaStatus() {
   Serial.printf("ota enabled=%s policy=forced-off\n", kOtaEnabled ? "yes" : "no");
 }
@@ -1594,12 +1640,13 @@ void handleCommand(const String& rawLine) {
   line.trim();
   if (line.isEmpty()) return;
   if (line.equalsIgnoreCase("HELP")) {
-    Serial.println("Commands: HELP, PING, STATUS, RX, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
+    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
     return;
   }
   if (line.equalsIgnoreCase("PING"))         { Serial.println("PONG"); return; }
   if (line.equalsIgnoreCase("STATUS"))       { printStatus();           return; }
   if (line.equalsIgnoreCase("RX"))           { printRxStatus();         return; }
+  if (line.equalsIgnoreCase("UDI_STATUS"))   { printUdiLinkStatus();    return; }
   if (line.equalsIgnoreCase("OTA") )         { printOtaStatus();        return; }
   if (line.equalsIgnoreCase("LOG_START"))    { trend_logging_enabled = true;  Serial.println("ACK LOG_START"); return; }
   if (line.equalsIgnoreCase("LOG_STOP"))     { trend_logging_enabled = false; Serial.println("ACK LOG_STOP");  return; }
@@ -1709,6 +1756,49 @@ void handleCommand(const String& rawLine) {
     handleProbe(line.substring(5));
     return;
   }
+  if (line.startsWith("UDI_OUTPUT") || line.startsWith("udi_output")) {
+    String arg = line.substring(10);
+    arg.trim();
+    if (arg.equalsIgnoreCase("ON")) {
+      sendUdiOutputCommand(true);
+      return;
+    }
+    if (arg.equalsIgnoreCase("OFF")) {
+      sendUdiOutputCommand(false);
+      return;
+    }
+    Serial.println("ERR UDI_OUTPUT: use ON|OFF");
+    return;
+  }
+  if (line.startsWith("UDI_ILIM") || line.startsWith("udi_ilim")) {
+    String args = line.substring(8);
+    args.trim();
+    const int split = args.indexOf(' ');
+    if (split <= 0) {
+      Serial.println("ERR UDI_ILIM: use UDI_ILIM <CH1|CH2> <mA>");
+      return;
+    }
+    String channel = args.substring(0, split);
+    channel.trim();
+    String limit_text = args.substring(split + 1);
+    limit_text.trim();
+
+    if (!channel.equalsIgnoreCase("CH1") && !channel.equalsIgnoreCase("CH2")) {
+      Serial.println("ERR UDI_ILIM: channel must be CH1 or CH2");
+      return;
+    }
+    if (limit_text.isEmpty()) {
+      Serial.println("ERR UDI_ILIM: missing mA value");
+      return;
+    }
+    const long parsed_mA = limit_text.toInt();
+    if (parsed_mA < 0) {
+      Serial.println("ERR UDI_ILIM: mA must be >= 0");
+      return;
+    }
+    sendUdiCurrentLimitCommand(channel, static_cast<uint16_t>(parsed_mA));
+    return;
+  }
   Serial.printf("ERR unknown: %s\n", line.c_str());
 }
 
@@ -1792,6 +1882,23 @@ void loop() {
   if (kRxSerialLogEnabled && !disp_link_slave::telemetryOnConsoleSerial() && now - last_log_ms >= 1000) {
     last_log_ms = now;
     printRxStatus();
+  }
+
+  static uint32_t last_udi_ack_count = 0;
+  static uint32_t last_udi_err_count = 0;
+  static uint32_t last_udi_evt_count = 0;
+  const auto udi_link = disp_link_slave::commandSnapshot();
+  if (udi_link.ack_count != last_udi_ack_count) {
+    last_udi_ack_count = udi_link.ack_count;
+    Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
+  }
+  if (udi_link.err_count != last_udi_err_count) {
+    last_udi_err_count = udi_link.err_count;
+    Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
+  }
+  if (udi_link.evt_count != last_udi_evt_count) {
+    last_udi_evt_count = udi_link.evt_count;
+    Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
   }
 
   static uint32_t last_sample_ms = 0;

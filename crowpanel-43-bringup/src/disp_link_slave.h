@@ -40,6 +40,17 @@ struct Telemetry {
   uint32_t uart_bytes;     // raw bytes seen on active UART transport (debug)
 };
 
+struct CommandLink {
+  uint32_t tx_count;       // display -> host CMD: lines sent
+  uint32_t ack_count;      // host -> display ACK: lines received
+  uint32_t err_count;      // host -> display ERR: lines received
+  uint32_t evt_count;      // host -> display EVT: lines received
+  uint32_t last_rx_ms;     // timestamp of last ACK/ERR/EVT line
+  char     last_ack[64];
+  char     last_err[96];
+  char     last_evt[96];
+};
+
 // Bring up telemetry receiver on the selected UART transport.
 void begin();
 
@@ -53,5 +64,10 @@ TransportMode transportMode();
 bool telemetryOnConsoleSerial();
 
 Telemetry snapshot();
+CommandLink commandSnapshot();
+
+// Send one UDI command line over UART using CMD:<payload>\n framing.
+// Returns false when the UART link has not been initialized.
+bool sendCommand(const char* payload);
 
 }  // namespace disp_link_slave

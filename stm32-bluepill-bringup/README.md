@@ -31,6 +31,10 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
 - `INAPROBE`
 - `INANOW`
 - `INARAILS`
+- Display-over-UDI command channel on USART3:
+  - `CMD:OUTPUT ON|OFF`
+  - `CMD:ILIM CH1|CH2 <mA>`
+  - Responses: `ACK:...` / `ERR:...` / `EVT:...`
 
 ## Telemetry
 
