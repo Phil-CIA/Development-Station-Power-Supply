@@ -46,6 +46,10 @@ static const uint8_t CMD_READ_DATA = 0x03;
 
 static const uint32_t FLASH_TEST_ADDR = 0x001000; // dedicated bring-up test sector
 static const size_t FLASH_TEST_LEN = 32;
+static const uint32_t FLASH_CFG_ADDR = 0x002000; // dedicated persistent-config sector
+static const uint32_t W25Q_PAGE_SIZE = 256;
+static const uint32_t FLASH_CFG_MAGIC = 0x43464731; // "CFG1"
+static const uint16_t FLASH_CFG_VERSION = 1;
 
 // ── Telemetry frame constants ──────────────────────────────────────────────
 static const uint8_t FRAME_SOF1 = 0xAA;
@@ -57,6 +61,30 @@ static uint8_t frame_seq = 0;
 static bool flash_test_passed = false;
 static uint32_t flash_test_runs = 0;
 static uint16_t g_sr_state = 0x0000;
+
+struct RailCalibrationConfig {
+  float voltage_gain;
+  float voltage_offset_mV;
+  float current_gain;
+  float current_offset_mA;
+};
+
+struct PersistentConfigPayload {
+  uint8_t d9_path_enabled;
+  uint8_t reserved0;
+  uint8_t reserved1;
+  uint8_t reserved2;
+  RailCalibrationConfig rail_5v;
+  RailCalibrationConfig rail_3v3;
+};
+
+struct PersistentConfigRecord {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t payload_len;
+  PersistentConfigPayload payload;
+  uint32_t crc32;
+};
 
 struct Aht20Sample {
   bool valid;
@@ -85,6 +113,7 @@ struct IncomingRailSample {
 
 Aht20Sample g_aht20 = {false, 0.0f, 0.0f, 0};
 IncomingRailSample g_incoming_rail = {false, 0.0f, 0.0f};
+PersistentConfigPayload g_config = {};
 
 bool runFlashBringupTest();
 bool readAht20Now(Aht20Sample& out);
@@ -94,6 +123,11 @@ void runShiftRegisterSelfTest();
 void logHealthSummary();
 void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms);
 void setD9PathEnabled(bool enabled);
+void resetPersistentConfigDefaults();
+bool savePersistentConfig(bool verbose);
+bool loadPersistentConfig(bool verbose);
+bool erasePersistentConfig(bool verbose);
+void printPersistentConfig();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -135,8 +169,37 @@ void formatCurrentValue(float value, char* out, size_t out_len) {
   formatFixedValue(value, 100, 2, out, out_len);
 }
 
+float applyVoltageCalibration(float raw_bus_v, const RailCalibrationConfig& cal) {
+  const float raw_mV = raw_bus_v * 1000.0f;
+  const float corrected_mV = (raw_mV * cal.voltage_gain) + cal.voltage_offset_mV;
+  return corrected_mV / 1000.0f;
+}
+
+float applyCurrentCalibration(float raw_mA, const RailCalibrationConfig& cal) {
+  return (raw_mA * cal.current_gain) + cal.current_offset_mA;
+}
+
+const RailCalibrationConfig& calibrationForRail(uint8_t address) {
+  if (address == INA3221_ADDR_5V) {
+    return g_config.rail_5v;
+  }
+  return g_config.rail_3v3;
+}
+
+uint32_t crc32(const uint8_t* data, size_t len) {
+  uint32_t crc = 0xFFFFFFFFu;
+  for (size_t i = 0; i < len; ++i) {
+    crc ^= static_cast<uint32_t>(data[i]);
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      const uint32_t mask = 0u - (crc & 1u);
+      crc = (crc >> 1) ^ (0xEDB88320u & mask);
+    }
+  }
+  return ~crc;
+}
+
 void printCommandHelp() {
-  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS");
+  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE");
 }
 
 bool i2cPing(uint8_t address) {
@@ -176,9 +239,6 @@ float inaShuntMillivolts(uint16_t raw) {
 }
 
 float inaShuntOhmsFor(uint8_t address, int channel_index) {
-  if (address == INA3221_ADDR_5V) {
-    return 0.200f;
-  }
   if (address == INA3221_ADDR_3V3 && channel_index == 2) {
     return 0.018f;
   }
@@ -383,11 +443,15 @@ void handleCommand(const String& cmd_in) {
 
   if (cmd == "D9ON") {
     setD9PathEnabled(true);
+    g_config.d9_path_enabled = 1;
+    savePersistentConfig(false);
     return;
   }
 
   if (cmd == "D9OFF") {
     setD9PathEnabled(false);
+    g_config.d9_path_enabled = 0;
+    savePersistentConfig(false);
     return;
   }
 
@@ -428,6 +492,77 @@ void handleCommand(const String& cmd_in) {
       return;
     }
     printInaRailsSummary(ok_5v ? &ina_5v : nullptr, ok_3v3 ? &ina_3v3 : nullptr);
+    return;
+  }
+
+  if (cmd == "CALSHOW" || cmd == "CFGSHOW") {
+    printPersistentConfig();
+    return;
+  }
+
+  if (cmd.startsWith("CALSET ")) {
+    char rail_token[8] = {0};
+    float v_gain = 1.0f;
+    float v_off_mV = 0.0f;
+    float i_gain = 1.0f;
+    float i_off_mA = 0.0f;
+    if (sscanf(cmd.c_str(), "CALSET %7s %f %f %f %f", rail_token, &v_gain, &v_off_mV, &i_gain, &i_off_mA) != 5) {
+      logBoth("[CFG] Usage: CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
+      return;
+    }
+
+    if (v_gain <= 0.0f || i_gain <= 0.0f) {
+      logBoth("[CFG] CALSET rejected: gains must be > 0");
+      return;
+    }
+    if (v_off_mV < -10000.0f || v_off_mV > 10000.0f || i_off_mA < -50000.0f || i_off_mA > 50000.0f) {
+      logBoth("[CFG] CALSET rejected: offsets out of safe range");
+      return;
+    }
+
+    RailCalibrationConfig* target = nullptr;
+    if (strcmp(rail_token, "5V") == 0) {
+      target = &g_config.rail_5v;
+    } else if (strcmp(rail_token, "3V3") == 0) {
+      target = &g_config.rail_3v3;
+    } else {
+      logBoth("[CFG] CALSET rejected: rail must be 5V or 3V3");
+      return;
+    }
+
+    target->voltage_gain = v_gain;
+    target->voltage_offset_mV = v_off_mV;
+    target->current_gain = i_gain;
+    target->current_offset_mA = i_off_mA;
+    savePersistentConfig(false);
+    printPersistentConfig();
+    return;
+  }
+
+  if (cmd == "CFGSAVE") {
+    savePersistentConfig(true);
+    return;
+  }
+
+  if (cmd == "CFGLOAD") {
+    if (loadPersistentConfig(true)) {
+      setD9PathEnabled(g_config.d9_path_enabled != 0);
+    }
+    return;
+  }
+
+  if (cmd == "CFGRESET") {
+    resetPersistentConfigDefaults();
+    setD9PathEnabled(g_config.d9_path_enabled != 0);
+    savePersistentConfig(true);
+    return;
+  }
+
+  if (cmd == "CFGERASE") {
+    if (erasePersistentConfig(true)) {
+      resetPersistentConfigDefaults();
+      setD9PathEnabled(g_config.d9_path_enabled != 0);
+    }
     return;
   }
 
@@ -731,6 +866,173 @@ void flashReadData(uint32_t address, uint8_t* data, size_t len) {
   flashDeselect();
 }
 
+bool flashWriteData(uint32_t address, const uint8_t* data, size_t len) {
+  size_t offset = 0;
+  while (offset < len) {
+    const uint32_t page_offset = (address + static_cast<uint32_t>(offset)) % W25Q_PAGE_SIZE;
+    size_t chunk = static_cast<size_t>(W25Q_PAGE_SIZE - page_offset);
+    if (chunk > (len - offset)) {
+      chunk = len - offset;
+    }
+
+    flashPageProgram(address + static_cast<uint32_t>(offset), data + offset, chunk);
+    if (!flashWaitReady(1000)) {
+      return false;
+    }
+    offset += chunk;
+  }
+  return true;
+}
+
+void resetPersistentConfigDefaults() {
+  g_config.d9_path_enabled = 0;
+  g_config.reserved0 = 0;
+  g_config.reserved1 = 0;
+  g_config.reserved2 = 0;
+
+  g_config.rail_5v.voltage_gain = 1.0f;
+  g_config.rail_5v.voltage_offset_mV = 0.0f;
+  g_config.rail_5v.current_gain = 1.0f;
+  g_config.rail_5v.current_offset_mA = 0.0f;
+
+  g_config.rail_3v3.voltage_gain = 1.0f;
+  g_config.rail_3v3.voltage_offset_mV = 0.0f;
+  g_config.rail_3v3.current_gain = 1.0f;
+  g_config.rail_3v3.current_offset_mA = 0.0f;
+}
+
+bool savePersistentConfig(bool verbose) {
+  if (!flash_test_passed) {
+    if (verbose) {
+      logBoth("[CFG] Save skipped: flash bring-up test not passing");
+    }
+    return false;
+  }
+
+  PersistentConfigRecord record = {};
+  record.magic = FLASH_CFG_MAGIC;
+  record.version = FLASH_CFG_VERSION;
+  record.payload_len = static_cast<uint16_t>(sizeof(record.payload));
+  record.payload = g_config;
+  record.crc32 = crc32(reinterpret_cast<const uint8_t*>(&record.payload), sizeof(record.payload));
+
+  flashSectorErase4K(FLASH_CFG_ADDR);
+  if (!flashWaitReady(4000)) {
+    if (verbose) {
+      logBoth("[CFG] Save failed: erase timeout");
+    }
+    return false;
+  }
+
+  if (!flashWriteData(FLASH_CFG_ADDR, reinterpret_cast<const uint8_t*>(&record), sizeof(record))) {
+    if (verbose) {
+      logBoth("[CFG] Save failed: write timeout");
+    }
+    return false;
+  }
+
+  if (verbose) {
+    logBoth("[CFG] Saved");
+  }
+  return true;
+}
+
+bool loadPersistentConfig(bool verbose) {
+  if (!flash_test_passed) {
+    if (verbose) {
+      logBoth("[CFG] Load skipped: flash bring-up test not passing");
+    }
+    return false;
+  }
+
+  PersistentConfigRecord record = {};
+  flashReadData(FLASH_CFG_ADDR, reinterpret_cast<uint8_t*>(&record), sizeof(record));
+
+  if (record.magic != FLASH_CFG_MAGIC) {
+    if (verbose) {
+      logBoth("[CFG] No saved config signature");
+    }
+    return false;
+  }
+  if (record.version != FLASH_CFG_VERSION) {
+    if (verbose) {
+      char msg[96];
+      snprintf(msg,
+               sizeof(msg),
+               "[CFG] Version mismatch: got %u expected %u",
+               static_cast<unsigned>(record.version),
+               static_cast<unsigned>(FLASH_CFG_VERSION));
+      logBoth(msg);
+    }
+    return false;
+  }
+  if (record.payload_len != sizeof(record.payload)) {
+    if (verbose) {
+      logBoth("[CFG] Size mismatch");
+    }
+    return false;
+  }
+
+  const uint32_t expected_crc = crc32(reinterpret_cast<const uint8_t*>(&record.payload), sizeof(record.payload));
+  if (record.crc32 != expected_crc) {
+    if (verbose) {
+      logBoth("[CFG] CRC mismatch");
+    }
+    return false;
+  }
+
+  if (record.payload.rail_5v.voltage_gain <= 0.0f || record.payload.rail_3v3.voltage_gain <= 0.0f ||
+      record.payload.rail_5v.current_gain <= 0.0f || record.payload.rail_3v3.current_gain <= 0.0f) {
+    if (verbose) {
+      logBoth("[CFG] Invalid gain values");
+    }
+    return false;
+  }
+
+  g_config = record.payload;
+  if (verbose) {
+    logBoth("[CFG] Loaded");
+  }
+  return true;
+}
+
+bool erasePersistentConfig(bool verbose) {
+  if (!flash_test_passed) {
+    if (verbose) {
+      logBoth("[CFG] Erase skipped: flash bring-up test not passing");
+    }
+    return false;
+  }
+  flashSectorErase4K(FLASH_CFG_ADDR);
+  if (!flashWaitReady(4000)) {
+    if (verbose) {
+      logBoth("[CFG] Erase timeout");
+    }
+    return false;
+  }
+  if (verbose) {
+    logBoth("[CFG] Erased");
+  }
+  return true;
+}
+
+void printPersistentConfig() {
+  char msg[192];
+  snprintf(msg,
+           sizeof(msg),
+           "cfg: d9_default=%s 5V[vGain=%.5f vOff=%.2fmV iGain=%.5f iOff=%.2fmA] 3V3[vGain=%.5f vOff=%.2fmV iGain=%.5f iOff=%.2fmA]",
+           g_config.d9_path_enabled ? "ON" : "OFF",
+           g_config.rail_5v.voltage_gain,
+           g_config.rail_5v.voltage_offset_mV,
+           g_config.rail_5v.current_gain,
+           g_config.rail_5v.current_offset_mA,
+           g_config.rail_3v3.voltage_gain,
+           g_config.rail_3v3.voltage_offset_mV,
+           g_config.rail_3v3.current_gain,
+           g_config.rail_3v3.current_offset_mA);
+  logBoth(msg);
+}
+
 bool runFlashBringupTest() {
   logBoth("flash: begin bring-up test");
 
@@ -882,9 +1184,19 @@ void setup() {
   SerialU3.println("stm32-bluepill usart3: ready");
   SerialDbg.println("stm32-bluepill usart3: ready");
 
+  resetPersistentConfigDefaults();
   printCommandHelp();
   flash_test_passed = runFlashBringupTest();
   flash_test_runs = 1;
+  if (flash_test_passed) {
+    if (!loadPersistentConfig(true)) {
+      savePersistentConfig(true);
+    }
+  } else {
+    logBoth("[CFG] Flash not healthy; using volatile defaults only");
+  }
+  setD9PathEnabled(g_config.d9_path_enabled != 0);
+  printPersistentConfig();
 
   Aht20Sample boot_sample;
   if (readAht20Now(boot_sample)) {
@@ -956,10 +1268,25 @@ void loop() {
       return static_cast<int16_t>(value + (value >= 0.0f ? 0.5f : -0.5f));
     };
 
-    const uint16_t v5_mV = ok_5v ? clampU16(ina_5v.channel[0].bus_V * 1000.0f, 5000) : 5000;
-    const int16_t i5_mA = ok_5v ? clampI16(ina_5v.channel[0].current_mA, 500) : 500;
-    const uint16_t v3v3_mV = ok_3v3 ? clampU16(ina_3v3.channel[0].bus_V * 1000.0f, 3300) : 3300;
-    const int16_t i3v3_mA = ok_3v3 ? clampI16(ina_3v3.channel[0].current_mA, 320) : 320;
+    float v5_bus = 5.0f;
+    float i5_bus = 500.0f;
+    float v3v3_bus = 3.3f;
+    float i3v3_bus = 320.0f;
+    if (ok_5v) {
+      const RailCalibrationConfig& cal = calibrationForRail(INA3221_ADDR_5V);
+      v5_bus = applyVoltageCalibration(ina_5v.channel[0].bus_V, cal);
+      i5_bus = applyCurrentCalibration(ina_5v.channel[0].current_mA, cal);
+    }
+    if (ok_3v3) {
+      const RailCalibrationConfig& cal = calibrationForRail(INA3221_ADDR_3V3);
+      v3v3_bus = applyVoltageCalibration(ina_3v3.channel[0].bus_V, cal);
+      i3v3_bus = applyCurrentCalibration(ina_3v3.channel[0].current_mA, cal);
+    }
+
+    const uint16_t v5_mV = clampU16(v5_bus * 1000.0f, 5000);
+    const int16_t i5_mA = clampI16(i5_bus, 500);
+    const uint16_t v3v3_mV = clampU16(v3v3_bus * 1000.0f, 3300);
+    const int16_t i3v3_mA = clampI16(i3v3_bus, 320);
     const uint8_t temp_C = g_aht20.valid
         ? static_cast<uint8_t>(constrain(static_cast<int>(g_aht20.temp_C + 0.5f), 0, 125))
         : 31;
