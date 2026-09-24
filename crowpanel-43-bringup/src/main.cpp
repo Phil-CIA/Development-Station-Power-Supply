@@ -32,6 +32,9 @@ constexpr uint32_t kDemoFrameMs = 50;
 constexpr uint32_t kDemoTourSwitchMs = 8000;
 constexpr size_t   kTrendCapacity = 1800;  // 7.5 minutes at 4 Hz
 constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimated)
+constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
+constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
+constexpr uint16_t kSetupStep_mA = 50;
 constexpr float    kCh1SetVoltage_V = 5.00f;
 constexpr float    kCh2SetVoltage_V = 3.30f;
 constexpr float    kCh1SetCurrent_A = 3.00f;
@@ -79,9 +82,31 @@ static lv_obj_t* screen_settings = nullptr;
 static lv_obj_t* lbl_setup_title = nullptr;
 static lv_obj_t* lbl_setup_param = nullptr;
 static lv_obj_t* lbl_setup_value = nullptr;
+static lv_obj_t* lbl_setup_list = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
+
+enum class SetupField : uint8_t {
+  Output = 0,
+  Ch1CurrentLimit = 1,
+  Ch2CurrentLimit = 2,
+  Count = 3,
+};
+
+struct SetupBindingState {
+  SetupField selected = SetupField::Output;
+  bool editing = false;
+  bool output_enabled = false;
+  uint16_t ch1_limit_mA = kSetupCh1LimitMax_mA;
+  uint16_t ch2_limit_mA = kSetupCh2LimitMax_mA;
+  bool have_output = false;
+  bool have_ch1_limit = false;
+  bool have_ch2_limit = false;
+  char last_error[96] = "";
+};
+
+static SetupBindingState setup_binding = {};
 
 // Main screen (dual-channel layout)
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;
@@ -203,6 +228,19 @@ static TrendSample trend_buf[kTrendCapacity] = {};
 static size_t trend_head = 0;
 static size_t trend_count = 0;
 static bool trend_logging_enabled = true;
+
+void setupRequestRefresh();
+void updateSetupBindingsFromUdi();
+void refreshSetupScreenLabels();
+void enterSetupScreen();
+void handleSetupEncoderRotate(int8_t detents);
+void handleSetupEncoderPress();
+void handleSetupEncoderLongPress();
+
+void setup_prev_btn_event_cb(lv_event_t* e);
+void setup_next_btn_event_cb(lv_event_t* e);
+void setup_edit_btn_event_cb(lv_event_t* e);
+void setup_done_btn_event_cb(lv_event_t* e);
 
 size_t trendStartIndex() {
   if (trend_count == 0) return 0;
@@ -386,12 +424,266 @@ void set_active_screen(UiScreen screen) {
   }
 }
 
+const char* setupFieldLabel(SetupField field) {
+  switch (field) {
+    case SetupField::Output:
+      return "Output Enable";
+    case SetupField::Ch1CurrentLimit:
+      return "CH1 Current Limit (I_max)";
+    case SetupField::Ch2CurrentLimit:
+      return "CH2 Current Limit (I_max)";
+    default:
+      return "--";
+  }
+}
+
+bool parseOutputState(const char* payload, bool* enabled_out) {
+  if (payload == nullptr || enabled_out == nullptr) return false;
+  const char* text = payload;
+  if (strncmp(text, "OUTPUT ", 7) == 0) {
+    text += 7;
+  }
+  if (strncmp(text, "ON", 2) == 0) {
+    *enabled_out = true;
+    return true;
+  }
+  if (strncmp(text, "OFF", 3) == 0) {
+    *enabled_out = false;
+    return true;
+  }
+  return false;
+}
+
+bool parseIlimPayload(const char* payload, char* channel_out, size_t channel_len, uint16_t* limit_mA_out) {
+  if (payload == nullptr || channel_out == nullptr || channel_len == 0 || limit_mA_out == nullptr) {
+    return false;
+  }
+  char channel[8] = {0};
+  unsigned int limit = 0;
+  if (sscanf(payload, "ILIM %7s %u", channel, &limit) != 2) {
+    return false;
+  }
+  strncpy(channel_out, channel, channel_len - 1);
+  channel_out[channel_len - 1] = '\0';
+  *limit_mA_out = static_cast<uint16_t>(limit);
+  return true;
+}
+
+void applySetupAck(const char* ack_payload) {
+  if (ack_payload == nullptr || ack_payload[0] == '\0') return;
+
+  bool output_enabled = false;
+  if (parseOutputState(ack_payload, &output_enabled)) {
+    setup_binding.output_enabled = output_enabled;
+    setup_binding.have_output = true;
+    return;
+  }
+
+  char channel[8] = {0};
+  uint16_t limit_mA = 0;
+  if (parseIlimPayload(ack_payload, channel, sizeof(channel), &limit_mA)) {
+    if (strcmp(channel, "CH1") == 0) {
+      setup_binding.ch1_limit_mA = limit_mA;
+      setup_binding.have_ch1_limit = true;
+      return;
+    }
+    if (strcmp(channel, "CH2") == 0) {
+      setup_binding.ch2_limit_mA = limit_mA;
+      setup_binding.have_ch2_limit = true;
+      return;
+    }
+  }
+}
+
+void applySetupEvent(const char* evt_payload) {
+  // Reuse ACK parser for mirrored payloads (e.g. "OUTPUT ON", "ILIM CH1 3000 mA").
+  applySetupAck(evt_payload);
+}
+
+void applySetupError(const char* err_payload) {
+  if (err_payload == nullptr) return;
+  strncpy(setup_binding.last_error, err_payload, sizeof(setup_binding.last_error) - 1);
+  setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+}
+
+void refreshSetupScreenLabels() {
+  if (!lbl_setup_param || !lbl_setup_value || !lbl_setup_list || !lbl_setup_hint) return;
+
+  lv_label_set_text(lbl_setup_param, setupFieldLabel(setup_binding.selected));
+
+  char value_buf[48];
+  if (setup_binding.selected == SetupField::Output) {
+    snprintf(value_buf, sizeof(value_buf), "► %s ◄", setup_binding.output_enabled ? "ON" : "OFF");
+  } else if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
+    snprintf(value_buf, sizeof(value_buf), "► %.3f A ◄", setup_binding.ch1_limit_mA / 1000.0f);
+  } else {
+    snprintf(value_buf, sizeof(value_buf), "► %.3f A ◄", setup_binding.ch2_limit_mA / 1000.0f);
+  }
+  lv_label_set_text(lbl_setup_value, value_buf);
+
+  char list_buf[320];
+  snprintf(list_buf,
+           sizeof(list_buf),
+           "%c Output Enable                 %s %s\n"
+           "%c CH1 Current Limit (I_max)      %.3f A %s\n"
+           "%c CH2 Current Limit (I_max)      %.3f A %s",
+           setup_binding.selected == SetupField::Output ? '>' : ' ',
+           setup_binding.output_enabled ? "ON " : "OFF",
+           setup_binding.have_output ? "" : "(pending)",
+           setup_binding.selected == SetupField::Ch1CurrentLimit ? '>' : ' ',
+           setup_binding.ch1_limit_mA / 1000.0f,
+           setup_binding.have_ch1_limit ? "" : "(pending)",
+           setup_binding.selected == SetupField::Ch2CurrentLimit ? '>' : ' ',
+           setup_binding.ch2_limit_mA / 1000.0f,
+           setup_binding.have_ch2_limit ? "" : "(pending)");
+  lv_label_set_text(lbl_setup_list, list_buf);
+
+  if (setup_binding.last_error[0] != '\0') {
+    char hint_buf[160];
+    snprintf(hint_buf,
+             sizeof(hint_buf),
+             "Host error: %s",
+             setup_binding.last_error);
+    lv_label_set_text(lbl_setup_hint, hint_buf);
+  } else if (setup_binding.editing) {
+    lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) to adjust, press (Edit/Apply) to commit.");
+  } else {
+    lv_label_set_text(lbl_setup_hint, "Select with rotate (Prev/Next), press Edit/Apply to enter edit.");
+  }
+}
+
+void setupSelectDelta(int8_t delta) {
+  const int field_count = static_cast<int>(SetupField::Count);
+  int idx = static_cast<int>(setup_binding.selected);
+  idx += static_cast<int>(delta);
+  if (idx < 0) idx = field_count - 1;
+  if (idx >= field_count) idx = 0;
+  setup_binding.selected = static_cast<SetupField>(idx);
+}
+
+void setupAdjustDelta(int32_t delta_mA) {
+  if (setup_binding.selected == SetupField::Output) {
+    setup_binding.output_enabled = !setup_binding.output_enabled;
+    return;
+  }
+  if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
+    const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch1_limit_mA) + delta_mA, 0, kSetupCh1LimitMax_mA);
+    setup_binding.ch1_limit_mA = static_cast<uint16_t>(next);
+    return;
+  }
+  const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch2_limit_mA) + delta_mA, 0, kSetupCh2LimitMax_mA);
+  setup_binding.ch2_limit_mA = static_cast<uint16_t>(next);
+}
+
+void setupRequestRefresh() {
+  setup_binding.last_error[0] = '\0';
+  const bool ok_output = disp_link_slave::sendCommand("GET OUTPUT");
+  const bool ok_ch1 = disp_link_slave::sendCommand("GET ILIM CH1");
+  const bool ok_ch2 = disp_link_slave::sendCommand("GET ILIM CH2");
+  if (!ok_output || !ok_ch1 || !ok_ch2) {
+    strncpy(setup_binding.last_error, "link not ready for GET refresh", sizeof(setup_binding.last_error) - 1);
+    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+  }
+}
+
+void updateSetupBindingsFromUdi() {
+  static uint32_t last_udi_ack_count = 0;
+  static uint32_t last_udi_err_count = 0;
+  static uint32_t last_udi_evt_count = 0;
+
+  const auto udi_link = disp_link_slave::commandSnapshot();
+  if (udi_link.ack_count != last_udi_ack_count) {
+    last_udi_ack_count = udi_link.ack_count;
+    Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
+    applySetupAck(udi_link.last_ack);
+  }
+  if (udi_link.err_count != last_udi_err_count) {
+    last_udi_err_count = udi_link.err_count;
+    Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
+    applySetupError(udi_link.last_err);
+  }
+  if (udi_link.evt_count != last_udi_evt_count) {
+    last_udi_evt_count = udi_link.evt_count;
+    Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
+    applySetupEvent(udi_link.last_evt);
+  }
+}
+
+void handleSetupEncoderRotate(int8_t detents) {
+  if (detents == 0) return;
+  const int8_t direction = detents > 0 ? 1 : -1;
+  if (setup_binding.editing) {
+    setupAdjustDelta(static_cast<int32_t>(direction) * static_cast<int32_t>(kSetupStep_mA));
+  } else {
+    setupSelectDelta(direction);
+  }
+  refreshSetupScreenLabels();
+}
+
+void handleSetupEncoderPress() {
+  setup_binding.last_error[0] = '\0';
+  if (!setup_binding.editing) {
+    setup_binding.editing = true;
+    refreshSetupScreenLabels();
+    return;
+  }
+
+  bool sent = false;
+  if (setup_binding.selected == SetupField::Output) {
+    sent = disp_link_slave::sendCommand(setup_binding.output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+  } else {
+    char payload[40];
+    snprintf(payload,
+             sizeof(payload),
+             "ILIM %s %u",
+             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
+             static_cast<unsigned>(setup_binding.selected == SetupField::Ch1CurrentLimit
+                                       ? setup_binding.ch1_limit_mA
+                                       : setup_binding.ch2_limit_mA));
+    sent = disp_link_slave::sendCommand(payload);
+  }
+  if (!sent) {
+    strncpy(setup_binding.last_error, "link not ready", sizeof(setup_binding.last_error) - 1);
+    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+  }
+  setup_binding.editing = false;
+  refreshSetupScreenLabels();
+}
+
+void handleSetupEncoderLongPress() {
+  setup_done = true;
+  set_active_screen(UiScreen::Main);
+}
+
+void setup_prev_btn_event_cb(lv_event_t* /*e*/) {
+  handleSetupEncoderRotate(-1);
+}
+
+void setup_next_btn_event_cb(lv_event_t* /*e*/) {
+  handleSetupEncoderRotate(1);
+}
+
+void setup_edit_btn_event_cb(lv_event_t* /*e*/) {
+  handleSetupEncoderPress();
+}
+
+void setup_done_btn_event_cb(lv_event_t* /*e*/) {
+  handleSetupEncoderLongPress();
+}
+
+void enterSetupScreen() {
+  set_active_screen(UiScreen::Setup);
+  setup_done = false;
+  setup_start_ms = millis();
+  setup_binding.editing = false;
+  setupRequestRefresh();
+  refreshSetupScreenLabels();
+}
+
 void nav_btn_event_cb(lv_event_t* e) {
   const uintptr_t target = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
   if (target == static_cast<uintptr_t>(UiScreen::Setup)) {
-    set_active_screen(UiScreen::Setup);
-    setup_done = false;
-    setup_start_ms = millis();
+    enterSetupScreen();
     return;
   }
   if (target == static_cast<uintptr_t>(UiScreen::Main)) {
@@ -509,7 +801,7 @@ void create_splash_screen(lv_obj_t* root) {
   lv_obj_align(lbl_splash_hint, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
 
-// ── Setup Screen (encoder-based parameter editing template) ─────────────────
+// ── Setup Screen (bound to host config over UDI command channel) ───────────
 void create_setup_screen(lv_obj_t* root) {
   screen_setup = lv_obj_create(root);
   lv_obj_set_size(screen_setup, kDisplayWidth, kDisplayHeight);
@@ -533,12 +825,11 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_align(lbl_setup_title, LV_ALIGN_TOP_LEFT, 20, 10);
 
   lv_obj_t* hint = lv_label_create(header);
-  lv_label_set_text(hint, "Use encoder: rotate to select, press to edit. Auto-skip in 30s.");
+  lv_label_set_text(hint, "Encoder flow: rotate=Prev/Next, press=Edit/Apply, long-press=Done.");
   lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 20, -6);
 
-  // Parameter list (template, not functional yet)
   lv_obj_t* panel = lv_obj_create(screen_setup);
   lv_obj_set_size(panel, kDisplayWidth - 40, 340);
   lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, 88);
@@ -554,23 +845,66 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_align(lbl_setup_param, LV_ALIGN_TOP_LEFT, 20, 20);
 
   lbl_setup_value = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_value, "► 2.500 A ◄");
+  lv_label_set_text(lbl_setup_value, "► -- ◄");
   lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_48, LV_PART_MAIN);
   lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_MID, 0, 80);
 
-  lv_obj_t* items_list = lv_label_create(panel);
-  lv_label_set_text(items_list,
-    "CH1 OCP Threshold (I_ocp)    1.000 A\n"
-    "CH1 OVP Threshold (V_ovp)   12.000 V\n"
-    "CH2 Current Limit (I_max)    3.000 A\n"
-    "CH2 OCP Threshold (I_ocp)    2.800 A\n"
-    "CH2 OVP Threshold (V_ovp)    3.500 V\n"
-    "Global OTP Threshold (T)     75 °C\n"
-    "Display Brightness           100%");
-  lv_obj_set_style_text_color(items_list, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(items_list, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(items_list, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+  lbl_setup_list = lv_label_create(panel);
+  lv_label_set_text(lbl_setup_list, "Loading setup values...");
+  lv_obj_set_style_text_color(lbl_setup_list, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_list, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_list, LV_ALIGN_BOTTOM_LEFT, 20, -72);
+
+  lv_obj_t* btn_prev = lv_btn_create(panel);
+  lv_obj_set_size(btn_prev, 110, 40);
+  lv_obj_align(btn_prev, LV_ALIGN_BOTTOM_LEFT, 20, -16);
+  lv_obj_set_style_bg_color(btn_prev, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_prev, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_prev, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_prev, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_prev, setup_prev_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_prev = lv_label_create(btn_prev);
+  lv_label_set_text(lbl_prev, "Prev");
+  lv_obj_center(lbl_prev);
+
+  lv_obj_t* btn_next = lv_btn_create(panel);
+  lv_obj_set_size(btn_next, 110, 40);
+  lv_obj_align(btn_next, LV_ALIGN_BOTTOM_LEFT, 146, -16);
+  lv_obj_set_style_bg_color(btn_next, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_next, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_next, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_next, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_next, setup_next_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_next = lv_label_create(btn_next);
+  lv_label_set_text(lbl_next, "Next");
+  lv_obj_center(lbl_next);
+
+  lv_obj_t* btn_edit = lv_btn_create(panel);
+  lv_obj_set_size(btn_edit, 140, 40);
+  lv_obj_align(btn_edit, LV_ALIGN_BOTTOM_RIGHT, -160, -16);
+  lv_obj_set_style_bg_color(btn_edit, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_edit, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_edit, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_edit, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_edit, setup_edit_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_edit = lv_label_create(btn_edit);
+  lv_label_set_text(lbl_edit, "Edit / Apply");
+  lv_obj_set_style_text_color(lbl_edit, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_edit);
+
+  lv_obj_t* btn_done = lv_btn_create(panel);
+  lv_obj_set_size(btn_done, 110, 40);
+  lv_obj_align(btn_done, LV_ALIGN_BOTTOM_RIGHT, -20, -16);
+  lv_obj_set_style_bg_color(btn_done, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_done, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_done, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_done, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_done, setup_done_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_done = lv_label_create(btn_done);
+  lv_label_set_text(lbl_done, "Done");
+  lv_obj_set_style_text_color(lbl_done, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_done);
 
   lv_obj_t* footer = lv_obj_create(screen_setup);
   lv_obj_set_size(footer, kDisplayWidth - 40, 40);
@@ -581,10 +915,12 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(footer, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_setup_hint = lv_label_create(footer);
-  lv_label_set_text(lbl_setup_hint, "Press center to enter, knob to adjust. Long-press to skip setup.");
+  lv_label_set_text(lbl_setup_hint, "Refreshing host config via CMD:/ACK: ...");
   lv_obj_set_style_text_color(lbl_setup_hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_center(lbl_setup_hint);
+
+  refreshSetupScreenLabels();
 }
 
 // ── Settings Screen (System/DataSet/About menu skeleton) ────────────────────
@@ -1640,7 +1976,7 @@ void handleCommand(const String& rawLine) {
   line.trim();
   if (line.isEmpty()) return;
   if (line.equalsIgnoreCase("HELP")) {
-    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
+    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, SETUP_ENC <ROT <n>|PRESS|LONG>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
     return;
   }
   if (line.equalsIgnoreCase("PING"))         { Serial.println("PONG"); return; }
@@ -1663,9 +1999,7 @@ void handleCommand(const String& rawLine) {
       return;
     }
     if (arg.equalsIgnoreCase("SETUP")) {
-      set_active_screen(UiScreen::Setup);
-      setup_done = false;
-      setup_start_ms = millis();
+      enterSetupScreen();
       Serial.println("ACK SCREEN SETUP");
       return;
     }
@@ -1741,6 +2075,42 @@ void handleCommand(const String& rawLine) {
       return;
     }
     Serial.println("ERR TOUR: use ON|OFF");
+    return;
+  }
+  if (line.startsWith("SETUP_ENC") || line.startsWith("setup_enc")) {
+    String args = line.substring(9);
+    args.trim();
+    if (args.equalsIgnoreCase("PRESS")) {
+      handleSetupEncoderPress();
+      Serial.println("ACK SETUP_ENC PRESS");
+      return;
+    }
+    if (args.equalsIgnoreCase("LONG")) {
+      handleSetupEncoderLongPress();
+      Serial.println("ACK SETUP_ENC LONG");
+      return;
+    }
+    if (args.startsWith("ROT") || args.startsWith("rot")) {
+      String detents_text = args.substring(3);
+      detents_text.trim();
+      if (detents_text.isEmpty()) {
+        Serial.println("ERR SETUP_ENC: use ROT <n>, PRESS, or LONG");
+        return;
+      }
+      const long detents = detents_text.toInt();
+      if (detents == 0) {
+        Serial.println("ERR SETUP_ENC: ROT detents must be non-zero");
+        return;
+      }
+      const int8_t step = (detents > 0) ? 1 : -1;
+      const long repeats = (detents > 0) ? detents : -detents;
+      for (long i = 0; i < repeats; ++i) {
+        handleSetupEncoderRotate(step);
+      }
+      Serial.printf("ACK SETUP_ENC ROT %ld\n", detents);
+      return;
+    }
+    Serial.println("ERR SETUP_ENC: use ROT <n>, PRESS, or LONG");
     return;
   }
   if (line.startsWith("LOG_DUMP_CSV") || line.startsWith("log_dump_csv")) {
@@ -1884,21 +2254,9 @@ void loop() {
     printRxStatus();
   }
 
-  static uint32_t last_udi_ack_count = 0;
-  static uint32_t last_udi_err_count = 0;
-  static uint32_t last_udi_evt_count = 0;
-  const auto udi_link = disp_link_slave::commandSnapshot();
-  if (udi_link.ack_count != last_udi_ack_count) {
-    last_udi_ack_count = udi_link.ack_count;
-    Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
-  }
-  if (udi_link.err_count != last_udi_err_count) {
-    last_udi_err_count = udi_link.err_count;
-    Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
-  }
-  if (udi_link.evt_count != last_udi_evt_count) {
-    last_udi_evt_count = udi_link.evt_count;
-    Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
+  updateSetupBindingsFromUdi();
+  if (active_screen == UiScreen::Setup) {
+    refreshSetupScreenLabels();
   }
 
   static uint32_t last_sample_ms = 0;
@@ -1928,9 +2286,7 @@ void loop() {
   // Boot sequence: Splash → Setup (30s timeout) → Main
   if (!splash_done && (now - splash_start_ms) >= kSplashDurationMs) {
     splash_done = true;
-    set_active_screen(UiScreen::Setup);
-    setup_done = false;
-    setup_start_ms = now;
+    enterSetupScreen();
     if (lbl_splash_hint) {
       lv_label_set_text(lbl_splash_hint, "Entering Setup...");
     }
