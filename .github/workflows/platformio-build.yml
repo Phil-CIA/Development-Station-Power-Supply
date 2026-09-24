@@ -32,10 +32,8 @@ jobs:
           - name: stm32-bluepill-bringup (bluepill_f103c8)
             working-directory: stm32-bluepill-bringup
             env: bluepill_f103c8
-            # Known broken as of 2026-09: HardwareSerial(rx, tx) constructor
-            # mismatch with the STM32duino Arduino core. Tracked in issue #3;
-            # flip to false once fixed so this becomes a required check.
-            allow-failure: true
+            # Fixed in issue #3 (HardwareSerial -> Uart); now a required check.
+            allow-failure: false
     steps:
       - uses: actions/checkout@v4
 
