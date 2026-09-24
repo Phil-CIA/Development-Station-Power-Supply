@@ -218,7 +218,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE");
-  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA>");
+  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:GET OUTPUT | CMD:GET ILIM <CH1|CH2>");
 }
 
 bool i2cPing(uint8_t address) {
@@ -443,6 +443,31 @@ void handleUdiCommandLine(const String& line_in) {
     savePersistentConfig(false);
     sendUdiAck("OUTPUT OFF");
     sendUdiEvt("OUTPUT OFF");
+    return;
+  }
+
+  if (cmd == "GET OUTPUT") {
+    sendUdiAck(g_output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+    return;
+  }
+
+  if (cmd == "GET ILIM CH1") {
+    char ack_msg[40];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "ILIM CH1 %u",
+             static_cast<unsigned>(g_current_limit_ch1_mA));
+    sendUdiAck(ack_msg);
+    return;
+  }
+
+  if (cmd == "GET ILIM CH2") {
+    char ack_msg[40];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "ILIM CH2 %u",
+             static_cast<unsigned>(g_current_limit_ch2_mA));
+    sendUdiAck(ack_msg);
     return;
   }
 
