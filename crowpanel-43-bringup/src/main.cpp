@@ -20,6 +20,7 @@ constexpr bool    kRxSerialLogEnabled = true;
 constexpr uint32_t kTrendSampleMs = 200;
 constexpr uint32_t kUiUpdateMinMs = 50;
 constexpr uint32_t kDetailUiUpdateMinMs = 250;
+constexpr uint32_t kSettingsUiUpdateMinMs = 300;
 constexpr bool    kLiveChartsEnabled = true;
 constexpr bool    kMinimalUiLabelsOnly = false;
 constexpr uint8_t kChartDecimation = 2;
@@ -86,6 +87,15 @@ static lv_obj_t* lbl_setup_list = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
+static lv_obj_t* btn_settings_system = nullptr;
+static lv_obj_t* btn_settings_dataset = nullptr;
+static lv_obj_t* btn_settings_about = nullptr;
+static lv_obj_t* lbl_settings_detail_title = nullptr;
+static lv_obj_t* lbl_settings_detail_body = nullptr;
+static lv_obj_t* lbl_settings_hint = nullptr;
+static lv_obj_t* lbl_settings_action_primary = nullptr;
+static lv_obj_t* lbl_settings_action_secondary = nullptr;
+static lv_obj_t* lbl_settings_action_refresh = nullptr;
 
 enum class SetupField : uint8_t {
   Output = 0,
@@ -107,6 +117,19 @@ struct SetupBindingState {
 };
 
 static SetupBindingState setup_binding = {};
+
+enum class SettingsMenu : uint8_t {
+  System = 0,
+  DataSet = 1,
+  About = 2,
+};
+
+struct SettingsState {
+  SettingsMenu selected = SettingsMenu::System;
+  char hint[128] = "Select a submenu to view and apply settings.";
+};
+
+static SettingsState settings_state = {};
 
 // Main screen (dual-channel layout)
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;
@@ -183,6 +206,7 @@ static bool demo_mode = false;
 static bool demo_tour = false;
 static uint32_t demo_start_ms = 0;
 static uint32_t demo_last_tour_switch_ms = 0;
+static uint32_t last_settings_ui_update_ms = 0;
 
 struct DisplayTelemetry {
   uint32_t rx_count;
@@ -232,10 +256,19 @@ static bool trend_logging_enabled = true;
 void setupRequestRefresh();
 void updateSetupBindingsFromUdi();
 void refreshSetupScreenLabels();
+void refreshSettingsScreenLabels(bool force = false);
 void enterSetupScreen();
 void handleSetupEncoderRotate(int8_t detents);
 void handleSetupEncoderPress();
 void handleSetupEncoderLongPress();
+void settings_system_btn_event_cb(lv_event_t* e);
+void settings_dataset_btn_event_cb(lv_event_t* e);
+void settings_about_btn_event_cb(lv_event_t* e);
+void settings_action_primary_event_cb(lv_event_t* e);
+void settings_action_secondary_event_cb(lv_event_t* e);
+void settings_action_refresh_event_cb(lv_event_t* e);
+bool i2cAddressResponds(uint8_t address);
+void printLogStatus();
 
 void setup_prev_btn_event_cb(lv_event_t* e);
 void setup_next_btn_event_cb(lv_event_t* e);
@@ -609,6 +642,206 @@ void updateSetupBindingsFromUdi() {
   }
 }
 
+const char* settingsMenuTitle(SettingsMenu menu) {
+  switch (menu) {
+    case SettingsMenu::System:
+      return "SYSTEM";
+    case SettingsMenu::DataSet:
+      return "DATASET";
+    case SettingsMenu::About:
+      return "ABOUT";
+    default:
+      return "--";
+  }
+}
+
+void setSettingsHint(const char* hint) {
+  if (hint == nullptr || hint[0] == '\0') return;
+  strncpy(settings_state.hint, hint, sizeof(settings_state.hint) - 1);
+  settings_state.hint[sizeof(settings_state.hint) - 1] = '\0';
+}
+
+void refreshSettingsMenuButtonStyle(lv_obj_t* btn, bool selected) {
+  if (!btn) return;
+  lv_obj_set_style_bg_color(btn,
+                            lv_color_hex(selected ? UiTheme::kAccentI : UiTheme::kPanelSoft),
+                            LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn,
+                                lv_color_hex(selected ? UiTheme::kAccentI : UiTheme::kBorder),
+                                LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn, selected ? 2 : 1, LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(btn, selected ? 12 : 0, LV_PART_MAIN);
+  lv_obj_set_style_shadow_color(btn, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+}
+
+void refreshSettingsMenuStyles() {
+  refreshSettingsMenuButtonStyle(btn_settings_system, settings_state.selected == SettingsMenu::System);
+  refreshSettingsMenuButtonStyle(btn_settings_dataset, settings_state.selected == SettingsMenu::DataSet);
+  refreshSettingsMenuButtonStyle(btn_settings_about, settings_state.selected == SettingsMenu::About);
+}
+
+void applySettingsPrimaryAction() {
+  if (settings_state.selected == SettingsMenu::System) {
+    demo_mode = !demo_mode;
+    if (!demo_mode) {
+      demo_tour = false;
+    } else {
+      demo_start_ms = millis();
+      demo_last_tour_switch_ms = demo_start_ms;
+    }
+    setSettingsHint(demo_mode ? "Demo mode enabled from Settings/System." : "Demo mode disabled from Settings/System.");
+    return;
+  }
+  if (settings_state.selected == SettingsMenu::DataSet) {
+    trend_logging_enabled = !trend_logging_enabled;
+    setSettingsHint(trend_logging_enabled ? "Trend logging started." : "Trend logging paused.");
+    return;
+  }
+  setSettingsHint("About is read-only.");
+}
+
+void applySettingsSecondaryAction() {
+  if (settings_state.selected == SettingsMenu::System) {
+    demo_tour = !demo_tour;
+    if (demo_tour) {
+      demo_last_tour_switch_ms = millis();
+    }
+    setSettingsHint(demo_tour ? "Auto-tour enabled." : "Auto-tour disabled.");
+    return;
+  }
+  if (settings_state.selected == SettingsMenu::DataSet) {
+    trendClear();
+    setSettingsHint("Trend dataset cleared.");
+    return;
+  }
+  setSettingsHint("About is read-only.");
+}
+
+void applySettingsRefreshAction() {
+  if (settings_state.selected == SettingsMenu::System) {
+    setupRequestRefresh();
+    setSettingsHint(setup_binding.last_error[0] == '\0'
+                      ? "Requested host refresh (GET OUTPUT/ILIM)."
+                      : "Host refresh request failed: link not ready.");
+    return;
+  }
+  if (settings_state.selected == SettingsMenu::DataSet) {
+    printLogStatus();
+    setSettingsHint("Dataset status printed on USB serial console.");
+    return;
+  }
+  setSettingsHint("About updated from live telemetry.");
+}
+
+void refreshSettingsScreenLabels(bool force) {
+  if (!lbl_settings_detail_title || !lbl_settings_detail_body || !lbl_settings_hint) return;
+  const uint32_t now_ms = millis();
+  if (!force && (now_ms - last_settings_ui_update_ms) < kSettingsUiUpdateMinMs) return;
+  last_settings_ui_update_ms = now_ms;
+
+  refreshSettingsMenuStyles();
+  lv_label_set_text(lbl_settings_detail_title, settingsMenuTitle(settings_state.selected));
+  lv_label_set_text(lbl_settings_hint, settings_state.hint);
+
+  const DisplayTelemetry t = get_display_telemetry();
+  const bool link_live = demo_mode || (t.last_rx_ms != 0 && (now_ms - t.last_rx_ms) <= 1500);
+  char body[420];
+
+  if (settings_state.selected == SettingsMenu::System) {
+    snprintf(body,
+             sizeof(body),
+             "Display Mode: %s\n"
+             "Auto Tour:    %s\n"
+             "Telemetry:    %s (SEQ %u)\n"
+             "I2C Board:    %s  Touch: %s\n"
+             "Host Config:  Output %s  CH1 %.3fA  CH2 %.3fA",
+             demo_mode ? "DEMO" : "LIVE",
+             demo_tour ? "ON" : "OFF",
+             link_live ? "LIVE" : "STALE",
+             static_cast<unsigned>(t.last_seq),
+             i2cAddressResponds(kBoardCtrlAddr) ? "OK" : "MISS",
+             i2cAddressResponds(kTouchAddr) ? "OK" : "MISS",
+             setup_binding.output_enabled ? "ON" : "OFF",
+             setup_binding.ch1_limit_mA / 1000.0f,
+             setup_binding.ch2_limit_mA / 1000.0f);
+    lv_label_set_text(lbl_settings_action_primary, demo_mode ? "Stop Demo" : "Start Demo");
+    lv_label_set_text(lbl_settings_action_secondary, demo_tour ? "Tour Off" : "Tour On");
+    lv_label_set_text(lbl_settings_action_refresh, "Refresh Host");
+  } else if (settings_state.selected == SettingsMenu::DataSet) {
+    const TrendWindowStats stats = getTrendWindowStats(kChartPoints);
+    snprintf(body,
+             sizeof(body),
+             "Trend Logging: %s\n"
+             "Samples:       %lu / %lu\n"
+             "Latest RX:     %lu  ERR: %lu\n"
+             "Window V:      %.2f .. %.2f V\n"
+             "Window I:      %.3f .. %.3f A",
+             trend_logging_enabled ? "ON" : "PAUSED",
+             static_cast<unsigned long>(trend_count),
+             static_cast<unsigned long>(kTrendCapacity),
+             static_cast<unsigned long>(t.rx_count),
+             static_cast<unsigned long>(t.err_count),
+             stats.has_data ? (stats.min_v12_mV / 1000.0f) : 0.0f,
+             stats.has_data ? (stats.max_v12_mV / 1000.0f) : 0.0f,
+             stats.has_data ? (stats.min_i12_mA / 1000.0f) : 0.0f,
+             stats.has_data ? (stats.max_i12_mA / 1000.0f) : 0.0f);
+    lv_label_set_text(lbl_settings_action_primary, trend_logging_enabled ? "Pause Log" : "Start Log");
+    lv_label_set_text(lbl_settings_action_secondary, "Clear Data");
+    lv_label_set_text(lbl_settings_action_refresh, "Print Status");
+  } else {
+    const unsigned long uptime_s = static_cast<unsigned long>(now_ms / 1000UL);
+    snprintf(body,
+             sizeof(body),
+             "Development Station Power Supply\n"
+             "CrowPanel Firmware\n"
+             "Build: %s %s\n"
+             "Uptime: %lu s\n"
+             "Transport: %s",
+             __DATE__,
+             __TIME__,
+             uptime_s,
+             disp_link_slave::telemetryOnConsoleSerial() ? "UART0 console-shared" : "UART1 dedicated");
+    lv_label_set_text(lbl_settings_action_primary, "Read-Only");
+    lv_label_set_text(lbl_settings_action_secondary, "Read-Only");
+    lv_label_set_text(lbl_settings_action_refresh, "Refresh");
+  }
+
+  lv_label_set_text(lbl_settings_detail_body, body);
+}
+
+void selectSettingsMenu(SettingsMenu menu) {
+  settings_state.selected = menu;
+  setSettingsHint("Select an action button below to apply this submenu.");
+  refreshSettingsScreenLabels(true);
+}
+
+void settings_system_btn_event_cb(lv_event_t* /*e*/) {
+  selectSettingsMenu(SettingsMenu::System);
+}
+
+void settings_dataset_btn_event_cb(lv_event_t* /*e*/) {
+  selectSettingsMenu(SettingsMenu::DataSet);
+}
+
+void settings_about_btn_event_cb(lv_event_t* /*e*/) {
+  selectSettingsMenu(SettingsMenu::About);
+}
+
+void settings_action_primary_event_cb(lv_event_t* /*e*/) {
+  applySettingsPrimaryAction();
+  refreshSettingsScreenLabels(true);
+}
+
+void settings_action_secondary_event_cb(lv_event_t* /*e*/) {
+  applySettingsSecondaryAction();
+  refreshSettingsScreenLabels(true);
+}
+
+void settings_action_refresh_event_cb(lv_event_t* /*e*/) {
+  applySettingsRefreshAction();
+  refreshSettingsScreenLabels(true);
+}
+
 void handleSetupEncoderRotate(int8_t detents) {
   if (detents == 0) return;
   const int8_t direction = detents > 0 ? 1 : -1;
@@ -696,6 +929,7 @@ void nav_btn_event_cb(lv_event_t* e) {
   }
   if (target == static_cast<uintptr_t>(UiScreen::Settings)) {
     set_active_screen(UiScreen::Settings);
+    refreshSettingsScreenLabels(true);
     return;
   }
 }
@@ -923,7 +1157,7 @@ void create_setup_screen(lv_obj_t* root) {
   refreshSetupScreenLabels();
 }
 
-// ── Settings Screen (System/DataSet/About menu skeleton) ────────────────────
+// ── Settings Screen (System/DataSet/About submenus) ─────────────────────────
 void create_settings_screen(lv_obj_t* root) {
   screen_settings = lv_obj_create(root);
   lv_obj_set_size(screen_settings, kDisplayWidth, kDisplayHeight);
@@ -948,79 +1182,134 @@ void create_settings_screen(lv_obj_t* root) {
 
   create_nav_btn(header, "Main", UiScreen::Main, -10);
 
-  // System settings
-  lv_obj_t* sys_panel = lv_obj_create(screen_settings);
-  lv_obj_set_size(sys_panel, (kDisplayWidth - 50) / 2, 180);
-  lv_obj_align(sys_panel, LV_ALIGN_TOP_LEFT, 20, 70);
-  lv_obj_set_style_bg_color(sys_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(sys_panel, 12, LV_PART_MAIN);
-  lv_obj_set_style_border_width(sys_panel, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(sys_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_t* menu_panel = lv_obj_create(screen_settings);
+  lv_obj_set_size(menu_panel, 220, kDisplayHeight - 100);
+  lv_obj_align(menu_panel, LV_ALIGN_TOP_LEFT, 20, 70);
+  lv_obj_set_style_bg_color(menu_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(menu_panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(menu_panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(menu_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
-  lv_obj_t* sys_title = lv_label_create(sys_panel);
-  lv_label_set_text(sys_title, "SYSTEM");
-  lv_obj_set_style_text_color(sys_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
-  lv_obj_set_style_text_font(sys_title, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(sys_title, LV_ALIGN_TOP_LEFT, 16, 12);
+  lv_obj_t* menu_title = lv_label_create(menu_panel);
+  lv_label_set_text(menu_title, "SUBMENU");
+  lv_obj_set_style_text_color(menu_title, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(menu_title, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(menu_title, LV_ALIGN_TOP_LEFT, 14, 12);
 
-  lv_obj_t* sys_items = lv_label_create(sys_panel);
-  lv_label_set_text(sys_items,
-    "Language:     English\n"
-    "Brightness:  100%\n"
-    "Volume:        80%\n"
-    "Theme:       Dark");
-  lv_obj_set_style_text_color(sys_items, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(sys_items, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(sys_items, LV_ALIGN_TOP_LEFT, 16, 48);
+  btn_settings_system = lv_btn_create(menu_panel);
+  lv_obj_set_size(btn_settings_system, 188, 58);
+  lv_obj_align(btn_settings_system, LV_ALIGN_TOP_MID, 0, 42);
+  lv_obj_set_style_radius(btn_settings_system, 10, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_settings_system, settings_system_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_system = lv_label_create(btn_settings_system);
+  lv_label_set_text(lbl_system, "System");
+  lv_obj_set_style_text_font(lbl_system, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_text_color(lbl_system, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_center(lbl_system);
 
-  // DataSet settings
-  lv_obj_t* data_panel = lv_obj_create(screen_settings);
-  lv_obj_set_size(data_panel, (kDisplayWidth - 50) / 2, 180);
-  lv_obj_align(data_panel, LV_ALIGN_TOP_RIGHT, -20, 70);
-  lv_obj_set_style_bg_color(data_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(data_panel, 12, LV_PART_MAIN);
-  lv_obj_set_style_border_width(data_panel, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(data_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  btn_settings_dataset = lv_btn_create(menu_panel);
+  lv_obj_set_size(btn_settings_dataset, 188, 58);
+  lv_obj_align(btn_settings_dataset, LV_ALIGN_TOP_MID, 0, 112);
+  lv_obj_set_style_radius(btn_settings_dataset, 10, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_settings_dataset, settings_dataset_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_dataset = lv_label_create(btn_settings_dataset);
+  lv_label_set_text(lbl_dataset, "DataSet");
+  lv_obj_set_style_text_font(lbl_dataset, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_text_color(lbl_dataset, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_center(lbl_dataset);
 
-  lv_obj_t* data_title = lv_label_create(data_panel);
-  lv_label_set_text(data_title, "DATASETS");
-  lv_obj_set_style_text_color(data_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
-  lv_obj_set_style_text_font(data_title, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(data_title, LV_ALIGN_TOP_LEFT, 16, 12);
+  btn_settings_about = lv_btn_create(menu_panel);
+  lv_obj_set_size(btn_settings_about, 188, 58);
+  lv_obj_align(btn_settings_about, LV_ALIGN_TOP_MID, 0, 182);
+  lv_obj_set_style_radius(btn_settings_about, 10, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_settings_about, settings_about_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_about = lv_label_create(btn_settings_about);
+  lv_label_set_text(lbl_about, "About");
+  lv_obj_set_style_text_font(lbl_about, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_text_color(lbl_about, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_center(lbl_about);
 
-  lv_obj_t* data_items = lv_label_create(data_panel);
-  lv_label_set_text(data_items,
-    "P1: Default\n"
-    "P2: Lab Bench\n"
-    "P3: Prototype\n"
-    "P4: Testing");
-  lv_obj_set_style_text_color(data_items, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(data_items, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(data_items, LV_ALIGN_TOP_LEFT, 16, 48);
+  lv_obj_t* detail_panel = lv_obj_create(screen_settings);
+  lv_obj_set_size(detail_panel, kDisplayWidth - 270, kDisplayHeight - 100);
+  lv_obj_align(detail_panel, LV_ALIGN_TOP_RIGHT, -20, 70);
+  lv_obj_set_style_bg_color(detail_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(detail_panel, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(detail_panel, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(detail_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
-  // About
-  lv_obj_t* about_panel = lv_obj_create(screen_settings);
-  lv_obj_set_size(about_panel, kDisplayWidth - 40, 140);
-  lv_obj_align(about_panel, LV_ALIGN_TOP_MID, 0, 270);
-  lv_obj_set_style_bg_color(about_panel, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(about_panel, 12, LV_PART_MAIN);
-  lv_obj_set_style_border_width(about_panel, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(about_panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lbl_settings_detail_title = lv_label_create(detail_panel);
+  lv_label_set_text(lbl_settings_detail_title, "SYSTEM");
+  lv_obj_set_style_text_color(lbl_settings_detail_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_detail_title, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_settings_detail_title, LV_ALIGN_TOP_LEFT, 18, 14);
 
-  lv_obj_t* about_title = lv_label_create(about_panel);
-  lv_label_set_text(about_title, "ABOUT");
-  lv_obj_set_style_text_color(about_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
-  lv_obj_set_style_text_font(about_title, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(about_title, LV_ALIGN_TOP_LEFT, 16, 12);
+  lbl_settings_detail_body = lv_label_create(detail_panel);
+  lv_obj_set_width(lbl_settings_detail_body, kDisplayWidth - 320);
+  lv_label_set_long_mode(lbl_settings_detail_body, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(lbl_settings_detail_body, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_detail_body, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_settings_detail_body, LV_ALIGN_TOP_LEFT, 18, 52);
 
-  lv_obj_t* about_info = lv_label_create(about_panel);
-  lv_label_set_text(about_info,
-    "Development Station Power Supply v2.0\n"
-    "CrowPanel 4.3\" FNIRSI UI Adaptation\n"
-    "Firmware build 2026-07-03");
-  lv_obj_set_style_text_color(about_info, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(about_info, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(about_info, LV_ALIGN_TOP_LEFT, 16, 48);
+  lv_obj_t* action_row = lv_obj_create(detail_panel);
+  lv_obj_set_size(action_row, kDisplayWidth - 306, 64);
+  lv_obj_align(action_row, LV_ALIGN_BOTTOM_MID, 0, -54);
+  lv_obj_set_style_bg_color(action_row, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(action_row, 10, LV_PART_MAIN);
+  lv_obj_set_style_border_width(action_row, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(action_row, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lv_obj_t* action_primary = lv_btn_create(action_row);
+  lv_obj_set_size(action_primary, 150, 42);
+  lv_obj_align(action_primary, LV_ALIGN_LEFT_MID, 12, 0);
+  lv_obj_set_style_bg_color(action_primary, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_border_width(action_primary, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(action_primary, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(action_primary, settings_action_primary_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_settings_action_primary = lv_label_create(action_primary);
+  lv_obj_set_style_text_color(lbl_settings_action_primary, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_action_primary, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_settings_action_primary);
+
+  lv_obj_t* action_secondary = lv_btn_create(action_row);
+  lv_obj_set_size(action_secondary, 150, 42);
+  lv_obj_align(action_secondary, LV_ALIGN_LEFT_MID, 174, 0);
+  lv_obj_set_style_bg_color(action_secondary, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+  lv_obj_set_style_border_width(action_secondary, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(action_secondary, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(action_secondary, settings_action_secondary_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_settings_action_secondary = lv_label_create(action_secondary);
+  lv_obj_set_style_text_color(lbl_settings_action_secondary, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_action_secondary, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_settings_action_secondary);
+
+  lv_obj_t* action_refresh = lv_btn_create(action_row);
+  lv_obj_set_size(action_refresh, 170, 42);
+  lv_obj_align(action_refresh, LV_ALIGN_RIGHT_MID, -12, 0);
+  lv_obj_set_style_bg_color(action_refresh, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_width(action_refresh, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(action_refresh, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_radius(action_refresh, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(action_refresh, settings_action_refresh_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_settings_action_refresh = lv_label_create(action_refresh);
+  lv_obj_set_style_text_color(lbl_settings_action_refresh, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_action_refresh, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_settings_action_refresh);
+
+  lv_obj_t* footer = lv_obj_create(detail_panel);
+  lv_obj_set_size(footer, kDisplayWidth - 306, 40);
+  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_obj_set_style_bg_color(footer, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
+  lv_obj_set_style_radius(footer, 9, LV_PART_MAIN);
+  lv_obj_set_style_border_width(footer, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(footer, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+
+  lbl_settings_hint = lv_label_create(footer);
+  lv_label_set_text(lbl_settings_hint, settings_state.hint);
+  lv_obj_set_style_text_color(lbl_settings_hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_settings_hint, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_center(lbl_settings_hint);
+
+  selectSettingsMenu(SettingsMenu::System);
 }
 
 void create_main_screen(lv_obj_t* root) {
@@ -2257,6 +2546,8 @@ void loop() {
   updateSetupBindingsFromUdi();
   if (active_screen == UiScreen::Setup) {
     refreshSetupScreenLabels();
+  } else if (active_screen == UiScreen::Settings) {
+    refreshSettingsScreenLabels(false);
   }
 
   static uint32_t last_sample_ms = 0;
