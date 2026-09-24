@@ -15,6 +15,7 @@ This repository is the active working source for the Development Station Power S
 Review these files first for current context:
 - README.md
 - docs/SYSTEM_DEVELOPMENT_WORKFLOW.md for how work should be branched, reviewed, and merged
+- docs/FIRMWARE_DEVELOPMENT_PLAN.md for the firmware feature inventory and milestone/branch plan
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md when front-panel signals are discussed
 - docs/USB_HUB_CHANGE_TRACKER.md when USB hub hardware is discussed
