@@ -14,6 +14,7 @@ Uart SerialU3(PB11, PB10); // RX, TX (USART3)
 static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
 static const uint8_t PIN_ISET_CH3 = PA2;
+static const uint8_t PIN_FAULT_CRITICAL_SUM = PA3;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
 static const uint8_t PIN_FLASH_CS = PA8;
 static const uint8_t PIN_SR_LATCH = PA4;
@@ -53,6 +54,14 @@ static const uint8_t FRAME_SOF2 = 0x55;
 static const uint8_t FRAME_TAG = 'T';
 static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
+static const uint16_t CH1_ENABLED_MIN_MV = 1000;
+static const uint16_t CH2_ENABLED_MIN_MV = 1000;
+static const uint16_t CH1_CC_THRESHOLD_MA = 1200;
+static const uint16_t CH2_CC_THRESHOLD_MA = 900;
+static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
+static const uint16_t CH2_OVP_THRESHOLD_MV = 3600;
+static const uint8_t OTP_THRESHOLD_C = 75;
+static const uint8_t THERMAL_WARN_THRESHOLD_C = 70;
 static uint8_t frame_seq = 0;
 static bool flash_test_passed = false;
 static uint32_t flash_test_runs = 0;
@@ -846,11 +855,22 @@ void publishTelemetry(uint16_t v5_mV,
   SerialU3.write(frame, FRAME_SIZE);
 }
 
+bool isFaultCriticalActive() {
+  // Rev-C fault sum is active-low on the current comparator aggregation path.
+  return digitalRead(PIN_FAULT_CRITICAL_SUM) == LOW;
+}
+
+bool is3v3PathEnabled() {
+  const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
+  return (g_sr_state & mask) == 0u;
+}
+
 void setup() {
   // Keep control outputs inactive as early as possible.
   pinMode(PIN_ISET_5V, OUTPUT);
   pinMode(PIN_ISET_3V3, OUTPUT);
   pinMode(PIN_ISET_CH3, OUTPUT);
+  pinMode(PIN_FAULT_CRITICAL_SUM, INPUT_PULLUP);
   digitalWrite(PIN_ISET_5V, LOW);
   digitalWrite(PIN_ISET_3V3, LOW);
   digitalWrite(PIN_ISET_CH3, LOW);
@@ -963,8 +983,30 @@ void loop() {
     const uint8_t temp_C = g_aht20.valid
         ? static_cast<uint8_t>(constrain(static_cast<int>(g_aht20.temp_C + 0.5f), 0, 125))
         : 31;
-    const uint8_t status = 0xF0;           // CH1_EN CH2_EN CH1_CV CH2_CV
-    const uint8_t protection_flags = 0x00; // no active faults
+    const bool ch1_enabled = ok_5v && (v5_mV >= CH1_ENABLED_MIN_MV);
+    const bool ch2_enabled = ok_3v3 && is3v3PathEnabled() && (v3v3_mV >= CH2_ENABLED_MIN_MV);
+    const bool ch1_cc = static_cast<uint16_t>(abs(i5_mA)) >= CH1_CC_THRESHOLD_MA;
+    const bool ch2_cc = static_cast<uint16_t>(abs(i3v3_mA)) >= CH2_CC_THRESHOLD_MA;
+    const bool thermal_warn = temp_C >= THERMAL_WARN_THRESHOLD_C;
+    const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
+    const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
+    const bool otp_trip = temp_C >= OTP_THRESHOLD_C;
+    const bool ocp_sum_trip = isFaultCriticalActive();
+
+    uint8_t status = 0x00;
+    status |= ch1_enabled ? 0x80u : 0x00u;
+    status |= ch2_enabled ? 0x40u : 0x00u;
+    status |= (!ch1_cc) ? 0x20u : 0x00u;
+    status |= (!ch2_cc) ? 0x10u : 0x00u;
+    status |= thermal_warn ? 0x08u : 0x00u;
+
+    uint8_t protection_flags = 0x00;
+    protection_flags |= ch1_ovp ? 0x80u : 0x00u;
+    protection_flags |= ocp_sum_trip ? 0x40u : 0x00u;
+    protection_flags |= ch2_ovp ? 0x20u : 0x00u;
+    protection_flags |= ocp_sum_trip ? 0x10u : 0x00u;
+    protection_flags |= otp_trip ? 0x08u : 0x00u;
+    protection_flags |= otp_trip ? 0x04u : 0x00u;
     publishTelemetry(v5_mV, i5_mA, v3v3_mV, i3v3_mA, temp_C, status, protection_flags);
   }
 
