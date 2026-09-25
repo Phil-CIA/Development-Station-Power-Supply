@@ -37,6 +37,9 @@ they exist or whether they're still needed. See "Branch cleanup" below.
   2. Any doc that the change makes stale has been updated in the same PR
      (README.md, `docs/display-project/README.md`, `docs/GPIO_PINOUT.md`,
      tracker docs, etc.).
+  3. For firmware PRs, the PR description names the relevant scope bucket
+     from `docs/FIRMWARE_DEVELOPMENT_PLAN.md` and includes the matching
+     exit-criteria evidence.
 - Delete the branch after merge.
 
 ### Minimal git cheat-sheet
