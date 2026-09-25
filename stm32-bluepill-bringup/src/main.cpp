@@ -1178,7 +1178,7 @@ void handleCommand(const String& cmd_in) {
     float i_gain = 1.0f;
     float i_off_mA = 0.0f;
     if (sscanf(cmd.c_str(), "CALSET %7s %f %f %f %f", rail_token, &v_gain, &v_off_mV, &i_gain, &i_off_mA) != 5) {
-      logBoth("[CFG] Usage: CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
+      logBoth("[CFG] CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
       return;
     }
 
@@ -1567,7 +1567,7 @@ void setQ3OnlyEnabled(bool enabled) {
     return;
   }
 
-  logBoth("range: Q3-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  logBoth("range: Q3-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
@@ -1595,7 +1595,7 @@ void setQ9OnlyEnabled(bool enabled) {
     return;
   }
 
-  logBoth("range: Q9-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  logBoth("range: Q9-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
