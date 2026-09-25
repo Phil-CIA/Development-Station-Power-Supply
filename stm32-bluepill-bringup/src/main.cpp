@@ -97,6 +97,17 @@ static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
 static const uint16_t CH2_OVP_THRESHOLD_MV = 3600;
 static const uint8_t OTP_THRESHOLD_C = 75;
 static const uint8_t THERMAL_WARN_THRESHOLD_C = 70;
+static const uint8_t STATUS_CH1_ENABLED_MASK = 0x80;
+static const uint8_t STATUS_CH2_ENABLED_MASK = 0x40;
+static const uint8_t STATUS_CH1_CV_MASK = 0x20;
+static const uint8_t STATUS_CH2_CV_MASK = 0x10;
+static const uint8_t STATUS_THERMAL_WARN_MASK = 0x08;
+static const uint8_t PROT_CH1_OVP_MASK = 0x80;
+static const uint8_t PROT_CH1_OCP_MASK = 0x40;
+static const uint8_t PROT_CH2_OVP_MASK = 0x20;
+static const uint8_t PROT_CH2_OCP_MASK = 0x10;
+static const uint8_t PROT_CH1_OTP_MASK = 0x08;
+static const uint8_t PROT_CH2_OTP_MASK = 0x04;
 static const uint16_t UDI_CH1_LIMIT_MIN_MA = 0;
 static const uint16_t UDI_CH1_LIMIT_MAX_MA = 3000;
 static const uint16_t UDI_CH2_LIMIT_MIN_MA = 0;
@@ -2439,22 +2450,28 @@ void loop() {
     const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
     const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
     const bool otp_trip = temp_C >= OTP_THRESHOLD_C;
-    const bool ocp_sum_trip = isFaultCriticalActive();
+    const bool ocp_observable = (PIN_FAULT_CRITICAL_SUM >= 0);
+    const bool ocp_sum_trip = ocp_observable && isFaultCriticalActive();
 
     uint8_t status = 0x00;
-    status |= ch1_enabled ? 0x80u : 0x00u;
-    status |= ch2_enabled ? 0x40u : 0x00u;
-    status |= (!ch1_cc) ? 0x20u : 0x00u;
-    status |= (!ch2_cc) ? 0x10u : 0x00u;
-    status |= thermal_warn ? 0x08u : 0x00u;
+    status |= ch1_enabled ? STATUS_CH1_ENABLED_MASK : 0x00u;
+    status |= ch2_enabled ? STATUS_CH2_ENABLED_MASK : 0x00u;
+    status |= (!ch1_cc) ? STATUS_CH1_CV_MASK : 0x00u;
+    status |= (!ch2_cc) ? STATUS_CH2_CV_MASK : 0x00u;
+    status |= thermal_warn ? STATUS_THERMAL_WARN_MASK : 0x00u;
 
     uint8_t protection_flags = 0x00;
-    protection_flags |= ch1_ovp ? 0x80u : 0x00u;
-    protection_flags |= ocp_sum_trip ? 0x40u : 0x00u;
-    protection_flags |= ch2_ovp ? 0x20u : 0x00u;
-    protection_flags |= ocp_sum_trip ? 0x10u : 0x00u;
-    protection_flags |= otp_trip ? 0x08u : 0x00u;
-    protection_flags |= otp_trip ? 0x04u : 0x00u;
+    protection_flags |= ch1_ovp ? PROT_CH1_OVP_MASK : 0x00u;
+    protection_flags |= ch2_ovp ? PROT_CH2_OVP_MASK : 0x00u;
+    // Rev-C currently only exposes a single FAULT_CRITICAL_SUM line (and that line
+    // is unrouted on current netlist), so OCP is represented as a shared trip when
+    // observable and active.
+    protection_flags |= ocp_sum_trip ? PROT_CH1_OCP_MASK : 0x00u;
+    protection_flags |= ocp_sum_trip ? PROT_CH2_OCP_MASK : 0x00u;
+    // OTP comes from one board-level thermal source today; assert both channel OTP
+    // bits so the display can treat it as a global thermal protection event.
+    protection_flags |= otp_trip ? PROT_CH1_OTP_MASK : 0x00u;
+    protection_flags |= otp_trip ? PROT_CH2_OTP_MASK : 0x00u;
     publishTelemetry(v5_mV, i5_mA, v3v3_mV, i3v3_mA, temp_C, status, protection_flags);
   }
 
