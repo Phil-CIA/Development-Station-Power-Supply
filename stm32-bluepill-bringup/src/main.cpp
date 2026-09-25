@@ -224,6 +224,7 @@ bool aw95xxEnsureDriver();
 void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_high);
 void aw95xxBootInit();
 const char* awBootStateString();
+bool is3v3PathEnabled();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
