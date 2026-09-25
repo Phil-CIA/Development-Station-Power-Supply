@@ -154,6 +154,8 @@ static bool g_hb_print_enabled = false;
 static volatile bool g_aw_int_pending = false;
 static bool g_fault_sum_valid = false;
 static bool g_fault_sum_active = false;
+static bool g_fault_evt_valid = false;
+static bool g_fault_evt_active = false;
 static uint8_t g_fault_input_snapshot = 0x00;
 
 enum AwBootInitState : uint8_t {
@@ -313,7 +315,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
-  logBoth("udi: CMD:OUTPUT|ILIM|GET OUTPUT|GET ILIM|GET STATE");
+  logBoth("udi: CMD:OUTPUT|ILIM|GET*");
 }
 
 bool i2cPing(uint8_t address) {
@@ -846,13 +848,17 @@ void handleUdiCommandLine(const String& line_in) {
 
   if (cmd == "GET STATE") {
     char ack_msg[120];
+    const char* fault_state = "NA";
+    if (g_fault_sum_valid) {
+      fault_state = g_fault_sum_active ? "TRIP" : "OK";
+    }
     snprintf(ack_msg,
              sizeof(ack_msg),
              "STATE O=%s D9=%s CH2=%s F=%s",
              g_output_enabled ? "ON" : "OFF",
              (g_config.d9_path_enabled != 0) ? "ON" : "OFF",
              is3v3PathEnabled() ? "ON" : "OFF",
-             isFaultCriticalActive() ? "TRIP" : "OK");
+             fault_state);
     sendUdiAck(ack_msg);
     return;
   }
@@ -1762,7 +1768,7 @@ void printRangePairStates() {
     char msg[320];
     snprintf(msg,
              sizeof(msg),
-             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q612=%u",
+             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q6=%u",
              static_cast<unsigned>(p0_out),
              static_cast<unsigned>(p0_cfg),
              q1_q7,
@@ -2153,7 +2159,7 @@ void printPersistentConfig() {
   char msg[192];
   snprintf(msg,
            sizeof(msg),
-           "cfg d9=%s 5V[vG=%.5f vO=%.2f iG=%.5f iO=%.2f] 3V3[vG=%.5f vO=%.2f iG=%.5f iO=%.2f]",
+           "cfg d9=%s 5V[%.5f %.2f %.5f %.2f] 3V3[%.5f %.2f %.5f %.2f]",
            g_config.d9_path_enabled ? "ON" : "OFF",
            g_config.rail_5v.voltage_gain,
            g_config.rail_5v.voltage_offset_mV,
@@ -2307,6 +2313,12 @@ void serviceAw9523FaultPath() {
     g_fault_sum_valid = false;
     return;
   }
+
+  if (!g_fault_evt_valid || (g_fault_evt_active != g_fault_sum_active)) {
+    sendUdiEvt(g_fault_sum_active ? "FAULT TRIP" : "FAULT CLEAR");
+    g_fault_evt_valid = true;
+    g_fault_evt_active = g_fault_sum_active;
+  }
 }
 
 bool isFaultCriticalActive() {
@@ -2378,7 +2390,7 @@ void setup() {
       savePersistentConfig(true);
     }
   } else {
-    logBoth("[CFG] Flash not healthy; using volatile defaults only");
+    logBoth("[CFG] Flash unhealthy; volatile defaults");
   }
   setD9PathEnabled(g_config.d9_path_enabled != 0);
   g_output_enabled = (g_config.d9_path_enabled != 0);
