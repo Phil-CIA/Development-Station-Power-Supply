@@ -16,8 +16,9 @@ static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
 static const uint8_t PIN_ISET_CH3 = PA2;
 // Rev-C netlist currently does not route FAULT_CRITICAL_SUM to an STM32 GPIO.
-// Keep this disabled until hardware exposes a dedicated fault input net.
+// Fault observation on Rev-C is handled through AW9523 input + INT signaling.
 static const int8_t PIN_FAULT_CRITICAL_SUM = -1;
+static const uint8_t PIN_AW9523_INT = PB7;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
 static const uint8_t PIN_FLASH_CS = PA8;
 static const uint8_t PIN_SR_LATCH = PA4;
@@ -51,6 +52,9 @@ static const uint8_t AW95XX_P03_MASK = 0x08; // P0.3: Channel 3 Hi-Range (Q5/Q11
 static const uint8_t AW95XX_P04_MASK = 0x10; // P0.4: ESP- GPIO 3V3 Low (Q4/Q10 path)
 static const uint8_t AW95XX_P00_MASK = 0x01; // P0.0: ISET_MPU_5V -> Q3 gate path
 static const uint8_t AW95XX_P05_MASK = 0x20; // P0.5: ISET_MPU_3V3 -> Q9 gate path
+static const uint8_t AW95XX_P06_MASK = 0x40; // P0.6: input line (fault path candidate)
+static const uint8_t AW95XX_P07_MASK = 0x80; // P0.7: input line (fault path candidate)
+static const uint8_t AW95XX_FAULT_SUM_INPUT_MASK = static_cast<uint8_t>(AW95XX_P06_MASK | AW95XX_P07_MASK);
 static const uint8_t AW95XX_PIN_P0_0 = 0;
 static const uint8_t AW95XX_PIN_P0_1 = 1;
 static const uint8_t AW95XX_PIN_P0_2 = 2;
@@ -147,6 +151,10 @@ struct PersistentConfigRecord {
   uint32_t crc32;
 };
 static bool g_hb_print_enabled = false;
+static volatile bool g_aw_int_pending = false;
+static bool g_fault_sum_valid = false;
+static bool g_fault_sum_active = false;
+static uint8_t g_fault_input_snapshot = 0x00;
 
 enum AwBootInitState : uint8_t {
   AW_BOOT_UNKNOWN = 0,
@@ -225,10 +233,18 @@ void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_hig
 void aw95xxBootInit();
 const char* awBootStateString();
 bool is3v3PathEnabled();
+bool isFaultCriticalActive();
+void onAw9523Interrupt();
+void serviceAw9523FaultPath();
+bool sampleFaultSumFromAw9523();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
   SerialDbg.println(msg);
+}
+
+void onAw9523Interrupt() {
+  g_aw_int_pending = true;
 }
 
 void formatAhtValues(const Aht20Sample& sample,
@@ -829,14 +845,14 @@ void handleUdiCommandLine(const String& line_in) {
   }
 
   if (cmd == "GET STATE") {
-    char ack_msg[96];
+    char ack_msg[120];
     snprintf(ack_msg,
              sizeof(ack_msg),
-             "STATE OUTPUT=%s D9=%s CH2PATH=%s FAULT_SUM=%s",
+             "STATE OUTPUT=%s D9=%s CH2PATH=%s FAULTSRC=AW9523_INT FAULT=%s",
              g_output_enabled ? "ON" : "OFF",
              (g_config.d9_path_enabled != 0) ? "ON" : "OFF",
              is3v3PathEnabled() ? "ON" : "OFF",
-             (PIN_FAULT_CRITICAL_SUM >= 0) ? "ROUTED" : "UNROUTED");
+             isFaultCriticalActive() ? "ASSERTED" : "CLEAR");
     sendUdiAck(ack_msg);
     return;
   }
@@ -2289,12 +2305,40 @@ void publishTelemetry(uint16_t v5_mV,
   SerialU3.write(frame, FRAME_SIZE);
 }
 
-bool isFaultCriticalActive() {
-  if (PIN_FAULT_CRITICAL_SUM < 0) {
+bool sampleFaultSumFromAw9523() {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
     return false;
   }
-  // Rev-C fault sum is active-low on the current comparator aggregation path.
-  return digitalRead(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM)) == LOW;
+
+  uint8_t p0_in = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in)) {
+    return false;
+  }
+
+  g_fault_input_snapshot = static_cast<uint8_t>(p0_in & AW95XX_FAULT_SUM_INPUT_MASK);
+  g_fault_sum_active = (g_fault_input_snapshot != 0);
+  g_fault_sum_valid = true;
+  return true;
+}
+
+void serviceAw9523FaultPath() {
+  if (!g_aw_int_pending && digitalRead(PIN_AW9523_INT) == HIGH) {
+    return;
+  }
+
+  g_aw_int_pending = false;
+  if (!sampleFaultSumFromAw9523()) {
+    g_fault_sum_valid = false;
+    return;
+  }
+}
+
+bool isFaultCriticalActive() {
+  if (PIN_FAULT_CRITICAL_SUM >= 0) {
+    // Legacy direct-GPIO path; not expected on current Rev-C.
+    return digitalRead(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM)) == LOW;
+  }
+  return g_fault_sum_valid && g_fault_sum_active;
 }
 
 bool is3v3PathEnabled() {
@@ -2310,6 +2354,8 @@ void setup() {
   if (PIN_FAULT_CRITICAL_SUM >= 0) {
     pinMode(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM), INPUT_PULLUP);
   }
+  pinMode(PIN_AW9523_INT, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_AW9523_INT), onAw9523Interrupt, FALLING);
   digitalWrite(PIN_ISET_5V, LOW);
   digitalWrite(PIN_ISET_3V3, LOW);
   digitalWrite(PIN_ISET_CH3, LOW);
@@ -2335,12 +2381,12 @@ void setup() {
   delay(150);
   Serial.println("stm32-bluepill bringup: boot");
   SerialDbg.println("stm32-bluepill bringup: boot");
-  if (PIN_FAULT_CRITICAL_SUM < 0) {
-    Serial.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
-    SerialDbg.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
-  }
+  Serial.println("fault path: using AW9523 input + INT (PB7) for FAULT_CRITICAL_SUM observation");
+  SerialDbg.println("fault path: using AW9523 input + INT (PB7) for FAULT_CRITICAL_SUM observation");
 
   aw95xxBootInit();
+  g_aw_int_pending = true;
+  serviceAw9523FaultPath();
 
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
   SerialU3.begin(115200);
@@ -2380,6 +2426,7 @@ void setup() {
 
 void loop() {
   pollCommands();
+  serviceAw9523FaultPath();
 
   static uint32_t lastMs = 0;
   static uint32_t lastSummaryMs = 0;
@@ -2464,7 +2511,7 @@ void loop() {
     const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
     const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
     const bool otp_trip = temp_C >= OTP_THRESHOLD_C;
-    const bool ocp_observable = (PIN_FAULT_CRITICAL_SUM >= 0);
+    const bool ocp_observable = (PIN_FAULT_CRITICAL_SUM >= 0) || g_fault_sum_valid;
     const bool ocp_sum_trip = ocp_observable && isFaultCriticalActive();
 
     uint8_t status = 0x00;
