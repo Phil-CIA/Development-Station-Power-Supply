@@ -315,7 +315,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
-  logBoth("udi: CMD:OUTPUT|ILIM|GET OUTPUT|GET ILIM|GET STATE");
+  logBoth("udi: CMD:OUTPUT|ILIM|GET*");
 }
 
 bool i2cPing(uint8_t address) {
@@ -1768,7 +1768,7 @@ void printRangePairStates() {
     char msg[320];
     snprintf(msg,
              sizeof(msg),
-             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q612=%u",
+             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q6=%u",
              static_cast<unsigned>(p0_out),
              static_cast<unsigned>(p0_cfg),
              q1_q7,
@@ -2159,7 +2159,7 @@ void printPersistentConfig() {
   char msg[192];
   snprintf(msg,
            sizeof(msg),
-           "cfg d9=%s 5V[vG=%.5f vO=%.2f iG=%.5f iO=%.2f] 3V3[vG=%.5f vO=%.2f iG=%.5f iO=%.2f]",
+           "cfg d9=%s 5V[%.5f %.2f %.5f %.2f] 3V3[%.5f %.2f %.5f %.2f]",
            g_config.d9_path_enabled ? "ON" : "OFF",
            g_config.rail_5v.voltage_gain,
            g_config.rail_5v.voltage_offset_mV,
@@ -2390,7 +2390,7 @@ void setup() {
       savePersistentConfig(true);
     }
   } else {
-    logBoth("[CFG] Flash not healthy; using volatile defaults only");
+    logBoth("[CFG] Flash unhealthy; volatile defaults");
   }
   setD9PathEnabled(g_config.d9_path_enabled != 0);
   g_output_enabled = (g_config.d9_path_enabled != 0);
