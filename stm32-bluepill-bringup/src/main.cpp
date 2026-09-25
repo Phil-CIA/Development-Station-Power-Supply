@@ -296,7 +296,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE | AWPROBE | AWHB | AWP10ON | AWP10OFF");
-  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:GET OUTPUT | CMD:GET ILIM <CH1|CH2>");
+  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:GET OUTPUT | CMD:GET ILIM <CH1|CH2> | CMD:GET STATE");
 }
 
 bool i2cPing(uint8_t address) {
@@ -824,6 +824,19 @@ void handleUdiCommandLine(const String& line_in) {
 
   if (cmd == "GET OUTPUT") {
     sendUdiAck(g_output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+    return;
+  }
+
+  if (cmd == "GET STATE") {
+    char ack_msg[96];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "STATE OUTPUT=%s D9=%s CH2PATH=%s FAULT_SUM=%s",
+             g_output_enabled ? "ON" : "OFF",
+             (g_config.d9_path_enabled != 0) ? "ON" : "OFF",
+             is3v3PathEnabled() ? "ON" : "OFF",
+             (PIN_FAULT_CRITICAL_SUM >= 0) ? "ROUTED" : "UNROUTED");
+    sendUdiAck(ack_msg);
     return;
   }
 
