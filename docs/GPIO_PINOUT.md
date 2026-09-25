@@ -1,59 +1,48 @@
-# Display Board – Authoritative Pinout (ESP32-C6)
+# System Pinout Reference
 
-This document is the single source of truth for wiring and firmware pin definitions.
+Status: active. This document is the top-level index for signal/pin contracts
+used by this repo. It links each subsystem to its authoritative mapping source.
 
-## Summary
-- Framework: **Arduino**
-- Host ↔ Display-board MCU link: **UART over JST XH 4-pin (UDI standard)**
-  - Display-board ESP32-C6 runs **LVGL**; host sends commands, display handles rendering.
-- Local peripherals: TFT (ST7796S) + Touch (XPT2046) + SD share a local SPI bus
-  - Display-board ESP32-C6 acts as **SPI MASTER** on the local bus.
-- Power: J3 pin 1 provides **+5V** (host → display)
-  - Display board generates **3.3V** locally using **AMS1117-3.3**.
+## Authoritative pin-contract split
 
----
-
-## A) Display UART Connector (J3, JST XH 4-pin) → ESP32-C6
-
-Follows the Universal Display Interface (UDI) standard. See `docs/DISPLAY_INTERFACE_STANDARD.md`.
-
-| J3 Pin | Net Name      | Direction (Host ↔ Display) | ESP32-C6 GPIO | Notes |
-|---:|---|---|---:|---|
-| 1  | +5V           | Host → Display | — | Powers display board (via AMS1117) |
-| 2  | GND           | — | — | Ground |
-| 3  | DISP_UART_TX  | Host → Display | UART_RX | Host transmit → display receive |
-| 4  | DISP_UART_RX  | Display → Host | UART_TX | Display transmit → host receive |
+| Subsystem | Authoritative source |
+|---|---|
+| STM32 controller path (Rev-C HAT + `stm32-bluepill-bringup`) | `docs/STM32_BLUEPILL_PIN_TABLE.md` |
+| Custom front-panel board (ESP32-C6 + ST7796S path) | This file, sections below |
+| Display host interface standard (both display paths) | `docs/DISPLAY_INTERFACE_STANDARD.md` |
 
 ---
 
-## B) TFT Module Header (J1, “Back of TFT”) → ESP32-C6 (SPI MASTER)
+## A) Custom front-panel board (ESP32-C6) pin mapping
 
-### Power + TFT control
+Framework: Arduino  
+Display architecture: display-side LVGL with local SPI peripherals  
+Host link: UART over UDI connector
+
+### A1) UDI host connector (J3, JST XH 4-pin)
+
+| J3 Pin | Net Name | Direction (Host ↔ Display) | ESP32-C6 role | Notes |
+|---:|---|---|---|---|
+| 1 | +5V | Host -> Display | Power in | Board regulates to 3.3V via AMS1117-3.3 |
+| 2 | GND | — | Ground | Common return |
+| 3 | DISP_UART_TX | Host -> Display | UART RX | Host TX into display RX |
+| 4 | DISP_UART_RX | Display -> Host | UART TX | Display TX back to host RX |
+
+### A2) TFT module header (J1) -> ESP32-C6 (local SPI master)
+
 | J1 Pin | Net Name | Function | ESP32-C6 GPIO | Notes |
 |---:|---|---|---:|---|
-| 1 | 3V3 | 3.3V rail | — | From AMS1117-3.3 output |
-| 2 | GND | Ground | — | |
-| 3 | CS  | TFT chip-select | GPIO10 | ST7796S CS |
-| 4 | RST | TFT reset | GPIO19 | |
+| 3 | CS | TFT chip-select | GPIO10 | ST7796S CS |
+| 4 | RST | TFT reset | GPIO19 | Active-low reset |
 | 5 | D/C | TFT data/command | GPIO18 | |
-| 8 | PWM | Backlight PWM | GPIO20 | Backlight/LED control |
-
-### Shared local SPI bus (TFT + Touch + SD)
-| J1 Pin | Net Name | Function | ESP32-C6 GPIO |
-|---:|---|---|---:|
-| 6 | MISO | SPI MISO | GPIO11 |
-| 7 | SCLK | SPI SCLK | GPIO12 |
-| 9 | MOSI | SPI MOSI | GPIO13 |
-
-### Touch controller
-| J1 Pin | Net Name | Function | ESP32-C6 GPIO | Notes |
-|---:|---|---|---:|---|
+| 6 | MISO | SPI MISO | GPIO11 | Shared with touch/SD |
+| 7 | SCLK | SPI SCLK | GPIO12 | Shared with touch/SD |
+| 8 | PWM | Backlight PWM | GPIO20 | LED/backlight control |
+| 9 | MOSI | SPI MOSI | GPIO13 | Shared with touch/SD |
 | 11 | Touch CS | Touch chip-select | GPIO22 | XPT2046 CS |
 | 14 | IRQ | Touch interrupt | GPIO21 | Optional (can be polled) |
 
----
-
-## C) SD Header (J2) → ESP32-C6 (SPI MASTER)
+### A3) SD header (J2) -> ESP32-C6
 
 | J2 Pin | Net Name | Function | ESP32-C6 GPIO |
 |---:|---|---|---:|
@@ -62,99 +51,23 @@ Follows the Universal Display Interface (UDI) standard. See `docs/DISPLAY_INTERF
 | 3 | MISO | SPI MISO | GPIO11 |
 | 4 | SD card CS | SD chip-select | GPIO15 |
 
----
-
-## Firmware notes (Arduino)
-- Host link (UART): bring up at **115200 baud**. Protocol: `CMD:`/`ACK:`/`ERR:`/`EVT:` framing.
-- Display renders locally via **LVGL** — host does not push pixels.
-- Local display SPI master (TFT/touch/SD): start at **8–10 MHz** and tune upward.
-- ESP32-C6 UART roles:
-  - UART_RX ← DISP_UART_TX from host (receives commands)
-  - UART_TX → DISP_UART_RX to host (sends ACK/EVT responses)
+Firmware notes:
+- Host protocol: UART 115200 8N1 with `CMD:`/`ACK:`/`ERR:`/`EVT:` framing.
+- The host sends semantic commands; display firmware renders locally with LVGL.
 
 ---
 
-## STM32 Migration Target (Draft, Hardware-Only)
+## B) STM32 controller path summary (Rev-C)
 
-This section is the current hardware migration target for the HAT MCU path. It is a planning baseline, not a committed schematic change.
+For STM32 signal ownership and status, use:
+- `docs/STM32_BLUEPILL_PIN_TABLE.md` (authoritative matrix)
 
-Detailed learning/tracking table:
-- `docs/STM32_BLUEPILL_PIN_TABLE.md`
+Current high-impact contract notes:
+1. Rail-control outputs are active on `PA0/PA1/PA2` as `ISET_MPU_5V`,
+   `ISET_MPU_3V3`, and `ISET_MPU_Channel_3`.
+2. Current Rev-C fan connector (`J7`) is a 2-pin control connector and does
+   not expose a dedicated tach net in this revision.
+3. Existing mismatch to track: firmware expects `FAULT_CRITICAL_SUM` on `PA3`,
+   while current Rev-C netlist routes `PA3` on `RXD_ESP` and keeps
+   `FAULT_CRITICAL_SUM` on a separate resistor path.
 
-### USB Hub Debug Bridge Handoff (2026-06-09 Draft)
-
-Current `usb-hub-next-iter` integration adds a bridge handoff connector for STM32 programming path.
-
-| Connector | Pin | Net | Function |
-|---|---:|---|---|
-| J11 (`STM32_SWD_BRIDGE_OUT`) | 1 | 3v3 (VTref sense) | Target voltage reference |
-| J11 (`STM32_SWD_BRIDGE_OUT`) | 2 | SWDIO path via R27 (33Ω) | SWD data |
-| J11 (`STM32_SWD_BRIDGE_OUT`) | 3 | SWDCLK path via R28 (33Ω) | SWD clock |
-| J11 (`STM32_SWD_BRIDGE_OUT`) | 4 | NRST_BRIDGE_OUT | Target reset |
-| J11 (`STM32_SWD_BRIDGE_OUT`) | 5 | GND | SWD reference ground |
-
-Notes:
-1. Port 2 USB downstream data channel is now consumed internally for this debug-bridge path.
-2. CH340C telemetry path remains independent and unchanged on the HAT side.
-
-Required STM32-side destination mapping (what these bridge labels must connect to):
-
-| Bridge net from hub board | Connect to on STM32 side | STM32 pin/function |
-|---|---|---|
-| `SWDIO_BRIDGE_OUT` | SWDIO net on target debug header/path | PA13 (SWDIO) |
-| `SWDCLK_BRIDGE_OUT` | SWCLK net on target debug header/path | PA14 (SWCLK) |
-| `NRST_BRIDGE_OUT` | Target reset net | NRST |
-| `VTREF_BRIDGE_IN` | Target logic rail reference | 3V3 target rail |
-| `SWD_GND_REF` | Target debug ground reference | GND |
-
-Implementation policy for this cycle:
-1. Treat remaining dangling-label ERC warnings on hub schematic as acceptable until final inter-board tie-in is represented.
-2. Do not rename these nets; keep names stable across hub/HAT docs and wiring.
-3. Prioritize physical routing and connector contract correctness over cosmetic ERC cleanup.
-
-### Target posture
-- First candidate: STM32F103C8T6 "Blue Pill"
-- If the pin budget or debug path fails, escalate to a larger STM32 family
-- Keep both UART and SWD available in hardware
-
-### Draft pin map A
-
-| Logical function | STM32 pin | Notes |
-|---|---:|---|
-| `ISET_MPU_5V` | PA0 | Rail-control output |
-| `ISET_MPU_3V3` | PA1 | Rail-control output |
-| `ISET_MPU_Channel_3` | PA2 | Rail-control output |
-| `FAULT_CRITICAL_SUM` | PA3 | Fault input; keep low-noise route |
-| I2C SCL | PB8 | Telemetry bus |
-| I2C SDA | PB9 | Telemetry bus |
-| UART TX | PA9 | Programming/debug |
-| UART RX | PA10 | Programming/debug |
-| SWDIO | PA13 | Reserved for debug only |
-| SWDCLK | PA14 | Reserved for debug only |
-| Status LED | PC13 | Optional indicator |
-| NRST | NRST | Reset access / test point |
-| BOOT0 | BOOT0 | Boot-mode strap / test access |
-
-### Draft pin map B
-
-| Logical function | STM32 pin | Notes |
-|---|---:|---|
-| `ISET_MPU_5V` | PB0 | Fallback rail-control output |
-| `ISET_MPU_3V3` | PB1 | Fallback rail-control output |
-| `ISET_MPU_Channel_3` | PB10 | Fallback rail-control output |
-| `FAULT_CRITICAL_SUM` | PB11 | Fallback fault input |
-| I2C SCL | PB6 | Fallback telemetry bus |
-| I2C SDA | PB7 | Fallback telemetry bus |
-| UART TX | PA9 | Programming/debug |
-| UART RX | PA10 | Programming/debug |
-| SWDIO | PA13 | Reserved for debug only |
-| SWDCLK | PA14 | Reserved for debug only |
-| Status LED | PC13 | Optional indicator |
-| NRST | NRST | Reset access / test point |
-| BOOT0 | BOOT0 | Boot-mode strap / test access |
-
-### Use rules
-1. Keep SWD pins dedicated and do not dual-assign them.
-2. Keep the fault input and I2C pair away from noisy connector fanout.
-3. Promote this draft to the schematic only after pin-conflict and reset-safety checks pass.
-4. If Draft A fails, try Draft B once before escalating MCU class.
