@@ -154,6 +154,8 @@ static bool g_hb_print_enabled = false;
 static volatile bool g_aw_int_pending = false;
 static bool g_fault_sum_valid = false;
 static bool g_fault_sum_active = false;
+static bool g_fault_evt_valid = false;
+static bool g_fault_evt_active = false;
 static uint8_t g_fault_input_snapshot = 0x00;
 
 enum AwBootInitState : uint8_t {
@@ -846,13 +848,17 @@ void handleUdiCommandLine(const String& line_in) {
 
   if (cmd == "GET STATE") {
     char ack_msg[120];
+    const char* fault_state = "NA";
+    if (g_fault_sum_valid) {
+      fault_state = g_fault_sum_active ? "TRIP" : "OK";
+    }
     snprintf(ack_msg,
              sizeof(ack_msg),
              "STATE O=%s D9=%s CH2=%s F=%s",
              g_output_enabled ? "ON" : "OFF",
              (g_config.d9_path_enabled != 0) ? "ON" : "OFF",
              is3v3PathEnabled() ? "ON" : "OFF",
-             isFaultCriticalActive() ? "TRIP" : "OK");
+             fault_state);
     sendUdiAck(ack_msg);
     return;
   }
@@ -2306,6 +2312,12 @@ void serviceAw9523FaultPath() {
   if (!sampleFaultSumFromAw9523()) {
     g_fault_sum_valid = false;
     return;
+  }
+
+  if (!g_fault_evt_valid || (g_fault_evt_active != g_fault_sum_active)) {
+    sendUdiEvt(g_fault_sum_active ? "FAULT TRIP" : "FAULT CLEAR");
+    g_fault_evt_valid = true;
+    g_fault_evt_active = g_fault_sum_active;
   }
 }
 
