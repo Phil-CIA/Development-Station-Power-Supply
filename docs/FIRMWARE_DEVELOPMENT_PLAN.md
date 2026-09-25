@@ -164,7 +164,7 @@ expansion until the scoping PR for the relevant bucket is merged.
 | Feature | Status | Where | Notes |
 |---|---|---|---|
 | Rail V/I telemetry read (INA3221) | ✅ Done | `stm32-bluepill-bringup/src/main.cpp` | Real hardware reads for +5V and +3.3V rails. |
-| Extended UART telemetry frame, STM32 → display | ✅ Implemented both ends, ⛔ blocked | `stm32-bluepill-bringup/src/main.cpp` (`publishTelemetry`) + `crowpanel-43-bringup/src/disp_link_slave.cpp` (`parseFrame`) | Frame layouts match on both ends. Can't prove it end-to-end until issue #3 is fixed. |
+| Extended UART telemetry frame, STM32 → display | ✅ Implemented both ends | `stm32-bluepill-bringup/src/main.cpp` (`publishTelemetry`) + `crowpanel-43-bringup/src/disp_link_slave.cpp` (`parseFrame`) | Frame layouts match on both ends and STM32 target now builds. Bench end-to-end capture remains required for bucket exit evidence. |
 | CrowPanel LVGL UI skeleton (Splash/Setup/Main/Graph/Settings) | ✅ Done | `crowpanel-43-bringup/src/main.cpp` | All five screens exist and navigate. |
 | CrowPanel Main/Graph screens bound to live telemetry | ✅ Done | `crowpanel-43-bringup/src/main.cpp` | Real V/I/P per channel, OVP/OCP/OTP indicators, CV/CC state, dual-trace graph. Has a synthetic-data fallback generator so it's demoable without a live STM32. |
 | Fault/status reporting (OVP/OCP/OTP, output-enable, CV/CC) | ⚠️ Runtime-derived, AW9523-interrupt sourced | `stm32-bluepill-bringup/src/main.cpp` (telemetry publish path) | `status` and `protection_flags` are computed from live state (channel enable/CV-CC, OVP thresholds, thermal warn/OTP). Rev-C fault path uses AW9523 input + `AW9523_INT` (`PB7`) to signal MCU fault handling; direct STM32 `FAULT_CRITICAL_SUM` GPIO remains disabled (`PIN_FAULT_CRITICAL_SUM = -1`). |
@@ -175,8 +175,9 @@ expansion until the scoping PR for the relevant bucket is merged.
 | CrowPanel Setup screen parameter editing | ⚠️ Partially implemented | `crowpanel-43-bringup/src/main.cpp` | Setup now binds real host values for Output Enable and CH1/CH2 current limits (`CMD:GET ...` read on entry, `CMD:OUTPUT`/`CMD:ILIM` write on apply). The select/edit/commit flow now follows encoder semantics (rotate/press/long-press), currently mapped to Setup controls and `SETUP_ENC` serial commands for bring-up validation. |
 | CrowPanel Settings screen submenus | ✅ Done | `crowpanel-43-bringup/src/main.cpp` | Settings now has working System/DataSet/About submenus with touch navigation, live status detail panes, and submenu-specific actions (demo/tour toggle, dataset log control/clear, about/build info refresh). |
 | Display → host command channel (`CMD:`/`ACK:`/`ERR:`/`EVT:`) | ⚠️ Expanded and in use | `stm32-bluepill-bringup/src/main.cpp` + `crowpanel-43-bringup/src/disp_link_slave.*` + `crowpanel-43-bringup/src/main.cpp` | Parser/framing is now wired to Setup UI flow: `OUTPUT`/`ILIM` write commands plus `GET OUTPUT`, `GET ILIM CH1|CH2`, `GET STATE`, and additive `GET CFGREC` readback commands with ACK/ERR/EVT parsing on the display. Fault transitions now emit immediate `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` from the AW9523 interrupt path. Bench validation remains open. |
+| Bring-up diagnostics + recovery hints (Bucket 6) | ⚠️ In progress | `stm32-bluepill-bringup/src/main.cpp` | Startup and manual `DIAG` now emit compact contract/health snapshots (including Rev-C AW9523 fault-path mode) for repeatable bench log capture; richer recovery-path coverage remains open for follow-on work. |
 | Custom front-panel board (ESP32-C6) UDI + LVGL rewrite | ❌ Not started | `src/rev1/display_main.cpp` | Paused/secondary path. Needs the Phase 3 rewrite described in `docs/display-project/README.md` before it reaches parity with CrowPanel. |
-| STM32 build | ❌ Broken | `stm32-bluepill-bringup/` | Issue #3 — `HardwareSerial(rx, tx)` constructor mismatch. Blocks everything else on this target. |
+| STM32 build | ✅ Builds | `stm32-bluepill-bringup/` | `bluepill_f103c8` builds in the current tree. Flash headroom is tight (~99.5%), so new features should stay size-conscious. |
 
 ## Milestones and branches
 
@@ -184,8 +185,8 @@ Work in this order — each milestone unblocks the next. Branch names follow
 `docs/SYSTEM_DEVELOPMENT_WORKFLOW.md`'s `firmware/<topic>` / `display/<topic>`
 convention. Open the branch when you actually start the work, not before.
 
-### Milestone 0 — Unblock the STM32 build
-- `firmware/stm32-fix-hardwareserial` — fix issue #3 so `stm32-bluepill-bringup` compiles again. Small, well-scoped, blocks everything below.
+### Milestone 0 — Unblock the STM32 build (completed)
+- `firmware/stm32-fix-hardwareserial` — done: STM32 target compiles again, so downstream milestones are no longer blocked on issue #3.
 
 ### Milestone 1 — Make the telemetry loop real end-to-end
 - `firmware/stm32-fault-status-bits` — in progress: `status`/`protection_flags` now use real runtime values (output-enable, CV/CC, OVP, thermal warn/OTP). OCP/fault path is AW9523-input + `AW9523_INT` driven on Rev-C (non-polled), with direct STM32 `FAULT_CRITICAL_SUM` GPIO intentionally disabled.

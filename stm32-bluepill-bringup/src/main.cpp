@@ -331,7 +331,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 }
 
 void printCommandHelp() {
-  logBoth("cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
+  logBoth("cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
   logBoth("udi: CMD:OUTPUT|ILIM|GET*");
 }
 
@@ -453,7 +453,7 @@ void printInaProbeSummary() {
   const bool found_3v3 = i2cPing(INA3221_ADDR_3V3);
   snprintf(msg,
            sizeof(msg),
-           "ina: expected 0x40=%s 0x41=%s (0x43 not used on this rev)",
+           "ina: 0x40=%s 0x41=%s",
            found_5v ? "ACK" : "MISS",
            found_3v3 ? "ACK" : "MISS");
   logBoth(msg);
@@ -988,6 +988,12 @@ void handleCommand(const String& cmd_in) {
     snprintf(run_msg, sizeof(run_msg), "flash: manual test run #%lu", static_cast<unsigned long>(flash_test_runs));
     logBoth(run_msg);
     flash_test_passed = runFlashBringupTest();
+    return;
+  }
+
+  if (cmd == "DIAG") {
+    logBoth((PIN_FAULT_CRITICAL_SUM >= 0) ? "diag:fault-gpio" : "diag:fault-awint");
+    logHealthSummary();
     return;
   }
 
@@ -1757,7 +1763,7 @@ void aw95xxBootInit() {
     char msg[96];
     snprintf(msg,
              sizeof(msg),
-             "aw95xx boot: policy latched, P0 outputs forced low (p0=0x%02X)",
+             "aw95xx boot: p0 forced low (0x%02X)",
              static_cast<unsigned>(p0_out_after));
     logBoth(msg);
   }
