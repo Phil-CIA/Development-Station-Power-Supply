@@ -19,7 +19,7 @@ is visible and actionable.
 | Rail 5V control | PA0 | Output | GPIO | `ISET_MPU_5V` | `PIN_ISET_5V` | Implemented (aligned) |
 | Rail 3V3 control | PA1 | Output | GPIO | `ISET_MPU_3V3` | `PIN_ISET_3V3` | Implemented (aligned) |
 | Rail CH3 control | PA2 | Output | GPIO | `ISET_MPU_Channel_3` | `PIN_ISET_CH3` | Implemented (aligned) |
-| Fault summary input | PA3 | Input | GPIO | `FAULT_CRITICAL_SUM` (via resistor path) | `PIN_FAULT_CRITICAL_SUM` | **Mismatch**: PA3 is currently on `RXD_ESP` net in Rev-C netlist, not directly on `FAULT_CRITICAL_SUM` |
+| Fault summary input | N/C (Rev-C) | Input (unavailable) | GPIO | `FAULT_CRITICAL_SUM` (not routed to STM32 GPIO in current netlist) | `PIN_FAULT_CRITICAL_SUM = -1` | Implemented (disabled for current Rev-C routing) |
 | Shift-register latch | PA4 | Output | GPIO | `SR_Latch` | `PIN_SR_LATCH` | Implemented (aligned) |
 | External flash CS | PA8 | Output | SPI CS (GPIO) | `Flash_CS` | `PIN_FLASH_CS` | Implemented (aligned) |
 | CH340 debug TX | PA9 | Output | UART1 TX | `UART1_TX` | `SerialDbg` TX (`Uart SerialDbg(PA10, PA9)`) | Implemented (aligned) |
@@ -58,4 +58,3 @@ Policy for this revision:
 5. If this table changes, update related references in:
    - `docs/GPIO_PINOUT.md`
    - `docs/FIRMWARE_DEVELOPMENT_PLAN.md` (if behavior/scope changed)
-

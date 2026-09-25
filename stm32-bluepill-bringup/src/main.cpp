@@ -15,7 +15,9 @@ Uart SerialU3(PB11, PB10); // RX, TX (USART3)
 static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
 static const uint8_t PIN_ISET_CH3 = PA2;
-static const uint8_t PIN_FAULT_CRITICAL_SUM = PA3;
+// Rev-C netlist currently does not route FAULT_CRITICAL_SUM to an STM32 GPIO.
+// Keep this disabled until hardware exposes a dedicated fault input net.
+static const int8_t PIN_FAULT_CRITICAL_SUM = -1;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
 static const uint8_t PIN_FLASH_CS = PA8;
 static const uint8_t PIN_SR_LATCH = PA4;
@@ -2263,8 +2265,11 @@ void publishTelemetry(uint16_t v5_mV,
 }
 
 bool isFaultCriticalActive() {
+  if (PIN_FAULT_CRITICAL_SUM < 0) {
+    return false;
+  }
   // Rev-C fault sum is active-low on the current comparator aggregation path.
-  return digitalRead(PIN_FAULT_CRITICAL_SUM) == LOW;
+  return digitalRead(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM)) == LOW;
 }
 
 bool is3v3PathEnabled() {
@@ -2277,7 +2282,9 @@ void setup() {
   pinMode(PIN_ISET_5V, OUTPUT);
   pinMode(PIN_ISET_3V3, OUTPUT);
   pinMode(PIN_ISET_CH3, OUTPUT);
-  pinMode(PIN_FAULT_CRITICAL_SUM, INPUT_PULLUP);
+  if (PIN_FAULT_CRITICAL_SUM >= 0) {
+    pinMode(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM), INPUT_PULLUP);
+  }
   digitalWrite(PIN_ISET_5V, LOW);
   digitalWrite(PIN_ISET_3V3, LOW);
   digitalWrite(PIN_ISET_CH3, LOW);
@@ -2303,6 +2310,10 @@ void setup() {
   delay(150);
   Serial.println("stm32-bluepill bringup: boot");
   SerialDbg.println("stm32-bluepill bringup: boot");
+  if (PIN_FAULT_CRITICAL_SUM < 0) {
+    Serial.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
+    SerialDbg.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
+  }
 
   aw95xxBootInit();
 
