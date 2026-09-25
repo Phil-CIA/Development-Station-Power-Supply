@@ -67,6 +67,6 @@ Current high-impact contract notes:
    `ISET_MPU_3V3`, and `ISET_MPU_Channel_3`.
 2. Current Rev-C fan connector (`J7`) is a 2-pin control connector and does
    not expose a dedicated tach net in this revision.
-3. `FAULT_CRITICAL_SUM` is not currently routed to an STM32 GPIO in Rev-C.
-   Firmware now disables GPIO fault monitoring for this net (`PIN_FAULT_CRITICAL_SUM = -1`)
-   until hardware exposes a dedicated MCU fault input pin.
+3. `FAULT_CRITICAL_SUM` is observed through AW9523 on Rev-C, not a direct STM32
+   GPIO net. Firmware uses AW9523 interrupt signaling (`AW9523_INT` on `PB7`)
+   with `PIN_FAULT_CRITICAL_SUM = -1` kept as disabled direct-path fallback.

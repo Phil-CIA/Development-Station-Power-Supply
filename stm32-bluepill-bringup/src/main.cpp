@@ -16,8 +16,9 @@ static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
 static const uint8_t PIN_ISET_CH3 = PA2;
 // Rev-C netlist currently does not route FAULT_CRITICAL_SUM to an STM32 GPIO.
-// Keep this disabled until hardware exposes a dedicated fault input net.
+// Fault observation on Rev-C is handled through AW9523 input + INT signaling.
 static const int8_t PIN_FAULT_CRITICAL_SUM = -1;
+static const uint8_t PIN_AW9523_INT = PB7;
 static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
 static const uint8_t PIN_FLASH_CS = PA8;
 static const uint8_t PIN_SR_LATCH = PA4;
@@ -51,6 +52,9 @@ static const uint8_t AW95XX_P03_MASK = 0x08; // P0.3: Channel 3 Hi-Range (Q5/Q11
 static const uint8_t AW95XX_P04_MASK = 0x10; // P0.4: ESP- GPIO 3V3 Low (Q4/Q10 path)
 static const uint8_t AW95XX_P00_MASK = 0x01; // P0.0: ISET_MPU_5V -> Q3 gate path
 static const uint8_t AW95XX_P05_MASK = 0x20; // P0.5: ISET_MPU_3V3 -> Q9 gate path
+static const uint8_t AW95XX_P06_MASK = 0x40; // P0.6: input line (fault path candidate)
+static const uint8_t AW95XX_P07_MASK = 0x80; // P0.7: input line (fault path candidate)
+static const uint8_t AW95XX_FAULT_SUM_INPUT_MASK = static_cast<uint8_t>(AW95XX_P06_MASK | AW95XX_P07_MASK);
 static const uint8_t AW95XX_PIN_P0_0 = 0;
 static const uint8_t AW95XX_PIN_P0_1 = 1;
 static const uint8_t AW95XX_PIN_P0_2 = 2;
@@ -147,6 +151,10 @@ struct PersistentConfigRecord {
   uint32_t crc32;
 };
 static bool g_hb_print_enabled = false;
+static volatile bool g_aw_int_pending = false;
+static bool g_fault_sum_valid = false;
+static bool g_fault_sum_active = false;
+static uint8_t g_fault_input_snapshot = 0x00;
 
 enum AwBootInitState : uint8_t {
   AW_BOOT_UNKNOWN = 0,
@@ -224,10 +232,19 @@ bool aw95xxEnsureDriver();
 void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_high);
 void aw95xxBootInit();
 const char* awBootStateString();
+bool is3v3PathEnabled();
+bool isFaultCriticalActive();
+void onAw9523Interrupt();
+void serviceAw9523FaultPath();
+bool sampleFaultSumFromAw9523();
 
 void logBoth(const char* msg) {
   Serial.println(msg);
   SerialDbg.println(msg);
+}
+
+void onAw9523Interrupt() {
+  g_aw_int_pending = true;
 }
 
 void formatAhtValues(const Aht20Sample& sample,
@@ -295,8 +312,8 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 }
 
 void printCommandHelp() {
-  logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE | AWPROBE | AWHB | AWP10ON | AWP10OFF");
-  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:GET OUTPUT | CMD:GET ILIM <CH1|CH2>");
+  logBoth("cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
+  logBoth("udi: CMD:OUTPUT|ILIM|GET OUTPUT|GET ILIM|GET STATE");
 }
 
 bool i2cPing(uint8_t address) {
@@ -523,7 +540,7 @@ void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_hig
   char msg[176];
   snprintf(msg,
            sizeof(msg),
-           "aw95xx diag %s: want=%u out=%u in=%u dir=%s (p0_out=0x%02X p0_in=0x%02X cfg0=0x%02X)",
+           "awdiag %s want=%u out=%u in=%u dir=%s o=0x%02X i=0x%02X c=0x%02X",
            tag,
            want,
            out_bit,
@@ -540,7 +557,7 @@ void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_hig
   }
 
   if ((out_bit == want) && (in_bit != want)) {
-    logBoth("aw95xx diag: output register matches command, but input latch disagrees (possible external pull/load)");
+    logBoth("awdiag: out/in mismatch (check pull/load)");
   }
 }
 
@@ -633,9 +650,9 @@ void aw95xxPrintModeRegs() {
   char msg[192];
   snprintf(msg,
            sizeof(msg),
-           "aw95xx mode: GCR=0x%02X (port=%s) CFG_P0=0x%02X CFG_P1=0x%02X LEDMODE_P0=0x%02X LEDMODE_P1=0x%02X (1=GPIO)",
+           "awmode gcr=0x%02X(%s) c0=0x%02X c1=0x%02X m0=0x%02X m1=0x%02X",
            static_cast<unsigned>(gcr),
-           (gcr & AW95XX_GCR_PORT_MODE_BIT) ? "push-pull" : "open-drain",
+           (gcr & AW95XX_GCR_PORT_MODE_BIT) ? "pp" : "od",
            static_cast<unsigned>(cfg_p0),
            static_cast<unsigned>(cfg_p1),
            static_cast<unsigned>(mode_p0),
@@ -763,7 +780,7 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
              in_v,
              in_i);
     logBoth(msg_3v3);
-    logBoth("rail note: 0x41 CH3 is the incoming rail monitor; switched shunt currents remain hardware-limited on this rev.");
+    logBoth("rail note: 0x41 CH3 is incoming rail monitor on this rev.");
   } else {
     logBoth("rail 3V3: INA 0x41 unavailable");
   }
@@ -824,6 +841,19 @@ void handleUdiCommandLine(const String& line_in) {
 
   if (cmd == "GET OUTPUT") {
     sendUdiAck(g_output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+    return;
+  }
+
+  if (cmd == "GET STATE") {
+    char ack_msg[120];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "STATE O=%s D9=%s CH2=%s F=%s",
+             g_output_enabled ? "ON" : "OFF",
+             (g_config.d9_path_enabled != 0) ? "ON" : "OFF",
+             is3v3PathEnabled() ? "ON" : "OFF",
+             isFaultCriticalActive() ? "TRIP" : "OK");
+    sendUdiAck(ack_msg);
     return;
   }
 
@@ -1148,7 +1178,7 @@ void handleCommand(const String& cmd_in) {
     float i_gain = 1.0f;
     float i_off_mA = 0.0f;
     if (sscanf(cmd.c_str(), "CALSET %7s %f %f %f %f", rail_token, &v_gain, &v_off_mV, &i_gain, &i_off_mA) != 5) {
-      logBoth("[CFG] Usage: CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
+      logBoth("[CFG] CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
       return;
     }
 
@@ -1537,7 +1567,7 @@ void setQ3OnlyEnabled(bool enabled) {
     return;
   }
 
-  logBoth("range: Q3-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  logBoth("range: Q3-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
@@ -1565,7 +1595,7 @@ void setQ9OnlyEnabled(bool enabled) {
     return;
   }
 
-  logBoth("range: Q9-only requested but aw95xx unavailable; using combined Q3/Q9 fallback");
+  logBoth("range: Q9-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
@@ -1729,41 +1759,19 @@ void printRangePairStates() {
     const unsigned q4_q10 = static_cast<unsigned>((p0_out & AW95XX_P04_MASK) != 0);
     const unsigned q39_q9 = static_cast<unsigned>((p0_out & AW95XX_P05_MASK) != 0);
     const unsigned q612 = static_cast<unsigned>((p0_out & AW95XX_P01_MASK) != 0);
-    const unsigned q39_q3_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P00_MASK) == 0);
-    const unsigned q2_q8_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P01_MASK) == 0);
-    const unsigned q1_q7_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P02_MASK) == 0);
-    const unsigned q5_q11_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P03_MASK) == 0);
-    const unsigned q4_q10_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P04_MASK) == 0);
-    const unsigned q39_q9_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P05_MASK) == 0);
-    const unsigned q612_is_out = static_cast<unsigned>((p0_cfg & AW95XX_P01_MASK) == 0);
-
     char msg[320];
     snprintf(msg,
              sizeof(msg),
-       "range: aw95xx p0=0x%02X cfg0=0x%02X | Q1/Q7 P0.2=%u(%s,%s) | Q2/Q8 P0.1=%u(%s,%s) | Q3 P0.0=%u(%s,%s) | Q4/Q10 P0.4=%u(%s,%s) | Q5/Q11 P0.3=%u(%s,%s) | Q9 P0.5=%u(%s,%s) | Q6/Q12 P0.1=%u(%s,%s)",
+             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q612=%u",
              static_cast<unsigned>(p0_out),
              static_cast<unsigned>(p0_cfg),
-       q1_q7,
-       q1_q7 ? "ON" : "OFF",
-       q1_q7_is_out ? "OUT" : "IN",
-       q2_q8,
-       q2_q8 ? "ON" : "OFF",
-       q2_q8_is_out ? "OUT" : "IN",
-         q39_q3,
-         q39_q3 ? "ON" : "OFF",
-         q39_q3_is_out ? "OUT" : "IN",
-       q4_q10,
-       q4_q10 ? "ON" : "OFF",
-       q4_q10_is_out ? "OUT" : "IN",
-       q5_q11,
-       q5_q11 ? "ON" : "OFF",
-       q5_q11_is_out ? "OUT" : "IN",
-         q39_q9,
-         q39_q9 ? "ON" : "OFF",
-         q39_q9_is_out ? "OUT" : "IN",
-             q612,
-             q612 ? "ON" : "OFF",
-             q612_is_out ? "OUT" : "IN");
+             q1_q7,
+             q2_q8,
+             q39_q3,
+             q4_q10,
+             q5_q11,
+             q39_q9,
+             q612);
     logBoth(msg);
     return;
   }
@@ -1773,14 +1781,12 @@ void printRangePairStates() {
   const unsigned q612_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_ADJ_LO) & 0x1u);
   snprintf(msg,
            sizeof(msg),
-           "range: aw95xx unavailable, SR fallback sr=0x%04X | Q3/Q9 bit%u=%u(%s) | Q6/Q12 bit%u=%u(%s)",
+           "range: SR fallback sr=0x%04X Q39(b%u)=%u Q612(b%u)=%u",
            static_cast<unsigned>(g_sr_state),
            static_cast<unsigned>(SR_BIT_3V3_HI),
            q39_bit,
-           q39_bit == 0 ? "ON" : "OFF",
            static_cast<unsigned>(SR_BIT_ADJ_LO),
-           q612_bit,
-           q612_bit == 0 ? "ON" : "OFF");
+           q612_bit);
   logBoth(msg);
 }
 
@@ -1868,7 +1874,7 @@ void logHealthSummary() {
     formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aw=%s aht=%s Vin=%sV Iin=%smA T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             "st f=%s aw=%s aht=%s Vin=%s Iin=%s T=%ld.%02ld RH=%ld.%02ld n=%lu",
              flash_test_passed ? "PASS" : "HOLD",
              awBootStateString(),
              "PASS",
@@ -1884,7 +1890,7 @@ void logHealthSummary() {
     formatAhtValues(g_aht20, t_whole, t_frac, h_whole, h_frac);
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aw=%s aht=%s T=%ld.%02ldC RH=%ld.%02ld%% runs=%lu",
+             "st f=%s aw=%s aht=%s T=%ld.%02ld RH=%ld.%02ld n=%lu",
              flash_test_passed ? "PASS" : "HOLD",
              awBootStateString(),
              "PASS",
@@ -1899,7 +1905,7 @@ void logHealthSummary() {
     formatCurrentValue(g_incoming_rail.current_mA, iin, sizeof(iin));
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aw=%s aht=HOLD Vin=%sV Iin=%smA runs=%lu",
+             "st f=%s aw=%s aht=HOLD Vin=%s Iin=%s n=%lu",
              flash_test_passed ? "PASS" : "HOLD",
              awBootStateString(),
              vin,
@@ -1908,7 +1914,7 @@ void logHealthSummary() {
   } else {
     snprintf(msg,
              sizeof(msg),
-             "status: flash=%s aw=%s aht=HOLD runs=%lu",
+             "st f=%s aw=%s aht=HOLD n=%lu",
              flash_test_passed ? "PASS" : "HOLD",
              awBootStateString(),
              static_cast<unsigned long>(flash_test_runs));
@@ -2147,7 +2153,7 @@ void printPersistentConfig() {
   char msg[192];
   snprintf(msg,
            sizeof(msg),
-           "cfg: d9_default=%s 5V[vGain=%.5f vOff=%.2fmV iGain=%.5f iOff=%.2fmA] 3V3[vGain=%.5f vOff=%.2fmV iGain=%.5f iOff=%.2fmA]",
+           "cfg d9=%s 5V[vG=%.5f vO=%.2f iG=%.5f iO=%.2f] 3V3[vG=%.5f vO=%.2f iG=%.5f iO=%.2f]",
            g_config.d9_path_enabled ? "ON" : "OFF",
            g_config.rail_5v.voltage_gain,
            g_config.rail_5v.voltage_offset_mV,
@@ -2275,12 +2281,40 @@ void publishTelemetry(uint16_t v5_mV,
   SerialU3.write(frame, FRAME_SIZE);
 }
 
-bool isFaultCriticalActive() {
-  if (PIN_FAULT_CRITICAL_SUM < 0) {
+bool sampleFaultSumFromAw9523() {
+  if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
     return false;
   }
-  // Rev-C fault sum is active-low on the current comparator aggregation path.
-  return digitalRead(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM)) == LOW;
+
+  uint8_t p0_in = 0;
+  if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in)) {
+    return false;
+  }
+
+  g_fault_input_snapshot = static_cast<uint8_t>(p0_in & AW95XX_FAULT_SUM_INPUT_MASK);
+  g_fault_sum_active = (g_fault_input_snapshot != 0);
+  g_fault_sum_valid = true;
+  return true;
+}
+
+void serviceAw9523FaultPath() {
+  if (!g_aw_int_pending && digitalRead(PIN_AW9523_INT) == HIGH) {
+    return;
+  }
+
+  g_aw_int_pending = false;
+  if (!sampleFaultSumFromAw9523()) {
+    g_fault_sum_valid = false;
+    return;
+  }
+}
+
+bool isFaultCriticalActive() {
+  if (PIN_FAULT_CRITICAL_SUM >= 0) {
+    // Legacy direct-GPIO path; not expected on current Rev-C.
+    return digitalRead(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM)) == LOW;
+  }
+  return g_fault_sum_valid && g_fault_sum_active;
 }
 
 bool is3v3PathEnabled() {
@@ -2296,6 +2330,8 @@ void setup() {
   if (PIN_FAULT_CRITICAL_SUM >= 0) {
     pinMode(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM), INPUT_PULLUP);
   }
+  pinMode(PIN_AW9523_INT, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_AW9523_INT), onAw9523Interrupt, FALLING);
   digitalWrite(PIN_ISET_5V, LOW);
   digitalWrite(PIN_ISET_3V3, LOW);
   digitalWrite(PIN_ISET_CH3, LOW);
@@ -2321,12 +2357,12 @@ void setup() {
   delay(150);
   Serial.println("stm32-bluepill bringup: boot");
   SerialDbg.println("stm32-bluepill bringup: boot");
-  if (PIN_FAULT_CRITICAL_SUM < 0) {
-    Serial.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
-    SerialDbg.println("warning: FAULT_CRITICAL_SUM not routed to STM32 on current Rev-C; fault GPIO monitoring disabled");
-  }
+  Serial.println("fault path: AW9523 INT PB7");
+  SerialDbg.println("fault path: AW9523 INT PB7");
 
   aw95xxBootInit();
+  g_aw_int_pending = true;
+  serviceAw9523FaultPath();
 
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
   SerialU3.begin(115200);
@@ -2366,6 +2402,7 @@ void setup() {
 
 void loop() {
   pollCommands();
+  serviceAw9523FaultPath();
 
   static uint32_t lastMs = 0;
   static uint32_t lastSummaryMs = 0;
@@ -2450,7 +2487,7 @@ void loop() {
     const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
     const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
     const bool otp_trip = temp_C >= OTP_THRESHOLD_C;
-    const bool ocp_observable = (PIN_FAULT_CRITICAL_SUM >= 0);
+    const bool ocp_observable = (PIN_FAULT_CRITICAL_SUM >= 0) || g_fault_sum_valid;
     const bool ocp_sum_trip = ocp_observable && isFaultCriticalActive();
 
     uint8_t status = 0x00;
