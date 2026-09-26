@@ -154,23 +154,87 @@ Expected baseline rule:
 
 | Step ID | Verdict (Pass/Fail/Blocked) | Evidence reference | Notes |
 |---|---|---|---|
-| B3-S0 |  |  |  |
-| B3-S1 |  |  |  |
-| B3-S2 |  |  |  |
-| B3-S3 |  |  |  |
-| B3-S4 |  |  |  |
-| B3-S5 |  |  |  |
-| B3-S6 |  |  |  |
-| B3-S7 |  |  |  |
+| B3-S0 | Pass | 2026-09-26 run header below + branch/worktree verification | Context lock captured: Rev-C serial path on COM7, branch `phil-cia-bucket-3-execution`, commit `afa2410`. |
+| B3-S1 | Pass (code-map freeze) | Firmware refs listed in "Bench evidence run (2026-09-26)" | Bit ownership boundaries are mapped from current source; no bench assert/clear claimed here. |
+| B3-S2 | Blocked | Baseline command transcript below | OVP assert/clear induction not executed in this pass; no threshold crossing evidence captured. |
+| B3-S3 | Blocked | `AHTNOW` sample only (`aht20: T=27.02C RH=48.93% status=0x18`) | Thermal warn threshold crossing was not induced; no assert/clear evidence. |
+| B3-S4 | Blocked | `AHTNOW` sample only (`aht20: T=27.02C RH=48.93% status=0x18`) | OTP threshold crossing was not induced; no assert/clear evidence. |
+| B3-S5 | Blocked | COM12 monitor had no `EVT:FAULT TRIP/CLEAR`; COM7 image rejected runbook UDI state commands | Shared fault-summary trip/clear not observed in logs during this pass. |
+| B3-S6 | Pass (policy evidence) | Source refs in "Bench evidence run (2026-09-26)" (`PIN_FAULT_CRITICAL_SUM = -1`, `fault path: AW9523 INT PB7`) | Unavailable direct GPIO source is explicitly disabled/not claimed; no fabricated direct source evidence found in current code mapping. |
+| B3-S7 | Pass with bounded claim | Proven/not-proven report below | Claim separation maintained: only context/code-map policy proven; fault assert/clear classes remain not proven. |
+
+## Bench evidence run (2026-09-26, runbook compatibility gap)
+
+Run context:
+
+- Date/time: 2026-09-26 (live bench session)
+- Hardware revision: Rev-C (operator context)
+- Branch/worktree: `phil-cia-bucket-3-execution` at `afa2410`
+- Serial paths used: COM7 (STM32 CLI/log), COM12 (display-link UART monitor)
+- Operator: Copilot App
+- Induced-fault method: not executed in this pass (compatibility gate)
+
+Branch/worktree verification captured:
+
+```text
+git branch --show-current
+phil-cia-bucket-3-execution
+
+git log --oneline -n 5
+afa2410 (HEAD -> phil-cia-bucket-3-execution) Add Bucket 3 bench runbook
+5d9dbcc Add Bucket 3 fault scope doc
+6886a8d (origin/main, origin/HEAD, main) inital save filled out
+...
+```
+
+Runbook baseline command transcript (COM7):
+
+```text
+HELP
+cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*/SIMFAIL*
+udi: CMD:OUTPUT|ILIM|GET*
+
+DIAG
+cmd: unknown 'DIAG'
+
+INANOW
+ina 5V 0x40: CH1 4.000V 1.00mA | CH2 4.000V 0.60mA | CH3 0.000V 0.00mA
+ina 3V3 0x41: CH1 0.000V 0.00mA | CH2 0.000V 0.00mA | CH3 11.456V 102.22mA
+
+AHTNOW
+aht20: T=27.02C RH=48.93% status=0x18
+
+CFGSHOW
+cfg d9=OFF 5V[   ] 3V3[   ]
+
+CMD:GET STATE
+cmd: unknown 'CMD:GET STATE'
+udi: CMD:OUTPUT|ILIM|GET*
+
+GET STATE
+cmd: unknown 'GET STATE'
+```
+
+Display-link UART capture status (COM12):
+
+- Monitor opened successfully at 115200.
+- No `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` observed in this run.
+
+Firmware ownership/policy mapping refs used for B3-S1/B3-S6:
+
+- `stm32-bluepill-bringup/src/main.cpp`: direct fault GPIO intentionally unavailable (`PIN_FAULT_CRITICAL_SUM = -1`).
+- `stm32-bluepill-bringup/src/main.cpp`: startup path prints `fault path: AW9523 INT PB7`.
+- `stm32-bluepill-bringup/src/main.cpp`: shared OCP summary mirrors to both OCP bits when observable.
+- `stm32-bluepill-bringup/src/main.cpp`: thermal warn/OTP and OVP bits are runtime-derived before telemetry publish.
 
 ## Claim-separation checklist
 
-- [ ] Every claimed bit maps to a routed signal path or explicit derived runtime rule.
+- [x] Every claimed bit maps to a routed signal path or explicit derived runtime rule.
 - [ ] No claim relies on unrouted or speculative nets.
-- [ ] Shared-fault-only paths are reported as shared, not per-channel attributed.
+- [x] Shared-fault-only paths are reported as shared, not per-channel attributed.
 - [ ] Assert and clear are both evidenced for each claimed fault class.
-- [ ] Missing evidence is listed under not proven (not silently omitted).
-- [ ] Confidence statement references concrete next evidence to collect.
+- [x] Missing evidence is listed under not proven (not silently omitted).
+- [x] Confidence statement references concrete next evidence to collect.
 
 ## Reporting template (required)
 
@@ -180,23 +244,33 @@ Use this block in PR descriptions touching Bucket 3 behavior:
 Bucket: Bucket 3 (Fault handling based on actual routed signals)
 
 Proven:
-- 
+- Branch/worktree and doc scope lock for `phil-cia-bucket-3-execution` (`afa2410`, `5d9dbcc`) verified during live bench session.
+- Code-level ownership map freeze completed against current firmware: fault source path is AW9523 interrupt based (`fault path: AW9523 INT PB7`), with direct `FAULT_CRITICAL_SUM` GPIO path intentionally unavailable (`PIN_FAULT_CRITICAL_SUM = -1`).
+- Claim separation maintained for this pass: no per-channel OCP attribution claim beyond shared summary behavior.
 
 Not proven:
-- 
+- B3-S2 OVP assert/clear transitions above/below threshold.
+- B3-S3 thermal warn assert/clear threshold crossing.
+- B3-S4 OTP assert/clear threshold crossing.
+- B3-S5 shared fault-summary trip/clear with required `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` capture.
+- Runbook command compatibility on active COM7 image (`DIAG` and `CMD:GET STATE` were rejected as unknown in this pass).
 
 Confidence uplift path (next evidence to close gaps):
-- 
+- Flash/boot the exact STM32 image that includes runbook baseline commands (`DIAG`, `CMD:GET STATE` handling) and confirm startup line `fault path: AW9523 INT PB7` in the captured boot log.
+- Re-run B3-S2 with controlled OVP threshold crossing and attach paired assert/clear timestamps plus capture reference.
+- Re-run B3-S3 and B3-S4 with controlled temperature ramps across warn/OTP thresholds and attach assert/clear logs plus temperature evidence.
+- Re-run B3-S5 with induced shared fault-summary trip/clear and attach UDI log lines containing both `EVT:FAULT TRIP` and `EVT:FAULT CLEAR`.
+- Keep all unresolved rows explicitly marked Not proven until the above artifacts are attached.
 
 Bench worksheet summary:
-- B3-S0:
-- B3-S1:
-- B3-S2:
-- B3-S3:
-- B3-S4:
-- B3-S5:
-- B3-S6:
-- B3-S7:
+- B3-S0: Pass (context lock complete).
+- B3-S1: Pass (code-map freeze complete).
+- B3-S2: Blocked (no OVP induced transition evidence).
+- B3-S3: Blocked (no thermal warn threshold crossing evidence).
+- B3-S4: Blocked (no OTP threshold crossing evidence).
+- B3-S5: Blocked (no `EVT:FAULT TRIP/CLEAR` evidence captured).
+- B3-S6: Pass (unavailable-source policy validated in code mapping).
+- B3-S7: Pass with bounded claim (strict proven/not-proven separation applied).
 
 Bench-tested on real hardware: true/false
 If false, reason:
