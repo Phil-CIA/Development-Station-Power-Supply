@@ -62,7 +62,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Out of scope now | New rail architecture redesign and unrelated regulator-board feature expansion. |
 | Exit criteria | 1) Power-on defaults leave outputs in safe inactive state until firmware enables paths. 2) Rail enable/disable commands act on intended rail only. 3) Bench checks confirm expected gate/control transitions per rail. |
 | Required evidence | Bench procedure + observed results attached in PR (scope captures, logs, or measured rail state table). |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference behavior), Rev-C HAT netlist |
+| Base artifacts | `docs/firmware-buckets/bucket-2-rail-control-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference behavior), Rev-C HAT netlist |
 
 ### Bucket 3: Fault handling based on actual routed signals
 
