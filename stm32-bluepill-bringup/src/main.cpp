@@ -150,6 +150,18 @@ struct PersistentConfigRecord {
   PersistentConfigPayload payload;
   uint32_t crc32;
 };
+
+enum ConfigRecoveryReason : uint8_t {
+  CFGREC_UNKNOWN = 0,
+  CFGREC_OK = 1,
+  CFGREC_FLASH = 2,
+  CFGREC_NOSIG = 3,
+  CFGREC_VER = 4,
+  CFGREC_LEN = 5,
+  CFGREC_CRC = 6,
+  CFGREC_GAIN = 7
+};
+
 static bool g_hb_print_enabled = false;
 static volatile bool g_aw_int_pending = false;
 static bool g_fault_sum_valid = false;
@@ -157,6 +169,9 @@ static bool g_fault_sum_active = false;
 static bool g_fault_evt_valid = false;
 static bool g_fault_evt_active = false;
 static uint8_t g_fault_input_snapshot = 0x00;
+static ConfigRecoveryReason g_cfg_recovery_reason = CFGREC_UNKNOWN;
+static bool g_cfg_recovery_defaults = false;
+static bool g_cfg_recovery_saved = false;
 
 enum AwBootInitState : uint8_t {
   AW_BOOT_UNKNOWN = 0,
@@ -211,6 +226,8 @@ void resetPersistentConfigDefaults();
 bool savePersistentConfig(bool verbose);
 bool loadPersistentConfig(bool verbose);
 bool erasePersistentConfig(bool verbose);
+char configRecoveryReasonCode(ConfigRecoveryReason reason);
+void initPersistentConfigAtBoot();
 void printPersistentConfig();
 void pollUdiCommands();
 void setRangePairEnabled(uint8_t bit, const char* label, bool enabled);
@@ -809,7 +826,7 @@ void handleUdiCommandLine(const String& line_in) {
   if (line.length() == 0) return;
 
   if (!line.startsWith("CMD:")) {
-    sendUdiErr("FORMAT expected CMD:<command>");
+    sendUdiErr("FORMAT need CMD:");
     return;
   }
 
@@ -817,7 +834,7 @@ void handleUdiCommandLine(const String& line_in) {
   cmd.trim();
   cmd.toUpperCase();
   if (cmd.length() == 0) {
-    sendUdiErr("FORMAT empty command");
+    sendUdiErr("FORMAT empty CMD");
     return;
   }
 
@@ -863,6 +880,18 @@ void handleUdiCommandLine(const String& line_in) {
     return;
   }
 
+  if (cmd == "GET CFGREC") {
+    char ack_msg[48];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "CFGREC R=%c D=%u S=%u",
+             configRecoveryReasonCode(g_cfg_recovery_reason),
+             g_cfg_recovery_defaults ? 1u : 0u,
+             g_cfg_recovery_saved ? 1u : 0u);
+    sendUdiAck(ack_msg);
+    return;
+  }
+
   if (cmd == "GET ILIM CH1") {
     char ack_msg[40];
     snprintf(ack_msg,
@@ -887,7 +916,7 @@ void handleUdiCommandLine(const String& line_in) {
   int limit_mA = -1;
   if (sscanf(cmd.c_str(), "ILIM %7s %d", channel_token, &limit_mA) == 2) {
     if (limit_mA < 0) {
-      sendUdiErr("ILIM mA must be >= 0");
+      sendUdiErr("ILIM mA >=0");
       return;
     }
 
@@ -903,7 +932,7 @@ void handleUdiCommandLine(const String& line_in) {
       min_mA = UDI_CH2_LIMIT_MIN_MA;
       max_mA = UDI_CH2_LIMIT_MAX_MA;
     } else {
-      sendUdiErr("ILIM channel must be CH1 or CH2");
+      sendUdiErr("ILIM ch CH1|CH2");
       return;
     }
 
@@ -939,7 +968,7 @@ void handleUdiCommandLine(const String& line_in) {
     return;
   }
 
-  sendUdiErr("UNKNOWN unsupported CMD");
+  sendUdiErr("UNKNOWN CMD");
 }
 
 void handleCommand(const String& cmd_in) {
@@ -1184,16 +1213,16 @@ void handleCommand(const String& cmd_in) {
     float i_gain = 1.0f;
     float i_off_mA = 0.0f;
     if (sscanf(cmd.c_str(), "CALSET %7s %f %f %f %f", rail_token, &v_gain, &v_off_mV, &i_gain, &i_off_mA) != 5) {
-      logBoth("[CFG] CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA>");
+      logBoth("[CFG] CALSET 5V|3V3 vg vo ig io");
       return;
     }
 
     if (v_gain <= 0.0f || i_gain <= 0.0f) {
-      logBoth("[CFG] CALSET rejected: gains must be > 0");
+      logBoth("[CFG] CALSET gain<=0");
       return;
     }
     if (v_off_mV < -10000.0f || v_off_mV > 10000.0f || i_off_mA < -50000.0f || i_off_mA > 50000.0f) {
-      logBoth("[CFG] CALSET rejected: offsets out of safe range");
+      logBoth("[CFG] CALSET offset range");
       return;
     }
 
@@ -1203,7 +1232,7 @@ void handleCommand(const String& cmd_in) {
     } else if (strcmp(rail_token, "3V3") == 0) {
       target = &g_config.rail_3v3;
     } else {
-      logBoth("[CFG] CALSET rejected: rail must be 5V or 3V3");
+      logBoth("[CFG] CALSET rail 5V|3V3");
       return;
     }
 
@@ -2043,7 +2072,7 @@ void resetPersistentConfigDefaults() {
 bool savePersistentConfig(bool verbose) {
   if (!flash_test_passed) {
     if (verbose) {
-      logBoth("[CFG] Save skipped: flash bring-up test not passing");
+      logBoth("[CFG] save skip: flash bad");
     }
     return false;
   }
@@ -2058,14 +2087,14 @@ bool savePersistentConfig(bool verbose) {
   flashSectorErase4K(FLASH_CFG_ADDR);
   if (!flashWaitReady(4000)) {
     if (verbose) {
-      logBoth("[CFG] Save failed: erase timeout");
+      logBoth("[CFG] save fail: erase tmo");
     }
     return false;
   }
 
   if (!flashWriteData(FLASH_CFG_ADDR, reinterpret_cast<const uint8_t*>(&record), sizeof(record))) {
     if (verbose) {
-      logBoth("[CFG] Save failed: write timeout");
+      logBoth("[CFG] save fail: write tmo");
     }
     return false;
   }
@@ -2076,10 +2105,33 @@ bool savePersistentConfig(bool verbose) {
   return true;
 }
 
+char configRecoveryReasonCode(ConfigRecoveryReason reason) {
+  switch (reason) {
+    case CFGREC_OK:
+      return 'O';
+    case CFGREC_FLASH:
+      return 'F';
+    case CFGREC_NOSIG:
+      return 'N';
+    case CFGREC_VER:
+      return 'V';
+    case CFGREC_LEN:
+      return 'L';
+    case CFGREC_CRC:
+      return 'C';
+    case CFGREC_GAIN:
+      return 'G';
+    case CFGREC_UNKNOWN:
+    default:
+      return 'U';
+  }
+}
+
 bool loadPersistentConfig(bool verbose) {
   if (!flash_test_passed) {
+    g_cfg_recovery_reason = CFGREC_FLASH;
     if (verbose) {
-      logBoth("[CFG] Load skipped: flash bring-up test not passing");
+      logBoth("[CFG] load skip: flash bad");
     }
     return false;
   }
@@ -2088,17 +2140,19 @@ bool loadPersistentConfig(bool verbose) {
   flashReadData(FLASH_CFG_ADDR, reinterpret_cast<uint8_t*>(&record), sizeof(record));
 
   if (record.magic != FLASH_CFG_MAGIC) {
+    g_cfg_recovery_reason = CFGREC_NOSIG;
     if (verbose) {
-      logBoth("[CFG] No saved config signature");
+      logBoth("[CFG] no signature");
     }
     return false;
   }
   if (record.version != FLASH_CFG_VERSION) {
+    g_cfg_recovery_reason = CFGREC_VER;
     if (verbose) {
       char msg[96];
       snprintf(msg,
                sizeof(msg),
-               "[CFG] Version mismatch: got %u expected %u",
+               "[CFG] ver %u != %u",
                static_cast<unsigned>(record.version),
                static_cast<unsigned>(FLASH_CFG_VERSION));
       logBoth(msg);
@@ -2106,46 +2160,74 @@ bool loadPersistentConfig(bool verbose) {
     return false;
   }
   if (record.payload_len != sizeof(record.payload)) {
+    g_cfg_recovery_reason = CFGREC_LEN;
     if (verbose) {
-      logBoth("[CFG] Size mismatch");
+      logBoth("[CFG] len mismatch");
     }
     return false;
   }
 
   const uint32_t expected_crc = crc32(reinterpret_cast<const uint8_t*>(&record.payload), sizeof(record.payload));
   if (record.crc32 != expected_crc) {
+    g_cfg_recovery_reason = CFGREC_CRC;
     if (verbose) {
-      logBoth("[CFG] CRC mismatch");
+      logBoth("[CFG] crc mismatch");
     }
     return false;
   }
 
   if (record.payload.rail_5v.voltage_gain <= 0.0f || record.payload.rail_3v3.voltage_gain <= 0.0f ||
       record.payload.rail_5v.current_gain <= 0.0f || record.payload.rail_3v3.current_gain <= 0.0f) {
+    g_cfg_recovery_reason = CFGREC_GAIN;
     if (verbose) {
-      logBoth("[CFG] Invalid gain values");
+      logBoth("[CFG] gain invalid");
     }
     return false;
   }
 
   g_config = record.payload;
+  g_cfg_recovery_reason = CFGREC_OK;
   if (verbose) {
     logBoth("[CFG] Loaded");
   }
   return true;
 }
 
+void initPersistentConfigAtBoot() {
+  resetPersistentConfigDefaults();
+  g_cfg_recovery_reason = CFGREC_UNKNOWN;
+  g_cfg_recovery_defaults = false;
+  g_cfg_recovery_saved = false;
+
+  if (!flash_test_passed) {
+    g_cfg_recovery_reason = CFGREC_FLASH;
+    logBoth("[CFG] flash bad; defaults");
+  } else if (!loadPersistentConfig(true)) {
+    g_cfg_recovery_defaults = true;
+    g_cfg_recovery_saved = savePersistentConfig(true);
+  }
+
+  char msg[56];
+  snprintf(msg,
+           sizeof(msg),
+           "[CFG] REC r=%c d=%u s=%u",
+           configRecoveryReasonCode(g_cfg_recovery_reason),
+           g_cfg_recovery_defaults ? 1u : 0u,
+           g_cfg_recovery_saved ? 1u : 0u);
+  logBoth(msg);
+}
+
 bool erasePersistentConfig(bool verbose) {
   if (!flash_test_passed) {
     if (verbose) {
-      logBoth("[CFG] Erase skipped: flash bring-up test not passing");
+      logBoth("[CFG] erase skip: flash bad");
     }
     return false;
   }
   flashSectorErase4K(FLASH_CFG_ADDR);
   if (!flashWaitReady(4000)) {
     if (verbose) {
-      logBoth("[CFG] Erase timeout");
+      logBoth("[CFG] erase tmo");
     }
     return false;
   }
@@ -2381,17 +2463,10 @@ void setup() {
   SerialU3.println("stm32-bluepill usart3: ready");
   SerialDbg.println("stm32-bluepill usart3: ready");
 
-  resetPersistentConfigDefaults();
   printCommandHelp();
   flash_test_passed = runFlashBringupTest();
   flash_test_runs = 1;
-  if (flash_test_passed) {
-    if (!loadPersistentConfig(true)) {
-      savePersistentConfig(true);
-    }
-  } else {
-    logBoth("[CFG] Flash unhealthy; volatile defaults");
-  }
+  initPersistentConfigAtBoot();
   setD9PathEnabled(g_config.d9_path_enabled != 0);
   g_output_enabled = (g_config.d9_path_enabled != 0);
   printPersistentConfig();
