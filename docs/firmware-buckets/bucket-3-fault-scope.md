@@ -227,6 +227,44 @@ Firmware ownership/policy mapping refs used for B3-S1/B3-S6:
 - `stm32-bluepill-bringup/src/main.cpp`: shared OCP summary mirrors to both OCP bits when observable.
 - `stm32-bluepill-bringup/src/main.cpp`: thermal warn/OTP and OVP bits are runtime-derived before telemetry publish.
 
+### B3-S5 follow-up attempt (2026-09-26, targeted)
+
+Objective:
+
+- Close B3-S5 by capturing shared fault-summary trip/clear with display-link
+  `EVT:FAULT TRIP` and `EVT:FAULT CLEAR`.
+
+What was executed:
+
+```text
+COM7 monitor opened @115200
+COM12 monitor opened @115200
+
+COM7> HELP
+cmd: HELP/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*/SIMFAIL*
+
+COM7> SIMFAIL
+cmd: unknown 'SIMFAIL'
+
+COM7> SIMFAIL ON
+simfail: usage SIMFAIL <AHT|INA|FLASH|ALL> <ON|OFF>
+
+COM7> SIMFAIL OFF
+simfail: usage SIMFAIL <AHT|INA|FLASH|ALL> <ON|OFF>
+```
+
+Observed result:
+
+- Active image exposes only simulated subsystem failure controls
+  (`AHT|INA|FLASH|ALL`), not a fault-summary trip/clear injection command.
+- COM12 capture still contained no `EVT:FAULT TRIP` / `EVT:FAULT CLEAR`.
+
+Disposition update:
+
+- B3-S5 remains **Blocked** for this run because no valid induced shared-fault
+  transition was available through the exposed command set, and no physical
+  induced trip/clear sequence was executed in this session.
+
 ## Claim-separation checklist
 
 - [x] Every claimed bit maps to a routed signal path or explicit derived runtime rule.
@@ -257,9 +295,11 @@ Not proven:
 
 Confidence uplift path (next evidence to close gaps):
 - Flash/boot the exact STM32 image that includes runbook baseline commands (`DIAG`, `CMD:GET STATE` handling) and confirm startup line `fault path: AW9523 INT PB7` in the captured boot log.
+- Resolve the current `stm32-bluepill-bringup` compile blocker (`Uart` type not resolving under the active framework headers) so the branch source can be flashed as-built before next B3-S5 pass.
 - Re-run B3-S2 with controlled OVP threshold crossing and attach paired assert/clear timestamps plus capture reference.
 - Re-run B3-S3 and B3-S4 with controlled temperature ramps across warn/OTP thresholds and attach assert/clear logs plus temperature evidence.
 - Re-run B3-S5 with induced shared fault-summary trip/clear and attach UDI log lines containing both `EVT:FAULT TRIP` and `EVT:FAULT CLEAR`.
+- If synthetic trigger support remains limited to `SIMFAIL <AHT|INA|FLASH|ALL>`, execute a physical shared-fault induction method and capture both COM7 context and COM12 EVT transitions in the same time window.
 - Keep all unresolved rows explicitly marked Not proven until the above artifacts are attached.
 
 Bench worksheet summary:
