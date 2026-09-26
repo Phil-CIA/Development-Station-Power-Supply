@@ -9,6 +9,27 @@ This was built by reading the actual firmware source in all four targets
 (not just the design docs), so the status column reflects what the code
 does today, not what a doc says it should do.
 
+## Firmware scope buckets (Rev-C aligned)
+
+This section is the control surface for firmware scope. Issues and PRs are
+implementation artifacts under these buckets; they do not define scope on
+their own.
+
+- Pin/net contract conformance
+- Rail control behavior (5V / 3V3 / CH3)
+- Fault handling based on actual routed signals
+- Telemetry and display-link contract
+- Config/persistence/calibration
+- Bring-up diagnostics and recovery paths
+
+For every bucket, keep all four fields explicit:
+- **In scope now**
+- **Out of scope / blocked by hardware**
+- **Exit criteria** (bench-measurable outcomes, not code task completion)
+- **Evidence required** (logs, captures, and bench test steps)
+
+This closes the gap between "tickets closed" and "current hardware proven."
+
 ## The four firmware targets
 
 | Target | Path | MCU | Role |
@@ -43,7 +64,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Required evidence | Bench procedure + observed results attached in PR (scope captures, logs, or measured rail state table). |
 | Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference behavior), Rev-C HAT netlist |
 
-### Bucket 3: Fault and protection reporting (routed-signal reality)
+### Bucket 3: Fault handling based on actual routed signals
 
 | Item | Definition |
 |---|---|
@@ -53,7 +74,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Required evidence | Bit-level mapping table in PR description + validation log excerpt showing asserted and cleared states. |
 | Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md` feature table, `docs/STM32_BLUEPILL_PIN_TABLE.md` |
 
-### Bucket 4: Telemetry + display-link contract
+### Bucket 4: Telemetry and display-link contract
 
 | Item | Definition |
 |---|---|
@@ -63,7 +84,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Required evidence | Host/display serial logs for at least one successful command round-trip and one error case; UI behavior notes. |
 | Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `crowpanel-43-bringup/src/disp_link_slave.*`, `crowpanel-43-bringup/src/main.cpp`, `docs/DISPLAY_INTERFACE_STANDARD.md` |
 
-### Bucket 5: Persistent config and calibration
+### Bucket 5: Config/persistence/calibration
 
 | Item | Definition |
 |---|---|
@@ -73,7 +94,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Required evidence | Before/after persistence logs and one intentional invalid-config recovery run. |
 | Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference), W25Q128 handling paths |
 
-### Bucket 6: Bring-up diagnostics and recovery
+### Bucket 6: Bring-up diagnostics and recovery paths
 
 | Item | Definition |
 |---|---|
@@ -95,6 +116,48 @@ This is the standard process for future firmware work in this repo:
    changes.
 5. If hardware routing changes, update `docs/STM32_BLUEPILL_PIN_TABLE.md`
    before merging firmware behavior that depends on those new routes.
+
+## Known issue mapping (bucket-owned implementation artifacts)
+
+Map every known issue to a primary bucket before execution. If an issue spans
+multiple buckets, keep one primary owner bucket and list the dependency in the
+PR description.
+
+| Issue | Primary bucket | Scope disposition |
+|---|---|---|
+| #30 Reconcile full STM32 pin contract across hardware, firmware, and docs | Bucket 1 | In scope now |
+| #29 Reconcile fan pin mapping across schematic, docs, and firmware plan | Bucket 1 | In scope now |
+| #28 Develop the cooling controls | Bucket 2 | In scope now |
+| #37 ESP32 startup test | Bucket 6 | In scope now (bring-up evidence feed) |
+| #39 I2C startup test | Bucket 6 | In scope now (bring-up evidence feed) |
+| #14 Port/redesign current-limit modes to STM32 | Bucket 3 | In scope now |
+| #31 Milestone A fan control driver foundation | Bucket 3 | In scope now |
+| #32 Milestone B fan startup self-test | Bucket 3 | In scope now |
+| #34 Milestone D fail-safe policy + telemetry/UDI integration | Bucket 3 | In scope now |
+| #36 Fan-control milestone tracker | Bucket 3 | In scope now |
+| #26 CrowPanel display screens | Bucket 4 | In scope now |
+| #40 CrowPanel startup test | Bucket 4 | In scope now |
+| #38 SPI memory test | Bucket 5 | In scope now |
+| #27 Bootup log and testing | Bucket 6 | In scope now |
+| #33 Milestone C AHT20 fan curve | Bucket 6 | In scope now (diagnostics + validation evidence) |
+| #35 Milestone E bench fan-validation evidence capture | Bucket 6 | In scope now |
+| #25 Add OTA and Wi-Fi | Bucket 5 | Out of scope for Rev-C bench bring-up unless explicitly re-scoped |
+| #17 Milestone 4 custom panel UDI+LVGL rewrite | Bucket 4 | Out of scope now (secondary/paused path) |
+| #3 STM32 HardwareSerial compile mismatch (closed) | Bucket 1 | Regression watch: reopen/new issue if compile break reappears |
+
+## Six bucket scoping PRs (documentation-first, bench execution prep)
+
+These PRs are scoping/control PRs only. Do not mix in firmware behavior
+expansion until the scoping PR for the relevant bucket is merged.
+
+| Priority | Bucket | Planned branch | PR scope | Required artifacts in PR description |
+|---|---|---|---|---|
+| 1 | Bucket 1 | `docs/firmware-bucket-1-pin-net-scope` | Contract tables, net ownership, and unrouted-signal policy | Netlist refs + pin-table diff + explicit unrouted list |
+| 2 | Bucket 6 | `docs/firmware-bucket-6-bringup-recovery-scope` | Startup diagnostics, failure taxonomy, operator recovery expectations | Normal boot + induced-failure logs and recovery steps |
+| 3 | Bucket 4 | `docs/firmware-bucket-4-telemetry-display-scope` | Command/telemetry contract limits and evidence matrix | Host/display command round-trip logs with one error case |
+| 4 | Bucket 2 | `docs/firmware-bucket-2-rail-control-scope` | Rail enable/disable behavior boundaries and safe-state expectations | Bench state table + rail transition captures |
+| 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | Bit-source map + asserted/cleared fault evidence |
+| 6 | Bucket 5 | `docs/firmware-bucket-5-config-persistence-scope` | Persistence/calibration ownership, corruption behavior, reset semantics | Cold-boot persistence log + invalid-config recovery log |
 
 ## Feature inventory
 
