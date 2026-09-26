@@ -68,11 +68,11 @@ artifacts under a bucket, not the scope definition themselves.
 
 | Item | Definition |
 |---|---|
-| In scope now | Replace placeholder status/protection bytes with real bits only for signals that actually exist in Rev-C; explicitly mark unavailable fault sources as unavailable. |
+| In scope now | Replace placeholder status/protection bytes with real bits only for signals that actually exist in Rev-C; explicitly mark unavailable fault sources as unavailable. Scope/control artifact: `docs/firmware-buckets/bucket-3-fault-scope.md`. |
 | Out of scope now | Claiming OVP/OCP/OTP coverage not backed by routed net + firmware read path. |
 | Exit criteria | 1) `status` and `protection_flags` are computed from real runtime state (not constants). 2) Each reported fault bit maps to a documented source and polarity. 3) Unavailable signals are represented as "not observed on this revision" rather than fake values. |
-| Required evidence | Bit-level mapping table in PR description + validation log excerpt showing asserted and cleared states. |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md` feature table, `docs/STM32_BLUEPILL_PIN_TABLE.md` |
+| Required evidence | Follow `docs/firmware-buckets/bucket-3-fault-scope.md`: include bit-source map, B3-S0..B3-S7 worksheet results, and asserted/cleared proof logs/captures for every claimed fault class. |
+| Base artifacts | `docs/firmware-buckets/bucket-3-fault-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md` feature table, `docs/STM32_BLUEPILL_PIN_TABLE.md` |
 
 ### Bucket 4: Telemetry and display-link contract
 
@@ -156,7 +156,7 @@ expansion until the scoping PR for the relevant bucket is merged.
 | 2 | Bucket 6 | `docs/firmware-bucket-6-bringup-recovery-scope` | Startup diagnostics, failure taxonomy, operator recovery expectations | Normal boot + induced-failure logs and recovery steps |
 | 3 | Bucket 4 | `docs/firmware-bucket-4-telemetry-display-scope` | Command/telemetry contract limits and evidence matrix | Host/display command round-trip logs with one error case |
 | 4 | Bucket 2 | `docs/firmware-bucket-2-rail-control-scope` | Rail enable/disable behavior boundaries and safe-state expectations | Bench state table + rail transition captures |
-| 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | Bit-source map + asserted/cleared fault evidence |
+| 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | `docs/firmware-buckets/bucket-3-fault-scope.md` worksheet (B3-S0..B3-S7), bit-source map, and assert/clear evidence with claim separation |
 | 6 | Bucket 5 | `docs/firmware-bucket-5-config-persistence-scope` | Persistence/calibration ownership, corruption behavior, reset semantics | Cold-boot persistence log + invalid-config recovery log |
 
 ## Feature inventory
