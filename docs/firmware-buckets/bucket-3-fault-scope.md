@@ -90,6 +90,66 @@ Use these step IDs unchanged across runs to keep evidence comparable:
 | B3-S6 | Unavailable-source handling | Unrouted sources reported as not observed, not fabricated | Log + report | No fabricated source claims |
 | B3-S7 | Claim-separation closeout | Proven vs not-proven split consistent with evidence attached | Final report | No over-claiming |
 
+## Bench execution runbook (operator)
+
+Use this runbook to execute one Bucket 3 evidence pass with reproducible logs.
+It does not redefine pass/fail criteria; it provides the capture sequence for the
+`B3-S0..B3-S7` worksheet.
+
+### Pre-run capture setup
+
+1. Start two log captures:
+   - STM32 debug serial console (command/response log).
+   - Display-link UART capture (to record `EVT:FAULT TRIP/CLEAR`, `ACK:*`, `ERR:*`).
+2. Record run header fields before commands:
+   - Date/time, hardware revision, firmware commit SHA, operator initials,
+     board wiring notes, induced-fault method.
+3. Confirm startup path:
+   - Boot log includes `fault path: AW9523 INT PB7`.
+
+### Command baseline (before inducing any condition)
+
+Run and capture:
+
+```text
+HELP
+DIAG
+INANOW
+AHTNOW
+CFGSHOW
+```
+
+For display-link/UDI fault-state baseline, capture:
+
+```text
+CMD:GET STATE
+```
+
+Expected baseline rule:
+- Fault state may be `NA` before first valid AW9523 fault sample; do not claim
+  this as clear/assert proof. Continue after a valid sampled state is observed.
+
+### Step-oriented execution mapping
+
+| Worksheet step | Execute | Capture expectation |
+|---|---|---|
+| B3-S0 | Record run header + startup line | Full context lock is present |
+| B3-S1 | Snapshot current bit-source map from this doc + firmware refs | No asserted bit without mapping |
+| B3-S2 | Induce/remove OVP condition per bench method | Assert then clear in logs/capture |
+| B3-S3 | Raise/lower temperature across warn threshold | Warn assert then clear |
+| B3-S4 | Raise/lower temperature across OTP threshold | OTP assert then clear |
+| B3-S5 | Induce/remove shared fault-summary condition | `EVT:FAULT TRIP` then `EVT:FAULT CLEAR`; shared OCP flags transition |
+| B3-S6 | Validate unrouted-source handling | No fabricated direct GPIO fault-source claim |
+| B3-S7 | Complete proven/not-proven report | Claim separation matches attached evidence |
+
+### Minimum artifacts to attach
+
+- Debug console log text file.
+- UDI/display-link UART log showing at least one `EVT:FAULT TRIP` and one
+  `EVT:FAULT CLEAR` for any claimed B3-S5 pass.
+- Capture images/files referenced by step ID (`B3-S2`..`B3-S5` as applicable).
+- Completed pass/fail matrix with one evidence reference per row.
+
 ## Pass/fail matrix template
 
 | Step ID | Verdict (Pass/Fail/Blocked) | Evidence reference | Notes |
