@@ -265,6 +265,44 @@ Disposition update:
   transition was available through the exposed command set, and no physical
   induced trip/clear sequence was executed in this session.
 
+### B3-S5 follow-up attempt (2026-09-26, compile-unblocked rerun)
+
+Objective:
+
+- Remove STM32 image mismatch risk, then re-run B3-S5 event capture.
+
+Execution summary:
+
+```text
+1) Fixed STM32 serial declaration compatibility in stm32-bluepill-bringup/src/main.cpp
+  - switched to HardwareSerial pin-pair constructors for SerialDbg/SerialU3
+
+2) Build and upload from phil-cia-bucket-3-execution
+  - platformio run -d stm32-bluepill-bringup -e bluepill_f103c8  => SUCCESS
+  - platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload => SUCCESS
+
+3) Baseline verification after flash (COM7)
+  HELP -> cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+  DIAG -> diag:fault-awint
+
+4) Fault-path stimulation attempts (COM7)
+  AWPROBE -> aw95xx: candidate ACK at 0x58
+  AWMODE  -> aw95xx: forced GPIO + push-pull mode ...
+  Q39ON/Q39OFF toggles executed
+
+5) Display-link monitor (COM12)
+  no EVT:FAULT TRIP or EVT:FAULT CLEAR observed during this rerun
+```
+
+Disposition update:
+
+- Compile/upload blocker is closed for this branch run.
+- B3-S5 remains **Blocked** because required shared-fault trip/clear evidence
+  (`EVT:FAULT TRIP` and `EVT:FAULT CLEAR`) was still not observed on COM12 during
+  this rerun.
+- No synthetic shared-fault injection command is exposed in this flashed image;
+  physical induced-fault method remains required for closure evidence.
+
 ## Claim-separation checklist
 
 - [x] Every claimed bit maps to a routed signal path or explicit derived runtime rule.
@@ -295,7 +333,7 @@ Not proven:
 
 Confidence uplift path (next evidence to close gaps):
 - Flash/boot the exact STM32 image that includes runbook baseline commands (`DIAG`, `CMD:GET STATE` handling) and confirm startup line `fault path: AW9523 INT PB7` in the captured boot log.
-- Resolve the current `stm32-bluepill-bringup` compile blocker (`Uart` type not resolving under the active framework headers) so the branch source can be flashed as-built before next B3-S5 pass.
+ - Use the now-validated branch image (build/upload succeeded on 2026-09-26 rerun) as the baseline for next B3-S5 capture.
 - Re-run B3-S2 with controlled OVP threshold crossing and attach paired assert/clear timestamps plus capture reference.
 - Re-run B3-S3 and B3-S4 with controlled temperature ramps across warn/OTP thresholds and attach assert/clear logs plus temperature evidence.
 - Re-run B3-S5 with induced shared fault-summary trip/clear and attach UDI log lines containing both `EVT:FAULT TRIP` and `EVT:FAULT CLEAR`.

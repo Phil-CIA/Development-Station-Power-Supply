@@ -4,12 +4,9 @@
 #include <string.h>
 #include <Adafruit_AW9523.h>
 
-// NOTE: STM32duino's concrete serial class is `Uart`, not `HardwareSerial`.
-// `HardwareSerial` here is only the abstract ArduinoCore-API base class and
-// has no (rx, tx) pin-pair constructor, which is what broke this build
-// (see issue #3).
-Uart SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
-Uart SerialU3(PB11, PB10); // RX, TX (USART3)
+// Use explicit pin-pair serial constructors for STM32duino compatibility.
+HardwareSerial SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
+HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
 
 // Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
 static const uint8_t PIN_ISET_5V = PA0;
