@@ -126,8 +126,23 @@ enum class SettingsMenu : uint8_t {
   About = 2,
 };
 
+enum class SystemField : uint8_t {
+  Language = 0,
+  Brightness = 1,
+  Volume = 2,
+  Theme = 3,
+  Count = 4,
+};
+
 struct SettingsState {
   SettingsMenu selected = SettingsMenu::System;
+  SystemField system_field = SystemField::Language;
+  bool editing = false;
+  uint8_t language_index = 0;
+  uint8_t brightness_pct = 80;
+  uint8_t volume_pct = 40;
+  bool theme_dark = true;
+  uint8_t dataset_group = 1;
   char hint[128] = "Select a submenu to view and apply settings.";
 };
 
@@ -263,6 +278,9 @@ void enterSetupScreen();
 void handleSetupEncoderRotate(int8_t detents);
 void handleSetupEncoderPress();
 void handleSetupEncoderLongPress();
+void handleSettingsEncoderRotate(int8_t detents);
+void handleSettingsEncoderPress();
+void handleSettingsEncoderLongPress();
 void settings_system_btn_event_cb(lv_event_t* e);
 void settings_dataset_btn_event_cb(lv_event_t* e);
 void settings_about_btn_event_cb(lv_event_t* e);
@@ -657,6 +675,85 @@ const char* settingsMenuTitle(SettingsMenu menu) {
   }
 }
 
+const char* settingsLanguageName(uint8_t language_index) {
+  static constexpr const char* kLanguages[] = {
+    "English",
+    "Spanish",
+  };
+  const size_t idx = static_cast<size_t>(language_index) % (sizeof(kLanguages) / sizeof(kLanguages[0]));
+  return kLanguages[idx];
+}
+
+const char* settingsSystemFieldName(SystemField field) {
+  switch (field) {
+    case SystemField::Language:
+      return "Language";
+    case SystemField::Brightness:
+      return "Brightness";
+    case SystemField::Volume:
+      return "Volume";
+    case SystemField::Theme:
+      return "Theme";
+    default:
+      return "--";
+  }
+}
+
+void settingsSelectMenuDelta(int8_t delta) {
+  if (delta == 0) return;
+  const int32_t count = static_cast<int32_t>(SettingsMenu::About) + 1;
+  int32_t next = static_cast<int32_t>(settings_state.selected) + delta;
+  while (next < 0) next += count;
+  while (next >= count) next -= count;
+  settings_state.selected = static_cast<SettingsMenu>(next);
+}
+
+void settingsSelectSystemFieldDelta(int8_t delta) {
+  if (delta == 0) return;
+  const int32_t count = static_cast<int32_t>(SystemField::Count);
+  int32_t next = static_cast<int32_t>(settings_state.system_field) + delta;
+  while (next < 0) next += count;
+  while (next >= count) next -= count;
+  settings_state.system_field = static_cast<SystemField>(next);
+}
+
+void settingsAdjustSystemFieldDelta(int8_t delta) {
+  if (delta == 0) return;
+  switch (settings_state.system_field) {
+    case SystemField::Language: {
+      const uint8_t count = 2;
+      int16_t next = static_cast<int16_t>(settings_state.language_index) + delta;
+      while (next < 0) next += count;
+      while (next >= count) next -= count;
+      settings_state.language_index = static_cast<uint8_t>(next);
+      break;
+    }
+    case SystemField::Brightness: {
+      const int32_t next = clamp_i32(static_cast<int32_t>(settings_state.brightness_pct) + (delta * 5), 5, 100);
+      settings_state.brightness_pct = static_cast<uint8_t>(next);
+      break;
+    }
+    case SystemField::Volume: {
+      const int32_t next = clamp_i32(static_cast<int32_t>(settings_state.volume_pct) + (delta * 5), 0, 100);
+      settings_state.volume_pct = static_cast<uint8_t>(next);
+      break;
+    }
+    case SystemField::Theme:
+      settings_state.theme_dark = !settings_state.theme_dark;
+      break;
+    default:
+      break;
+  }
+}
+
+void settingsAdjustDatasetGroupDelta(int8_t delta) {
+  if (delta == 0) return;
+  int16_t next = static_cast<int16_t>(settings_state.dataset_group) + delta;
+  while (next < 1) next += 6;
+  while (next > 6) next -= 6;
+  settings_state.dataset_group = static_cast<uint8_t>(next);
+}
+
 void setSettingsHint(const char* hint) {
   if (hint == nullptr || hint[0] == '\0') return;
   strncpy(settings_state.hint, hint, sizeof(settings_state.hint) - 1);
@@ -684,19 +781,19 @@ void refreshSettingsMenuStyles() {
 
 void applySettingsPrimaryAction() {
   if (settings_state.selected == SettingsMenu::System) {
-    demo_mode = !demo_mode;
-    if (!demo_mode) {
-      demo_tour = false;
+    if (!settings_state.editing) {
+      settings_state.editing = true;
+      setSettingsHint("System edit enabled. Rotate to change value.");
+      return;
     } else {
-      demo_start_ms = millis();
-      demo_last_tour_switch_ms = demo_start_ms;
+      settingsAdjustSystemFieldDelta(-1);
+      setSettingsHint("System value decremented.");
     }
-    setSettingsHint(demo_mode ? "Demo mode enabled from Settings/System." : "Demo mode disabled from Settings/System.");
     return;
   }
   if (settings_state.selected == SettingsMenu::DataSet) {
-    trend_logging_enabled = !trend_logging_enabled;
-    setSettingsHint(trend_logging_enabled ? "Trend logging started." : "Trend logging paused.");
+    settingsAdjustDatasetGroupDelta(-1);
+    setSettingsHint("DataSet group decremented.");
     return;
   }
   setSettingsHint("About is read-only.");
@@ -704,16 +801,18 @@ void applySettingsPrimaryAction() {
 
 void applySettingsSecondaryAction() {
   if (settings_state.selected == SettingsMenu::System) {
-    demo_tour = !demo_tour;
-    if (demo_tour) {
-      demo_last_tour_switch_ms = millis();
+    if (settings_state.editing) {
+      settingsAdjustSystemFieldDelta(1);
+      setSettingsHint("System value incremented.");
+    } else {
+      settingsSelectSystemFieldDelta(1);
+      setSettingsHint("System field advanced.");
     }
-    setSettingsHint(demo_tour ? "Auto-tour enabled." : "Auto-tour disabled.");
     return;
   }
   if (settings_state.selected == SettingsMenu::DataSet) {
-    trendClear();
-    setSettingsHint("Trend dataset cleared.");
+    settingsAdjustDatasetGroupDelta(1);
+    setSettingsHint("DataSet group incremented.");
     return;
   }
   setSettingsHint("About is read-only.");
@@ -721,15 +820,15 @@ void applySettingsSecondaryAction() {
 
 void applySettingsRefreshAction() {
   if (settings_state.selected == SettingsMenu::System) {
-    setupRequestRefresh();
-    setSettingsHint(setup_binding.last_error[0] == '\0'
-                      ? "Requested host refresh (GET OUTPUT/ILIM)."
-                      : "Host refresh request failed: link not ready.");
+    settings_state.language_index = 0;
+    settings_state.brightness_pct = 80;
+    settings_state.volume_pct = 40;
+    settings_state.theme_dark = true;
+    setSettingsHint("System values reset to defaults.");
     return;
   }
   if (settings_state.selected == SettingsMenu::DataSet) {
-    printLogStatus();
-    setSettingsHint("Dataset status printed on USB serial console.");
+    setSettingsHint("DataSet group staged for preset usage.");
     return;
   }
   setSettingsHint("About updated from live telemetry.");
@@ -750,35 +849,37 @@ void refreshSettingsScreenLabels(bool force) {
   char body[420];
 
   if (settings_state.selected == SettingsMenu::System) {
+    const bool editing = settings_state.editing;
     snprintf(body,
              sizeof(body),
-             "Display Mode: %s\n"
-             "Auto Tour:    %s\n"
-             "Telemetry:    %s (SEQ %u)\n"
-             "I2C Board:    %s  Touch: %s\n"
-             "Host Config:  Output %s  CH1 %.3fA  CH2 %.3fA",
-             demo_mode ? "DEMO" : "LIVE",
-             demo_tour ? "ON" : "OFF",
+             "Language:   %s\n"
+             "Brightness: %u%%\n"
+             "Volume:     %u%%\n"
+             "Theme:      %s\n"
+             "Selected:   %s  (%s)\n"
+             "Telemetry:  %s (SEQ %u)",
+             settingsLanguageName(settings_state.language_index),
+             static_cast<unsigned>(settings_state.brightness_pct),
+             static_cast<unsigned>(settings_state.volume_pct),
+             settings_state.theme_dark ? "Dark" : "Light",
+             settingsSystemFieldName(settings_state.system_field),
+             editing ? "EDIT" : "VIEW",
              link_live ? "LIVE" : "STALE",
-             static_cast<unsigned>(t.last_seq),
-             i2cAddressResponds(kBoardCtrlAddr) ? "OK" : "MISS",
-             i2cAddressResponds(kTouchAddr) ? "OK" : "MISS",
-             setup_binding.output_enabled ? "ON" : "OFF",
-             setup_binding.ch1_limit_mA / 1000.0f,
-             setup_binding.ch2_limit_mA / 1000.0f);
-    lv_label_set_text(lbl_settings_action_primary, demo_mode ? "Stop Demo" : "Start Demo");
-    lv_label_set_text(lbl_settings_action_secondary, demo_tour ? "Tour Off" : "Tour On");
-    lv_label_set_text(lbl_settings_action_refresh, "Refresh Host");
+             static_cast<unsigned>(t.last_seq));
+    lv_label_set_text(lbl_settings_action_primary, editing ? "Value -" : "Edit");
+    lv_label_set_text(lbl_settings_action_secondary, editing ? "Value +" : "Next Field");
+    lv_label_set_text(lbl_settings_action_refresh, "Defaults");
   } else if (settings_state.selected == SettingsMenu::DataSet) {
     const TrendWindowStats stats = getTrendWindowStats(kChartPoints);
     snprintf(body,
              sizeof(body),
-             "Trend Logging: %s\n"
-             "Samples:       %lu / %lu\n"
-             "Latest RX:     %lu  ERR: %lu\n"
-             "Window V:      %.2f .. %.2f V\n"
-             "Window I:      %.3f .. %.3f A",
-             trend_logging_enabled ? "ON" : "PAUSED",
+             "Preset Group: M%u\n"
+             "Samples:      %lu / %lu\n"
+             "Latest RX:    %lu  ERR: %lu\n"
+             "Window V:     %.2f .. %.2f V\n"
+             "Window I:     %.3f .. %.3f A\n"
+             "Status:       %s",
+             static_cast<unsigned>(settings_state.dataset_group),
              static_cast<unsigned long>(trend_count),
              static_cast<unsigned long>(kTrendCapacity),
              static_cast<unsigned long>(t.rx_count),
@@ -786,16 +887,18 @@ void refreshSettingsScreenLabels(bool force) {
              stats.has_data ? (stats.min_v12_mV / 1000.0f) : 0.0f,
              stats.has_data ? (stats.max_v12_mV / 1000.0f) : 0.0f,
              stats.has_data ? (stats.min_i12_mA / 1000.0f) : 0.0f,
-             stats.has_data ? (stats.max_i12_mA / 1000.0f) : 0.0f);
-    lv_label_set_text(lbl_settings_action_primary, trend_logging_enabled ? "Pause Log" : "Start Log");
-    lv_label_set_text(lbl_settings_action_secondary, "Clear Data");
-    lv_label_set_text(lbl_settings_action_refresh, "Print Status");
+             stats.has_data ? (stats.max_i12_mA / 1000.0f) : 0.0f,
+             link_live ? "LINK OK" : "LINK STALE");
+    lv_label_set_text(lbl_settings_action_primary, "Group -");
+    lv_label_set_text(lbl_settings_action_secondary, "Group +");
+    lv_label_set_text(lbl_settings_action_refresh, "Apply Group");
   } else {
     const unsigned long uptime_s = static_cast<unsigned long>(now_ms / 1000UL);
     snprintf(body,
              sizeof(body),
-             "Development Station Power Supply\n"
-             "CrowPanel Firmware\n"
+             "Model: Development Station PSU\n"
+             "Display: CrowPanel 4.3\n"
+             "FW: CrowPanel Firmware\n"
              "Build: %s %s\n"
              "Uptime: %lu s\n"
              "Transport: %s",
@@ -813,7 +916,8 @@ void refreshSettingsScreenLabels(bool force) {
 
 void selectSettingsMenu(SettingsMenu menu) {
   settings_state.selected = menu;
-  setSettingsHint("Select an action button below to apply this submenu.");
+  settings_state.editing = false;
+  setSettingsHint("Rotate=menu  Press=edit/select  Long=back.");
   refreshSettingsScreenLabels(true);
 }
 
@@ -842,6 +946,59 @@ void settings_action_secondary_event_cb(lv_event_t* /*e*/) {
 void settings_action_refresh_event_cb(lv_event_t* /*e*/) {
   applySettingsRefreshAction();
   refreshSettingsScreenLabels(true);
+}
+
+void handleSettingsEncoderRotate(int8_t detents) {
+  if (detents == 0 || active_screen != UiScreen::Settings) return;
+  const int8_t direction = detents > 0 ? 1 : -1;
+  if (!settings_state.editing) {
+    settingsSelectMenuDelta(direction);
+    setSettingsHint("Settings menu changed.");
+  } else if (settings_state.selected == SettingsMenu::System) {
+    settingsAdjustSystemFieldDelta(direction);
+    setSettingsHint("System value changed.");
+  } else if (settings_state.selected == SettingsMenu::DataSet) {
+    settingsAdjustDatasetGroupDelta(direction);
+    setSettingsHint("DataSet group changed.");
+  } else {
+    setSettingsHint("About is read-only.");
+  }
+  refreshSettingsScreenLabels(true);
+}
+
+void handleSettingsEncoderPress() {
+  if (active_screen != UiScreen::Settings) return;
+  if (settings_state.selected == SettingsMenu::About) {
+    setSettingsHint("About refreshed.");
+    refreshSettingsScreenLabels(true);
+    return;
+  }
+  if (!settings_state.editing) {
+    settings_state.editing = true;
+    setSettingsHint("Edit mode enabled.");
+    refreshSettingsScreenLabels(true);
+    return;
+  }
+
+  if (settings_state.selected == SettingsMenu::System) {
+    settingsSelectSystemFieldDelta(1);
+    setSettingsHint("System field advanced.");
+  } else {
+    settings_state.editing = false;
+    setSettingsHint("DataSet selection applied.");
+  }
+  refreshSettingsScreenLabels(true);
+}
+
+void handleSettingsEncoderLongPress() {
+  if (active_screen != UiScreen::Settings) return;
+  if (settings_state.editing) {
+    settings_state.editing = false;
+    setSettingsHint("Edit mode disabled.");
+    refreshSettingsScreenLabels(true);
+    return;
+  }
+  set_active_screen(UiScreen::Main);
 }
 
 void handleSetupEncoderRotate(int8_t detents) {
@@ -2267,7 +2424,7 @@ void handleCommand(const String& rawLine) {
   line.trim();
   if (line.isEmpty()) return;
   if (line.equalsIgnoreCase("HELP")) {
-    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, SETUP_ENC <ROT <n>|PRESS|LONG>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
+    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, SETUP_ENC <ROT <n>|PRESS|LONG>, SETTINGS_ENC <ROT <n>|PRESS|LONG>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
     return;
   }
   if (line.equalsIgnoreCase("PING"))         { Serial.println("PONG"); return; }
@@ -2402,6 +2559,42 @@ void handleCommand(const String& rawLine) {
       return;
     }
     Serial.println("ERR SETUP_ENC: use ROT <n>, PRESS, or LONG");
+    return;
+  }
+  if (line.startsWith("SETTINGS_ENC") || line.startsWith("settings_enc")) {
+    String args = line.substring(12);
+    args.trim();
+    if (args.equalsIgnoreCase("PRESS")) {
+      handleSettingsEncoderPress();
+      Serial.println("ACK SETTINGS_ENC PRESS");
+      return;
+    }
+    if (args.equalsIgnoreCase("LONG")) {
+      handleSettingsEncoderLongPress();
+      Serial.println("ACK SETTINGS_ENC LONG");
+      return;
+    }
+    if (args.startsWith("ROT") || args.startsWith("rot")) {
+      String detents_text = args.substring(3);
+      detents_text.trim();
+      if (detents_text.isEmpty()) {
+        Serial.println("ERR SETTINGS_ENC: use ROT <n>, PRESS, or LONG");
+        return;
+      }
+      const long detents = detents_text.toInt();
+      if (detents == 0) {
+        Serial.println("ERR SETTINGS_ENC: ROT detents must be non-zero");
+        return;
+      }
+      const int8_t step = (detents > 0) ? 1 : -1;
+      const long repeats = (detents > 0) ? detents : -detents;
+      for (long i = 0; i < repeats; ++i) {
+        handleSettingsEncoderRotate(step);
+      }
+      Serial.printf("ACK SETTINGS_ENC ROT %ld\n", detents);
+      return;
+    }
+    Serial.println("ERR SETTINGS_ENC: use ROT <n>, PRESS, or LONG");
     return;
   }
   if (line.startsWith("LOG_DUMP_CSV") || line.startsWith("log_dump_csv")) {
