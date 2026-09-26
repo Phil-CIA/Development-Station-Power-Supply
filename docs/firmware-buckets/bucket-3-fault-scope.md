@@ -329,7 +329,7 @@ Not proven:
 - B3-S3 thermal warn assert/clear threshold crossing.
 - B3-S4 OTP assert/clear threshold crossing.
 - B3-S5 shared fault-summary trip/clear with required `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` capture.
-- Runbook command compatibility on active COM7 image (`DIAG` and `CMD:GET STATE` were rejected as unknown in this pass).
+- Host-visible UDI event capture path remains unproven in current wiring/port mapping; COM12 has not produced `ACK:`/`ERR:`/`EVT:` traffic in-session.
 
 Confidence uplift path (next evidence to close gaps):
 - Flash/boot the exact STM32 image that includes runbook baseline commands (`DIAG`, `CMD:GET STATE` handling) and confirm startup line `fault path: AW9523 INT PB7` in the captured boot log.
@@ -367,3 +367,39 @@ Open follow-ups:
 
 - This scope pass is docs-first and does not, by itself, close Bucket 3 evidence.
 - Bucket 3 closure requires bench data from the worksheet above.
+
+## Agent handoff update (2026-09-26)
+
+Use this handoff block as the current status for the next agent session.
+
+- Branch: `phil-cia-bucket-3-execution`
+- Latest commits on this branch include:
+  - `4b00d57` Bucket 3: unblock STM32 build and rerun B3-S5 capture
+  - `4fa7bdc` Bucket 3: add B3-S5 follow-up evidence status
+  - `fc383b2` Bucket 3: record bench evidence matrix with bounded claims
+
+Current proven state:
+
+- STM32 build+upload blocker is closed for current branch image.
+- COM7 is confirmed STM32 debug CLI path (`HELP`, `DIAG`, status lines).
+- Fault ownership mapping and unavailable-source policy remain documented and bounded.
+
+Current blocked state:
+
+- B3-S5 is still Blocked: required `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` are not yet captured in host-visible logs.
+- COM12 currently behaves as CrowPanel flash/power USB and has not shown UDI event traffic in capture attempts.
+
+Bench wiring/port reality to carry forward:
+
+- STM32 UDI link is USART3 on PB10/PB11.
+- If CrowPanel USB (COM12) does not bridge UDI traffic, use a passive USB-UART tap for evidence capture:
+  - tap RX -> PB10 (STM32 TX)
+  - tap GND -> STM32 GND
+  - leave tap TX disconnected for listen-only capture
+
+Exact closure condition for Bucket 3 evidence:
+
+- Capture one trip+clear cycle with log lines containing both:
+  - `EVT:FAULT TRIP`
+  - `EVT:FAULT CLEAR`
+- Update B3-S5 row to Pass only when both lines are attached as evidence.
