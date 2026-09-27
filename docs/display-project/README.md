@@ -48,6 +48,8 @@ The display effort is now on **two paths with a defined priority**:
 - Custom board redesign (Phase 3) is scoped but not started — CrowPanel bring-up (Phase 4) runs first to validate the UART protocol.
 - When the CrowPanel arrives, confirm the exact board revision against the Elecrow wiki version notes before selecting example code.
 - The wiki indicates 5V input, LVGL support, and external interfaces for UART, I2C, audio, battery, and storage.
+- Tower lighting modernization feasibility study (reliability-first, includes WS28xx assessment and fallback strategy): `docs/display-project/TOWER_STAR_LIGHTING_FEASIBILITY.md`
+- Tower-star recommended architecture requirements (24V zoned + independent fallback circuit): `docs/display-project/TOWER_STAR_24V_REQUIREMENTS.md`
 
 ## Interface direction
 The goal is not identical hardware. The goal is a common front-panel interface so either display path can be used from the host perspective.
