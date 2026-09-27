@@ -532,3 +532,34 @@ Run disposition:
 - Bucket 3 remains **Evidence-pending** after this test pass.
 - Closure blockers unchanged: direct assert+clear artifacts for B3-S2/B3-S3/B3-S4 and EVT trip+clear pair for B3-S5.
 
+
+### Fault-trigger command probe (2026-09-27)
+
+Objective:
+
+- Find a command-surface method to induce a shared fault trip/clear cycle for B3-S5 without changing firmware scope.
+
+Artifacts:
+
+- `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/b3-com7-fault-probe-20260927-034614.log`
+- `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/b3-com12-fault-probe-20260927-034614.log`
+
+Commands executed (COM7):
+
+- `HELP`
+- `FTEST` (flash self-test only)
+- `FTEST ON` / `FTEST OFF` (unknown)
+- `AWPROBE`, `AWMODE`
+- `SIMFAIL`, `SIMFAIL ALL ON`, `SIMFAIL ALL OFF` (unknown)
+
+Observed result:
+
+- No command in this surfaced set induced shared fault-summary trip/clear behavior.
+- COM12 again captured no `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` lines.
+
+Bounded conclusion:
+
+- B3-S5 remains **Blocked** on direct trip/clear evidence.
+- With current command surface, closure requires physical induced-fault method plus
++  host-visible UDI capture path that records both required EVT lines.
+
