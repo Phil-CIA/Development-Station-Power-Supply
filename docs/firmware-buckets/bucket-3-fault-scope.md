@@ -306,7 +306,7 @@ Disposition update:
 ## Claim-separation checklist
 
 - [x] Every claimed bit maps to a routed signal path or explicit derived runtime rule.
-- [ ] No claim relies on unrouted or speculative nets.
+- [x] No claim relies on unrouted or speculative nets.
 - [x] Shared-fault-only paths are reported as shared, not per-channel attributed.
 - [ ] Assert and clear are both evidenced for each claimed fault class.
 - [x] Missing evidence is listed under not proven (not silently omitted).
@@ -403,3 +403,62 @@ Exact closure condition for Bucket 3 evidence:
   - `EVT:FAULT TRIP`
   - `EVT:FAULT CLEAR`
 - Update B3-S5 row to Pass only when both lines are attached as evidence.
+
+## Bucket 3 takeover execution audit (2026-09-27)
+
+Scope lock used for this takeover:
+
+- Scope: Bucket 3 fault-claim evidence closure only (B3-S0..B3-S7).
+- Method: runbook conformance audit against existing captured artifacts in this repo.
+- Branch state: target branch `phil-cia-bucket-3-execution` is currently attached to a
+  separate linked worktree; this workspace takeover is executing from
+  `phil-cia-bucket-3-execution-takeover` created at the same target branch commit
+  (`23bfb25`) to avoid cross-worktree mutation.
+
+Artifacts audited in this takeover:
+
+- `docs/firmware-buckets/bucket-3-fault-scope.md` (all prior B3 runs and matrix rows).
+- `docs/FIRMWARE_DEVELOPMENT_PLAN.md` (Bucket 3 evidence contract alignment).
+- Workspace text/log artifacts (`map_capture*.txt`, docs logs/handoffs) for direct
+  assert/clear proof lines.
+
+Audit result:
+
+- No new repository artifact was found that directly proves B3-S2/B3-S3/B3-S4
+  assert+clear transitions.
+- No new repository artifact was found that contains both required B3-S5 lines:
+  `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` in one validated trip/clear evidence cycle.
+- Existing B3-S0/B3-S1/B3-S6/B3-S7 evidence remains bounded and valid.
+
+### Takeover reporting block (filled)
+
+Proven:
+
+- B3-S0 context lock exists with run header + branch/worktree evidence in this doc.
+- B3-S1 ownership-map freeze exists with code references and bounded claim policy.
+- B3-S6 unavailable-source handling is explicitly documented and evidenced (`PIN_FAULT_CRITICAL_SUM = -1`, AW9523 interrupt path).
+- B3-S7 claim separation remains bounded: no speculative channel-attribution or virtual-source claims added.
+
+Not proven:
+
+- B3-S2 OVP assert and clear transitions (both edges) are not yet evidenced.
+- B3-S3 thermal warn assert and clear transitions (both edges) are not yet evidenced.
+- B3-S4 OTP assert and clear transitions (both edges) are not yet evidenced.
+- B3-S5 shared fault summary assert/clear is not yet evidenced with both
+  `EVT:FAULT TRIP` and `EVT:FAULT CLEAR`.
+
+Confidence uplift path:
+
+- Capture one controlled threshold-crossing run for B3-S2 and attach paired
+  assert/clear timestamps plus capture reference.
+- Capture one controlled thermal ramp run that crosses warn and OTP thresholds for
+  B3-S3/B3-S4 and attach paired assert/clear + temperature evidence.
+- Capture one shared-fault trip/clear run for B3-S5 with UDI log evidence that
+  includes both `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` in-sequence.
+- Keep B3-S2..B3-S5 as Blocked/Not proven until the above direct artifacts are
+  attached and referenced in the matrix.
+
+Bucket 3 closure state after takeover audit:
+
+- **Evidence-pending** (not closed): required assert+clear paths for B3-S2..B3-S5
+  are still missing from attached artifacts.
