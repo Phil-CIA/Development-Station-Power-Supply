@@ -561,5 +561,61 @@ Bounded conclusion:
 
 - B3-S5 remains **Blocked** on direct trip/clear evidence.
 - With current command surface, closure requires physical induced-fault method plus
-+  host-visible UDI capture path that records both required EVT lines.
+  host-visible UDI capture path that records both required EVT lines.
 
+
+## Next live run packet (operator, physical induction)
+
+Use this exact sequence for the next physical evidence pass. Scope is limited to
+closing B3-S2/B3-S3/B3-S4/B3-S5 artifacts only.
+
+1. Start dual-port capture (from repo root):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/bucket3-fault-capture.ps1 -SendBaseline -DurationSec 900
+```
+
+2. During the 900s capture window, execute physical inductions in this order:
+   - B3-S2: induce OVP above threshold, then remove below threshold.
+   - B3-S3: raise temperature above warn threshold, then lower below threshold.
+   - B3-S4: raise temperature above OTP threshold, then lower below threshold.
+   - B3-S5: induce shared fault-summary trip, then clear.
+
+3. Record manual bench notes with wall-clock timestamps for each induce and clear
+   action so logs can be correlated without speculation.
+
+4. Required pass evidence per step:
+   - B3-S2: assert and clear transitions visible in logs/capture pair.
+   - B3-S3: thermal warn assert and clear + temperature proof.
+   - B3-S4: OTP assert and clear + temperature proof.
+   - B3-S5: both `EVT:FAULT TRIP` and `EVT:FAULT CLEAR` present in capture.
+
+5. If COM12 remains silent for EVT lines, keep B3-S5 as Blocked and capture
+   USART3 TX with passive RX tap (PB10->tap RX, GND common, tap TX disconnected).
+
+Closure rule reminder:
+
+- Do not mark Bucket 3 closed until all four required assert+clear paths above
+  are directly evidenced and referenced.
+
+## Physical induction window result (2026-09-27, 900s)
+
+Run outcome for the capture window started with `scripts/bucket3-fault-capture.ps1`:
+
+- COM7 log:
+  `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/035152/b3-com7-live-20260927-035152.log`
+- COM12 log:
+  `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/035152/b3-com12-live-20260927-035152.log`
+
+Observed result:
+
+- Baseline command responses were captured at run start.
+- COM7 remained in healthy periodic status output for the full window.
+- COM12 contained no `EVT:FAULT TRIP` or `EVT:FAULT CLEAR` lines.
+- No direct assert+clear transition evidence was captured for B3-S2/B3-S3/B3-S4/B3-S5.
+
+Bounded disposition:
+
+- Bucket 3 remains **Evidence-pending**.
+- B3-S2/B3-S3/B3-S4/B3-S5 remain **Blocked/Not proven** until a physical induce
+  and clear sequence is captured with direct transition evidence.
