@@ -462,3 +462,73 @@ Bucket 3 closure state after takeover audit:
 
 - **Evidence-pending** (not closed): required assert+clear paths for B3-S2..B3-S5
   are still missing from attached artifacts.
+
+## Bench evidence run (2026-09-27, live baseline after flash)
+
+Run context:
+
+- Date/time: 2026-09-27T03:41 local
+- Branch/worktree: `phil-cia-bucket-3-execution` (`700b3c7`)
+- Firmware target: `stm32-bluepill-bringup` env `bluepill_f103c8`
+- Build result: success (Flash 98.1%, RAM 27.0%)
+- Upload result: success via `stlink` (`Verified OK`, reset completed)
+- Serial paths used: COM7 (STM32 CLI/log), COM12 (display-link UART monitor)
+- Operator: Copilot App
+
+Artifacts captured:
+
+- COM7 baseline log:
+  `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/b3-com7-baseline-20260927-034154.log`
+- COM12 EVT monitor log:
+  `docs/firmware-buckets/artifacts/bucket-3/2026-09-27/b3-com12-evt-20260927-034154.log`
+
+Observed baseline transcript highlights (COM7):
+
+```text
+HELP
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+
+DIAG
+diag:fault-awint
+st f=PASS aw=PASS aht=PASS Vin=11.424 Iin=102.22 T=26.22 RH=50.23 n=1
+
+INANOW
+ina 5V 0x40: CH1 4.000V 1.00mA | CH2 4.000V 0.60mA | CH3 0.000V 0.00mA
+ina 3V3 0x41: CH1 0.000V 0.00mA | CH2 0.000V 0.00mA | CH3 11.424V 102.22mA
+
+AHTNOW
+aht20: T=26.28C RH=50.23% status=0x18
+
+CFGSHOW
+cfg d9=OFF 5V[   ] 3V3[   ]
+
+CMD:GET STATE
+cmd: unknown 'CMD:GET STATE'
+
+GET STATE
+cmd: unknown 'GET STATE'
+```
+
+Observed EVT monitor result (COM12):
+
+- No `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` lines captured in this run.
+
+### B3-S0..B3-S7 verdicts for this run
+
+| Step ID | Verdict | Evidence reference | Notes |
+|---|---|---|---|
+| B3-S0 | Pass with bounded context | COM7 log + prior startup-path evidence in this doc | Run header, build/upload, branch SHA, and serial path are captured. Startup-line string itself was not re-captured in this pass. |
+| B3-S1 | Pass (code-map freeze) | Existing mapping refs + COM7 `DIAG` (`diag:fault-awint`) | Ownership/policy remains unchanged and consistent with routed-source boundaries. |
+| B3-S2 | Blocked | COM7 log (baseline only) | No induced OVP threshold crossing; assert+clear not evidenced. |
+| B3-S3 | Blocked | COM7 log (`AHTNOW` nominal sample only) | No thermal warn threshold crossing; assert+clear not evidenced. |
+| B3-S4 | Blocked | COM7 log (`AHTNOW` nominal sample only) | No OTP threshold crossing; assert+clear not evidenced. |
+| B3-S5 | Blocked | COM12 log (empty of EVT fault lines) | Required shared fault trip/clear evidence remains missing (`EVT:FAULT TRIP` and `EVT:FAULT CLEAR`). |
+| B3-S6 | Pass (policy evidence) | Existing refs in this doc + unchanged runtime behavior in COM7 log | No fabricated direct fault-source claims introduced. |
+| B3-S7 | Pass with bounded claim | This run report + takeover reporting block | Proven vs not-proven split remains strict and explicit. |
+
+Run disposition:
+
+- Bucket 3 remains **Evidence-pending** after this test pass.
+- Closure blockers unchanged: direct assert+clear artifacts for B3-S2/B3-S3/B3-S4 and EVT trip+clear pair for B3-S5.
+
