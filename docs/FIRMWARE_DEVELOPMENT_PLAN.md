@@ -88,11 +88,11 @@ artifacts under a bucket, not the scope definition themselves.
 
 | Item | Definition |
 |---|---|
-| In scope now | Versioned load/save/reset/erase config flow on STM32 external flash, calibration coefficient persistence, safe defaults on missing/corrupt config. |
+| In scope now | Versioned load/save/reset/erase config flow on STM32 external flash, calibration coefficient persistence, safe defaults on missing/corrupt config. Scope/control artifact: `docs/firmware-buckets/bucket-5-config-persistence-scope.md`. |
 | Out of scope now | Broad data-model redesign without migration handling. |
 | Exit criteria | 1) Cold boot restores expected persisted values. 2) Reset-to-defaults path is deterministic. 3) Version mismatch/corruption path recovers safely and logs reason. |
-| Required evidence | Before/after persistence logs and one intentional invalid-config recovery run. |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference), W25Q128 handling paths |
+| Required evidence | Follow `docs/firmware-buckets/bucket-5-config-persistence-scope.md`: include B5-S0..B5-S7 worksheet results, before/after persistence logs, and one intentional invalid/missing/corrupt-config recovery run with explicit reason output. |
+| Base artifacts | `docs/firmware-buckets/bucket-5-config-persistence-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference), W25Q128 handling paths |
 
 ### Bucket 6: Bring-up diagnostics and recovery paths
 
@@ -157,7 +157,7 @@ expansion until the scoping PR for the relevant bucket is merged.
 | 3 | Bucket 4 | `docs/firmware-bucket-4-telemetry-display-scope` | Command/telemetry contract limits and evidence matrix | Host/display command round-trip logs with one error case |
 | 4 | Bucket 2 | `docs/firmware-bucket-2-rail-control-scope` | Rail enable/disable behavior boundaries and safe-state expectations | Bench state table + rail transition captures |
 | 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | `docs/firmware-buckets/bucket-3-fault-scope.md` worksheet (B3-S0..B3-S7), bit-source map, and assert/clear evidence with claim separation |
-| 6 | Bucket 5 | `docs/firmware-bucket-5-config-persistence-scope` | Persistence/calibration ownership, corruption behavior, reset semantics | Cold-boot persistence log + invalid-config recovery log |
+| 6 | Bucket 5 | `docs/firmware-bucket-5-config-persistence-scope` | Persistence/calibration ownership, corruption behavior, reset semantics | `docs/firmware-buckets/bucket-5-config-persistence-scope.md` worksheet (B5-S0..B5-S7), cold-boot persistence logs, and invalid-config recovery evidence with explicit reason reporting |
 
 ## Feature inventory
 
