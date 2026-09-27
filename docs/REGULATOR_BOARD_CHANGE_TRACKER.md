@@ -217,6 +217,18 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 
 **Current State:** Board powers up and runs; switch behavior not yet characterized under load transients.
 
+**Latest bench evidence (2026-09-27):**
+- U2 VIN: 11.44V
+- U2 pin 5 (`Q3-D`): 0V
+- `+5V_REG`: 5.0778V
+- `SRC_5_HIGH`: 4.39V
+- `GATE_5_HIGH`: 5.13V
+- `+5V_HI_RANGE`: 4.000V
+- `V_OUT +5V`: 4.000V
+- Derived check: `VGS` ≈ 0.74V (`5.13V - 4.39V`)
+
+**Interim interpretation:** The measured gate-source headroom is too small for robust enhancement at this operating point, so the high-side path may remain only weakly on (or behave as if off under load). Continue pinout/orientation and gate-drive-path validation before closing RB-003.
+
 **Next Step:** Scope gate voltage, drain voltage, and load response during ON → OFF → ON cycles; document switching specs; consider pull-up/pull-down resistor optimization.
 
 ---
@@ -454,4 +466,5 @@ Primary buck control loops appear functional when enabled; failure remains in do
 | 2026-08-14 | Implemented dual INA2180A2/TLV1702 four-channel Rev-C OCP, corrected supply and open-collector definitions, validated ERC/netlist, and added mandatory PCB completion gate | Rev-C OCP design session |
 | 2026-09-21 | Logged Rev-C first-power continuation HOLD: +5V_reg about 4.08V, +5V about 4.01V, +3.3V rails collapsed, with R11/R35 removed bypass state | Rev-C bench continuation session |
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
+| 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
 | TBD | Design review and next-iter file creation | TBD |
