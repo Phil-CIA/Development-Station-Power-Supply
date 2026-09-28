@@ -566,11 +566,11 @@ void refreshSetupScreenLabels() {
 
   char value_buf[48];
   if (setup_binding.selected == SetupField::Output) {
-    snprintf(value_buf, sizeof(value_buf), "< %s >", setup_binding.output_enabled ? "ON" : "OFF");
+    snprintf(value_buf, sizeof(value_buf), "► %s ◄", setup_binding.output_enabled ? "ON" : "OFF");
   } else if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch1_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "► %.3f A ◄", setup_binding.ch1_limit_mA / 1000.0f);
   } else {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch2_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "► %.3f A ◄", setup_binding.ch2_limit_mA / 1000.0f);
   }
   lv_label_set_text(lbl_setup_value, value_buf);
 
@@ -1238,7 +1238,7 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_align(lbl_setup_param, LV_ALIGN_TOP_LEFT, 20, 20);
 
   lbl_setup_value = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_value, "< -- >");
+  lv_label_set_text(lbl_setup_value, "► -- ◄");
   lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_48, LV_PART_MAIN);
   lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_MID, 0, 80);
@@ -1274,8 +1274,8 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_center(lbl_next);
 
   lv_obj_t* btn_edit = lv_btn_create(panel);
-  lv_obj_set_size(btn_edit, 156, 40);
-  lv_obj_align(btn_edit, LV_ALIGN_BOTTOM_RIGHT, -176, -16);
+  lv_obj_set_size(btn_edit, 140, 40);
+  lv_obj_align(btn_edit, LV_ALIGN_BOTTOM_RIGHT, -160, -16);
   lv_obj_set_style_bg_color(btn_edit, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_border_color(btn_edit, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
   lv_obj_set_style_border_width(btn_edit, 1, LV_PART_MAIN);
@@ -1497,25 +1497,25 @@ void create_main_screen(lv_obj_t* root) {
   lv_label_set_text(lbl_status_link, "LINK --");
   lv_obj_set_style_text_color(lbl_status_link, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_status_link, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_link, LV_ALIGN_LEFT_MID, 210, 0);
+  lv_obj_align(lbl_status_link, LV_ALIGN_LEFT_MID, 150, 0);
 
   lbl_status_seq = lv_label_create(status);
   lv_label_set_text(lbl_status_seq, "SEQ --");
   lv_obj_set_style_text_color(lbl_status_seq, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_status_seq, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_seq, LV_ALIGN_LEFT_MID, 330, 0);
+  lv_obj_align(lbl_status_seq, LV_ALIGN_LEFT_MID, 270, 0);
 
   lbl_status_mode = lv_label_create(status);
   lv_label_set_text(lbl_status_mode, "CV");
   lv_obj_set_style_text_color(lbl_status_mode, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_status_mode, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_mode, LV_ALIGN_LEFT_MID, 415, 0);
+  lv_obj_align(lbl_status_mode, LV_ALIGN_LEFT_MID, 355, 0);
 
   lbl_status_uptime = lv_label_create(status);
   lv_label_set_text(lbl_status_uptime, "UP 0s");
   lv_obj_set_style_text_color(lbl_status_uptime, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_status_uptime, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_uptime, LV_ALIGN_LEFT_MID, 474, 0);
+  lv_obj_align(lbl_status_uptime, LV_ALIGN_LEFT_MID, 414, 0);
 
   lv_obj_t* badge = lv_obj_create(status);
   lv_obj_set_size(badge, 118, 32);
@@ -1570,18 +1570,18 @@ void create_main_screen(lv_obj_t* root) {
   lbl_main_ch1_current = lv_label_create(panel_v);
   lv_label_set_text(lbl_main_ch1_current, "A -.---");
   lv_obj_set_style_text_color(lbl_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 22, 110);
+  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 22, 112);
 
   lbl_main_ch1_power = lv_label_create(panel_v);
   lv_label_set_text(lbl_main_ch1_power, "P --.--W   T --C   --");
   lv_obj_set_style_text_color(lbl_main_ch1_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_main_ch1_power, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_power, LV_ALIGN_TOP_LEFT, 22, 136);
+  lv_obj_align(lbl_main_ch1_power, LV_ALIGN_TOP_LEFT, 22, 142);
 
   bar_main_ch1_voltage = lv_bar_create(panel_v);
   lv_obj_set_size(bar_main_ch1_voltage, 330, 20);
-  lv_obj_align(bar_main_ch1_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -8);
+  lv_obj_align(bar_main_ch1_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -20);
   lv_bar_set_range(bar_main_ch1_voltage, 0, 1000);
   lv_bar_set_value(bar_main_ch1_voltage, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar_main_ch1_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
@@ -1591,9 +1591,27 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_MAIN);
   lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_INDICATOR);
 
+  lv_obj_t* bar_v_lo = lv_label_create(panel_v);
+  lv_label_set_text(bar_v_lo, "4.5V");
+  lv_obj_set_style_text_color(bar_v_lo, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_v_lo, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_v_lo, LV_ALIGN_BOTTOM_LEFT, 18, -2);
+
+  lv_obj_t* bar_v_mid = lv_label_create(panel_v);
+  lv_label_set_text(bar_v_mid, "5.0V");
+  lv_obj_set_style_text_color(bar_v_mid, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_v_mid, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_v_mid, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+  lv_obj_t* bar_v_hi = lv_label_create(panel_v);
+  lv_label_set_text(bar_v_hi, "5.5V");
+  lv_obj_set_style_text_color(bar_v_hi, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_v_hi, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_v_hi, LV_ALIGN_BOTTOM_RIGHT, -18, -2);
+
   lv_obj_t* panel_i = lv_obj_create(screen_main);
   lv_obj_set_size(panel_i, 368, 182);
-  lv_obj_align(panel_i, LV_ALIGN_TOP_LEFT, 18, 254);
+  lv_obj_align(panel_i, LV_ALIGN_TOP_LEFT, 18, 270);
   lv_obj_set_style_bg_color(panel_i, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
   lv_obj_set_style_radius(panel_i, 16, LV_PART_MAIN);
   lv_obj_set_style_border_width(panel_i, 1, LV_PART_MAIN);
@@ -1628,18 +1646,18 @@ void create_main_screen(lv_obj_t* root) {
   lbl_main_ch2_current = lv_label_create(panel_i);
   lv_label_set_text(lbl_main_ch2_current, "A -.---");
   lv_obj_set_style_text_color(lbl_main_ch2_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch2_current, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch2_current, LV_ALIGN_TOP_LEFT, 22, 110);
+  lv_obj_set_style_text_font(lbl_main_ch2_current, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_current, LV_ALIGN_TOP_LEFT, 22, 112);
 
   lbl_main_ch2_power = lv_label_create(panel_i);
   lv_label_set_text(lbl_main_ch2_power, "P --.--W   LINK --");
   lv_obj_set_style_text_color(lbl_main_ch2_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_main_ch2_power, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch2_power, LV_ALIGN_TOP_LEFT, 22, 136);
+  lv_obj_align(lbl_main_ch2_power, LV_ALIGN_TOP_LEFT, 22, 142);
 
   bar_main_ch2_voltage = lv_bar_create(panel_i);
   lv_obj_set_size(bar_main_ch2_voltage, 330, 20);
-  lv_obj_align(bar_main_ch2_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -8);
+  lv_obj_align(bar_main_ch2_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -20);
   lv_bar_set_range(bar_main_ch2_voltage, 0, 1000);
   lv_bar_set_value(bar_main_ch2_voltage, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar_main_ch2_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
@@ -1649,8 +1667,26 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_MAIN);
   lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_INDICATOR);
 
+  lv_obj_t* bar_i_lo = lv_label_create(panel_i);
+  lv_label_set_text(bar_i_lo, "3.0V");
+  lv_obj_set_style_text_color(bar_i_lo, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_i_lo, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_i_lo, LV_ALIGN_BOTTOM_LEFT, 18, -2);
+
+  lv_obj_t* bar_i_mid = lv_label_create(panel_i);
+  lv_label_set_text(bar_i_mid, "3.3V");
+  lv_obj_set_style_text_color(bar_i_mid, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_i_mid, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_i_mid, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+  lv_obj_t* bar_i_hi = lv_label_create(panel_i);
+  lv_label_set_text(bar_i_hi, "3.6V");
+  lv_obj_set_style_text_color(bar_i_hi, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(bar_i_hi, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(bar_i_hi, LV_ALIGN_BOTTOM_RIGHT, -18, -2);
+
   lv_obj_t* panel_meta = lv_obj_create(screen_main);
-  lv_obj_set_size(panel_meta, 390, 366);
+  lv_obj_set_size(panel_meta, 390, 384);
   lv_obj_align(panel_meta, LV_ALIGN_TOP_RIGHT, -18, 68);
   lv_obj_set_style_bg_color(panel_meta, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
   lv_obj_set_style_radius(panel_meta, 16, LV_PART_MAIN);
@@ -2189,8 +2225,12 @@ void update_telemetry_labels() {
       if (lbl_graph_window_v) lv_label_set_text(lbl_graph_window_v, "V min/max --.-- / --.--");
       if (lbl_graph_window_i) lv_label_set_text(lbl_graph_window_i, "I min/max --.--- / --.---");
     } else {
-      // range detail lives in lbl_graph_window_v/_i; keep this one short to avoid overlap
-      snprintf(wbuf, sizeof(wbuf), "win %u s", static_cast<unsigned>(stats.samples));
+      snprintf(wbuf, sizeof(wbuf), "win %u s  V %.2f..%.2f  I %.3f..%.3f",
+               static_cast<unsigned>(stats.samples),
+               stats.min_v12_mV / 1000.0f,
+               stats.max_v12_mV / 1000.0f,
+               stats.min_i12_mA / 1000.0f,
+               stats.max_i12_mA / 1000.0f);
 
       if (lbl_graph_window_v) {
         char v_win[64];

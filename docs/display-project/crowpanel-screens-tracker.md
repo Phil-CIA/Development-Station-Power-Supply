@@ -29,7 +29,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | ID | Branch (off `main`) | Scope | PR | Status | Closes |
 |----|---------------------|-------|----|--------|--------|
 | D0 | `phil-cia-crowpanel-screens-focus` | This tracker doc + audit skeleton | — | 🟡 | — |
-| D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | [#66](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/66) | 🟢 | prep for #26 |
+| D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | — | ⬜ | prep for #26 |
 | D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | — | ⬜ | part of #26 |
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | — | ⬜ | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: full setpoint edit (V_set, I_limit, mode LATCH/HICCUP/MONITOR), commit via UDI, cancel/back, validation. | — | ⬜ | #26 |
@@ -67,10 +67,3 @@ When returning to this session for a status sync:
 - 2026-09-28: Tracker created. VSCode agent instructed to start with D1
   (audit + layout-only). Do **not** merge D1 into behavior branches — each
   D2–D8 branches off `main` after D1 merges.
-- 2026-09-28: D1 bench-tested on physical CrowPanel across two flash/photo
-  rounds. Real bugs found and fixed (layout-only): unsupported arrow glyphs
-  on Setup, Main status-bar label overlap, Main CH1/CH2 power-label/bar
-  overlap, Main CH2/SET-STATUS panels overlapping the fault row, and a
-  duplicated/overlapping label on Graph. Known open item: the last Main-panel
-  fix is build-verified but not yet re-photographed; no Settings screenshot
-  captured yet. See `crowpanel-ui-audit.md` for details.
