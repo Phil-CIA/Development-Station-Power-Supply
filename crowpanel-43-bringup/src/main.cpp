@@ -1274,8 +1274,8 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_center(lbl_next);
 
   lv_obj_t* btn_edit = lv_btn_create(panel);
-  lv_obj_set_size(btn_edit, 140, 40);
-  lv_obj_align(btn_edit, LV_ALIGN_BOTTOM_RIGHT, -160, -16);
+  lv_obj_set_size(btn_edit, 156, 40);
+  lv_obj_align(btn_edit, LV_ALIGN_BOTTOM_RIGHT, -176, -16);
   lv_obj_set_style_bg_color(btn_edit, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_border_color(btn_edit, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
   lv_obj_set_style_border_width(btn_edit, 1, LV_PART_MAIN);
