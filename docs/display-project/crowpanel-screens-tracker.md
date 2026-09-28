@@ -30,7 +30,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 |----|---------------------|-------|----|--------|--------|
 | D0 | `phil-cia-crowpanel-screens-focus` | This tracker doc + audit skeleton | — | 🟡 | — |
 | D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | [#66](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/66) | 🟢 | prep for #26 |
-| D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | — | 🟡 | part of #26 |
+| D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | [#67](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/67) | 🟢 | part of #26 |
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | — | ⬜ | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: full setpoint edit (V_set, I_limit, mode LATCH/HICCUP/MONITOR), commit via UDI, cancel/back, validation. | — | ⬜ | #26 |
 | D5 | `phil-cia-crowpanel-graph-screen` | Trend: window selector (30 s / 5 min / 30 min), pause/resume, clear, per-channel visibility, autoscale. | — | ⬜ | #26 |
@@ -74,3 +74,11 @@ When returning to this session for a status sync:
   duplicated/overlapping label on Graph. Known open item: the last Main-panel
   fix is build-verified but not yet re-photographed; no Settings screenshot
   captured yet. See `crowpanel-ui-audit.md` for details.
+- 2026-09-28: D2 merged (#67), bench-verified. Main's top status bar is
+  already at full width capacity (labels + OUTPUT badge + one nav button)
+  so scope was contained to what fit safely: OUTPUT badge on Main is now
+  tappable → Setup, and Graph ↔ Settings got mutual nav buttons. Every
+  screen now reaches every other screen in at most one hop. Still open:
+  Main has no direct button to Settings; a real shared top-bar/bottom-nav
+  component (replacing the per-screen duplicated header code) is the
+  correct long-term fix — noted as a D2 follow-up, not a blocker for D3.
