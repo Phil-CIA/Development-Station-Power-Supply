@@ -1,0 +1,69 @@
+# CrowPanel Screens & UX Tracker
+
+Coordination doc for the "make the CrowPanel feel like a real product" work.
+This file is the source of truth for status across sessions. Update it in each
+merged PR so the next session can rebase / continue cleanly.
+
+- Scope target: `crowpanel-43-bringup/` (ESP32-S3, LVGL, UDI UART to STM32 HAT)
+- Coordination branch (this file lives here): `phil-cia-crowpanel-screens-focus`
+- Related issues: #26 (crowpanel display screens), #27 (Bootup log and testing),
+  #37 (ESP32 startup test), #38 (SPI memory test), #39 (I2C startup test),
+  #40 (CrowPanel startup test)
+- Related spec: `docs/DISPLAY_INTERFACE_STANDARD.md` (UDI)
+
+## Rules of engagement
+
+- One branch per bucket, all branched off `main` (not off this branch).
+- One PR per bucket, small and reviewable, bench-tested on the physical CrowPanel.
+- Never commit to `main` directly (see `docs/SYSTEM_DEVELOPMENT_WORKFLOW.md`).
+- Do **not** stack D2–D8 on this branch. The audit doc lives here; behavior work
+  starts fresh off `main` after this tracker PR merges.
+- No new root-level HANDOFF/SUMMARY files. Update this tracker instead.
+- All host↔display messaging must conform to the UDI framing
+  (`CMD:` / `ACK:` / `EVT:` / `ERR:`).
+
+## Bucket status
+
+Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
+
+| ID | Branch (off `main`) | Scope | PR | Status | Closes |
+|----|---------------------|-------|----|--------|--------|
+| D0 | `phil-cia-crowpanel-screens-focus` | This tracker doc + audit skeleton | — | 🟡 | — |
+| D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | — | ⬜ | prep for #26 |
+| D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | — | ⬜ | part of #26 |
+| D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | — | ⬜ | #26 |
+| D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: full setpoint edit (V_set, I_limit, mode LATCH/HICCUP/MONITOR), commit via UDI, cancel/back, validation. | — | ⬜ | #26 |
+| D5 | `phil-cia-crowpanel-graph-screen` | Trend: window selector (30 s / 5 min / 30 min), pause/resume, clear, per-channel visibility, autoscale. | — | ⬜ | #26 |
+| D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
+| D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
+| D8 | `phil-cia-crowpanel-startup-selftest` | Boot self-test screen: RGB, touch, I2C (0x30, 0x5D), SPI flash, PSRAM, UDI handshake — pass/fail chips before Main. | — | ⬜ | #27, #37, #38, #39, #40 |
+
+When #26 is fully covered by D2–D6, close it in the D6 PR.
+When #27/#37/#38/#39/#40 are covered by D8, close them in the D8 PR.
+
+## Close-out checklist (return here to run)
+
+- [ ] All D1–D8 PRs merged into `main`
+- [ ] `main` rebased/pulled locally before starting any follow-on
+- [ ] This tracker updated with PR numbers and 🟢 status per row
+- [ ] Screenshots archived under `docs/display-project/screenshots/` (per bucket)
+- [ ] Issue #26 closed
+- [ ] Issues #27, #37, #38, #39, #40 closed (or re-scoped)
+- [ ] `docs/FIRMWARE_DEVELOPMENT_PLAN.md` cross-referenced with any bucket work
+  that changed UDI behavior
+
+## Rebase / update protocol
+
+When returning to this session for a status sync:
+
+1. `git fetch origin && git log --oneline origin/main -20` — see what merged.
+2. Update the **Status** and **PR** columns in the table above.
+3. If any bucket depended on another (e.g. D3 uses nav shell from D2), note
+   the rebase order in the notes section below before spawning the next agent.
+4. Re-open the VSCode agent with the next ⬜ row as its objective.
+
+## Notes / decisions log
+
+- 2026-09-28: Tracker created. VSCode agent instructed to start with D1
+  (audit + layout-only). Do **not** merge D1 into behavior branches — each
+  D2–D8 branches off `main` after D1 merges.
