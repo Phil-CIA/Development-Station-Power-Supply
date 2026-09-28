@@ -5,15 +5,12 @@
 > under `docs/display-project/screenshots/audit/`. No behavior changes are
 > included; only layout-only fixes (padding/alignment/font sizing/chip
 > colors, and two glyph/overlap bugs found on hardware) were applied.
-
-> **Known open item:** the Main screen's CH2 panel / SET-STATUS panel vs.
-> fault-row bottom overlap (see Main section below) has a code fix applied
-> and build-verified, but has **not yet been re-photographed** to confirm on
-> hardware — `main.jpeg` below is from the round before that specific fix.
-> Confirm on next bench session before/at the same time as D2.
 >
-> **Missing:** no Settings screenshot was captured in either bench round.
-> Capture one before merging, or accept as a known gap and capture in D6.
+> Update (D2): the Main fault-row overlap fix was re-photographed and
+> confirmed on hardware. Nav-shell additions (Main OUTPUT badge → Setup,
+> Graph ↔ Settings) are also confirmed on hardware. No Settings screenshot
+> has been captured yet — deferred, not a blocker.
+
 
 ## Screen inventory
 
@@ -80,13 +77,12 @@
 | Control | Event cb | Wired? | Current behavior | Expected behavior | Defer to |
 |---------|----------|--------|------------------|-------------------|----------|
 | `create_nav_btn(status, "Graphs", ...)` | `nav_btn_event_cb` | ✅ yes | Navigates to Graph screen | Same — correct | — |
-| Output badge (`lbl_status_output`, "OUTPUT --") | none | ❌ no cb (display-only label) | Shows output state text, not tappable | Make tappable to jump to Setup's output field, or add a direct `CMD:OUTPUT ON/OFF` toggle here | D3 |
-| (missing) nav to Setup screen | — | ❌ not present | No way to reach Setup from Main except the 30 s auto-timeout path at boot, or via Settings→System, neither is a direct link | Add explicit "Setup" nav entry point from Main | D2 (nav shell) / D3 |
-| (missing) nav to Settings screen | — | ❌ not present | No way to reach Settings from Main | Add nav button/icon | D2 (nav shell) |
+| Output badge (`lbl_status_output`, "OUTPUT --") | `nav_btn_event_cb` (D2) | ✅ yes (D2) | Badge is now clickable and navigates to Setup screen (top status bar had no free space left for a dedicated "Setup" button — see D2 PR) | Same — closes the Main→Setup nav gap | — |
+| (missing) nav to Settings screen | — | ❌ not present | No way to reach Settings directly from Main (status bar has no remaining free space for a 3rd/4th button without a larger top-bar redesign) | Reach via Graph→Settings (D2) for now; revisit with a real top-bar/bottom-nav component redesign | D2 (follow-up) |
 
 **Style constants used:** `lv_font_montserrat_16/14/12`, `UiTheme::kAccentV/kAccentI/kAccentWarn/kAccentOk`, state chips via `create_state_chip`.
 
-**Recommended constants (D2):** unify per-screen top status bar into a single shared "top bar" component (title + link/seq/mode/uptime cluster + nav buttons) referenced by all 4 non-splash screens — currently each `create_*_screen` duplicates this construction.
+**Recommended constants (D2):** unify per-screen top status bar into a single shared "top bar" component (title + link/seq/mode/uptime cluster + nav buttons) referenced by all 4 non-splash screens — currently each `create_*_screen` duplicates this construction. Main's status bar is at capacity (labels + OUTPUT badge + one nav button fully use the available width) — a real fix requires this shared component, not more ad hoc buttons.
 
 ---
 
@@ -100,6 +96,7 @@
 | Control | Event cb | Wired? | Current behavior | Expected behavior | Defer to |
 |---------|----------|--------|------------------|-------------------|----------|
 | `create_nav_btn(status, "Main", ...)` | `nav_btn_event_cb` | ✅ yes | Navigates to Main screen | Same — correct | — |
+| `create_nav_btn(status, "Settings", ...)` (added D2) | `nav_btn_event_cb` | ✅ yes (D2) | Navigates to Settings screen | Same — closes the Graph↔Settings nav gap | — |
 | `chart_v` / `chart_i` (trend charts) | none (data-driven only) | ❌ no touch controls | Read-only circular buffer chart, no window/pause/zoom | Add window selector (30 s/5 min/30 min), pause/resume, clear | D5 |
 | Per-channel visibility | — | ❌ not present | Both channel traces always shown | Add per-channel show/hide toggle | D5 |
 
@@ -119,6 +116,7 @@
 | Control | Event cb | Wired? | Current behavior | Expected behavior | Defer to |
 |---------|----------|--------|------------------|-------------------|----------|
 | `create_nav_btn(header, "Main", ...)` | `nav_btn_event_cb` | ✅ yes | Navigates to Main screen | Same — correct | — |
+| `create_nav_btn(header, "Graph", ...)` (added D2) | `nav_btn_event_cb` | ✅ yes (D2) | Navigates to Graph screen | Same — closes the Settings↔Graph nav gap | — |
 | `btn_settings_system` | `settings_system_btn_event_cb` → `selectSettingsMenu(System)` | ✅ yes | Switches submenu selection | Same — correct | — |
 | `btn_settings_dataset` | `settings_dataset_btn_event_cb` → `selectSettingsMenu(DataSet)` | ✅ yes | Switches submenu selection | Same — correct | — |
 | `btn_settings_about` | `settings_about_btn_event_cb` → `selectSettingsMenu(About)` | ✅ yes | Switches submenu selection | Same — correct | — |
@@ -137,11 +135,11 @@
 - **Inconsistent chip color usage:** `create_state_chip` colors are passed as raw hex literals per call site (e.g. `0x193425`, `0x24364A`) rather than named `UiTheme` members like the rest of the palette — should be added to `UiTheme` in D2.
 - **Touch target sizes < 44 px:** all buttons audited are ≥32px tall (nav buttons) or ≥40px tall (Setup/Settings action buttons); nav buttons at 32px are borderline for gloved/imprecise touch — flag for D2 review, not a D1 blocker.
 - **Font-size hierarchy proposal:** current usage is ad hoc (48/20/16/14/12 mixed per screen without a clear rule). Proposed hierarchy for D2: 48 = hero/primary value, 20 = screen title, 16 = section label/status text, 14 = body/data text, 12 = hint/footnote.
-- **Navigation gap:** Main screen has no direct nav to Setup or Settings (only Graph). This is the most user-visible "doesn't feel like a real product" gap and is the primary driver for D2 (uniform nav shell).
+- **Navigation gap (D2 update):** Main originally had no direct nav to Setup or Settings (only Graph). D2 closed this by making the Main OUTPUT badge tap-navigate to Setup, and adding mutual Graph↔Settings nav buttons. Main still has no direct button to Settings (status bar is at capacity) — reachable via Main→Graph→Settings for now. A real shared top-bar/bottom-nav component (still recommended for D2 follow-up) would resolve this properly.
 
 ## D1 exit criteria
 
 - [x] Every screen has a filled-in per-screen block
 - [x] Every button is either ✅ wired-correctly or has a defer-to bucket
-- [x] Layout-only fixes committed and visible in fresh screenshots (Splash/Setup/Graph confirmed; Main partially confirmed — see known open item above; Settings screenshot outstanding)
-- [ ] `crowpanel-screens-tracker.md` updated: D1 row → 🟢 + PR link (do this once PR is open)
+- [x] Layout-only fixes committed and visible in fresh screenshots (Splash/Setup/Graph/Main confirmed on hardware)
+- [x] `crowpanel-screens-tracker.md` updated: D1 row → 🟢 + PR link (merged as #66)
