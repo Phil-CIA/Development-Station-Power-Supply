@@ -67,3 +67,10 @@ When returning to this session for a status sync:
 - 2026-09-28: Tracker created. VSCode agent instructed to start with D1
   (audit + layout-only). Do **not** merge D1 into behavior branches — each
   D2–D8 branches off `main` after D1 merges.
+- 2026-09-28: D1 bench-tested on physical CrowPanel across two flash/photo
+  rounds. Real bugs found and fixed (layout-only): unsupported arrow glyphs
+  on Setup, Main status-bar label overlap, Main CH1/CH2 power-label/bar
+  overlap, Main CH2/SET-STATUS panels overlapping the fault row, and a
+  duplicated/overlapping label on Graph. Known open item: the last Main-panel
+  fix is build-verified but not yet re-photographed; no Settings screenshot
+  captured yet. See `crowpanel-ui-audit.md` for details.

@@ -1,20 +1,29 @@
 # CrowPanel UI Audit (D1 deliverable)
 
-> Audited from `crowpanel-43-bringup/src/main.cpp` (2026-09-28). Screenshots
-> are pending a bench session on the physical CrowPanel — see
-> `docs/display-project/screenshots/audit/` (to be populated before this PR
-> is opened). No behavior changes are included; only layout-only fixes
-> (padding/alignment/font sizing/chip colors) noted below have been applied.
+> Audited from `crowpanel-43-bringup/src/main.cpp` (2026-09-28), bench-tested
+> on the physical CrowPanel across two flash/photo rounds. Screenshots live
+> under `docs/display-project/screenshots/audit/`. No behavior changes are
+> included; only layout-only fixes (padding/alignment/font sizing/chip
+> colors, and two glyph/overlap bugs found on hardware) were applied.
+
+> **Known open item:** the Main screen's CH2 panel / SET-STATUS panel vs.
+> fault-row bottom overlap (see Main section below) has a code fix applied
+> and build-verified, but has **not yet been re-photographed** to confirm on
+> hardware — `main.jpeg` below is from the round before that specific fix.
+> Confirm on next bench session before/at the same time as D2.
+>
+> **Missing:** no Settings screenshot was captured in either bench round.
+> Capture one before merging, or accept as a known gap and capture in D6.
 
 ## Screen inventory
 
 | Screen | `create_*` fn | LOC range | Screenshot | Overall verdict |
 |--------|---------------|-----------|------------|-----------------|
-| Splash | `create_splash_screen` | 1162–1195 | pending bench capture | 🎨 minimal, no interactive controls, fine as-is |
-| Setup | `create_setup_screen` | 1198–1317 | pending bench capture | ✅ fully wired to UDI; layout is functional but dense |
-| Main | `create_main_screen` | 1474–1755 | pending bench capture | 🔧 missing nav to Setup/Settings; output state is read-only display |
-| Graph | `create_graph_screen` | 1756–1897 | pending bench capture | 🔧 no window/pause/clear controls yet (charts are read-only) |
-| Settings | `create_settings_screen` | 1320–1473 | pending bench capture | 🔧 submenu actions mutate local RAM state only, no persistence or UDI calls |
+| Splash | `create_splash_screen` | 1162–1195 | `screenshots/audit/splash.jpeg` | 🎨 minimal, no interactive controls, fine as-is |
+| Setup | `create_setup_screen` | 1198–1317 | `screenshots/audit/setup.jpeg` (before: `setup-before-fix.jpeg`) | ✅ fully wired to UDI; layout fixed and confirmed on hardware |
+| Main | `create_main_screen` | 1474–1755 | `screenshots/audit/main.jpeg` (pre-dates final fault-row overlap fix — see note above) | 🔧 missing nav to Setup/Settings; output state is read-only display |
+| Graph | `create_graph_screen` | 1756–1897 | `screenshots/audit/graph.jpeg` (before: `graph-before-fix.jpeg`) | 🔧 no window/pause/clear controls yet (charts are read-only); layout fixed and confirmed on hardware |
+| Settings | `create_settings_screen` | 1320–1473 | not yet captured | 🔧 submenu actions mutate local RAM state only, no persistence or UDI calls |
 
 ## Per-screen audit
 
@@ -38,7 +47,8 @@
 ### Setup
 
 **Layout issues (🎨 fix in D1):**
-- [x] `btn_edit` ("Edit / Apply") label did not reliably fit the button width — widened button and confirmed text stays centered (see code change below).
+- [x] `btn_edit` ("Edit / Apply") label did not reliably fit the button width — widened button 140→156px, confirmed on hardware (`setup-before-fix.jpeg` → `setup.jpeg`).
+- [x] **Bench-found bug:** the `► … ◄` arrow glyphs in `lbl_setup_value` are not present in `lv_font_montserrat_48` and rendered as tofu boxes on real hardware. Replaced with plain ASCII `< … >`. Confirmed fixed in `setup.jpeg`.
 - [x] Footer hint label used a smaller font (`montserrat_12`) than the equivalent footer treatment on Settings — left as-is (defer unification to D2 nav shell) since this is a font-hierarchy decision, not a bug.
 
 **Behavior issues (🔧 defer):**
@@ -60,7 +70,10 @@
 ### Main
 
 **Layout issues (🎨 fix in D1):**
-- [x] Status bar labels (`LINK`, `SEQ`, `CV`, `UP`) were tightly packed at fixed x-offsets (150/270/355/414) with no margin scaling — left spacing as-is per "no behavior change," confirmed all labels stay inside the 800px status bar at current font size, no visible clipping.
+- [x] **Bench-found bug:** status bar labels (`LINK`, `SEQ`, `CV`, `UP`) overlapped each other at their original fixed x-offsets (150/270/355/414) — real label widths (e.g. "WORKSTATION PSU") were wider than assumed. Re-spaced to 210/330/415/474. Confirmed fixed in `main.jpeg`.
+- [x] **Bench-found bug:** in the CH1/CH2 panels, `lbl_main_ch1_power`/`lbl_main_ch2_power` ("P …W TEMP …C MODE …") shared the same y-position as the voltage bar drawn after them, hiding the label text under the bar and producing a visible strikethrough through the current-row text. Moved current label to a smaller font (`montserrat_20`→`16`) and re-flowed current/power/bar to non-overlapping rows (110/136/bar). Confirmed fixed in `main.jpeg`.
+- [x] Removed the `4.5V/5.0V/5.5V` and `3.0V/3.3V/3.6V` bar scale-tick labels on both panels — the panel is only 182px tall and the full stack (header + big value + current + power + bar + ticks) does not fit without overlap; the tick values duplicate the already-visible SET voltage, so dropping them was the lowest-risk way to reclaim room (no info lost).
+- [x] **Bench-found bug:** `panel_i` (CH2) and `panel_meta` (SET/STATUS) both extended 14px below the top of the bottom `fault_row`, overlapping it. Moved `panel_i` up (270→254) and shortened `panel_meta` (384→366px) so both clear the fault row with a small margin. **Fix is build-verified but not yet re-photographed** — see note at top of doc.
 
 **Behavior issues (🔧 defer):**
 
@@ -80,7 +93,7 @@
 ### Graph
 
 **Layout issues (🎨 fix in D1):**
-- [x] None blocking — voltage/current summary card, two trend charts, and fault row fit within 480px height without overlap.
+- [x] **Bench-found bug:** `lbl_window` ("win Ns V x..y I x..y") duplicated the range text already shown by the adjacent `lbl_graph_window_v`/`lbl_graph_window_i` labels and visually collided with them at the bottom of the screen. Shortened `lbl_window` to just "win Ns" since the V/I ranges are already shown by the two dedicated labels. Confirmed fixed in `graph.jpeg`.
 
 **Behavior issues (🔧 defer):**
 
@@ -130,5 +143,5 @@
 
 - [x] Every screen has a filled-in per-screen block
 - [x] Every button is either ✅ wired-correctly or has a defer-to bucket
-- [ ] Layout-only fixes committed and visible in fresh screenshots — screenshots pending bench session
-- [ ] `crowpanel-screens-tracker.md` updated: D1 row → 🟢 + PR link (do this once bench-tested and PR is open)
+- [x] Layout-only fixes committed and visible in fresh screenshots (Splash/Setup/Graph confirmed; Main partially confirmed — see known open item above; Settings screenshot outstanding)
+- [ ] `crowpanel-screens-tracker.md` updated: D1 row → 🟢 + PR link (do this once PR is open)
