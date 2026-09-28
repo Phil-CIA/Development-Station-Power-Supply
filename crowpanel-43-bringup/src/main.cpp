@@ -1339,6 +1339,7 @@ void create_settings_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(title, LV_ALIGN_LEFT_MID, 20, 0);
 
+  create_nav_btn(header, "Graph", UiScreen::Graph, -120);
   create_nav_btn(header, "Main", UiScreen::Main, -10);
 
   lv_obj_t* menu_panel = lv_obj_create(screen_settings);
@@ -1524,6 +1525,9 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(badge, 9, LV_PART_MAIN);
   lv_obj_set_style_border_width(badge, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(badge, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_add_flag(badge, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(badge, nav_btn_event_cb, LV_EVENT_CLICKED,
+                      reinterpret_cast<void*>(static_cast<uintptr_t>(UiScreen::Setup)));
 
   lbl_status_output = lv_label_create(badge);
   lv_label_set_text(lbl_status_output, "OUTPUT --");
@@ -1739,6 +1743,7 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(mode, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(mode, LV_ALIGN_LEFT_MID, 14, 0);
 
+  create_nav_btn(status, "Settings", UiScreen::Settings, -120);
   create_nav_btn(status, "Main", UiScreen::Main, -10);
 
   lv_obj_t* card = lv_obj_create(screen_graph);
