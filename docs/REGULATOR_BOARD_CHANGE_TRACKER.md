@@ -424,6 +424,38 @@ Primary buck control loops appear functional when enabled; failure remains in do
 
 ---
 
+### RB-013 — Rev-C Output Gate Drivers (U9/U14/U15/U16): Wrong LM74502 Variant Populated
+**Status:** 🟡 In progress (schematic fixed; hardware rework pending)
+**Severity:** High (output MOSFETs cannot reach full enhancement)
+**Found by:** Bench measurement of Q1 gate drive on Regulator Rev-C (`Vgs≈1.76V`, `VCAP=12.43V`, `Gate-to-GND=5.13V`, `OV≈0.0044V`), traced through schematic/PCB/net cross-check
+
+**Description:**
+Q1/Q2/Q4/Q5 (and the other `PSMN5R2-60YL` output switches) on the Regulator Rev-C board are driven by four `LM74502`-family ideal-diode/high-side controllers: `U9`, `U14`, `U15`, `U16`. All four were populated/specified as the base **`LM74502DDFR`** part, which per TI's datasheet has only **60-µA peak gate drive source capacity**. The correct part for this design intent is **`LM74502HDDFR`**, which provides **11-mA** peak gate drive source capacity (~180x more).
+
+With only 60µA available, the existing 100kΩ gate-source bleeder resistor on each channel (and other minor leakage) is enough to prevent the gate from ever charging past a low equilibrium voltage, even though the driver's charge pump (`VCAP`) is confirmed healthy and boosted (12.43V measured, well above `VS`≈+5V_Boot). This produced weak, partial FET turn-on (measured `Vgs`≈1.76V, far below the ~4.5–10V this MOSFET needs for its rated 21mΩ RDS(on)), even with the channel commanded ON and open-circuit (no load).
+
+**Confirmed NOT the cause:**
+- Charge pump / VCAP — working correctly (12.43V observed)
+- OV pin — reads ≈0V, no overvoltage fault condition
+- Gate-source bleeder resistor value (100kΩ) — correct for its intended purpose, just incompatible with the weak-variant driver's tiny gate current budget
+
+**Fix applied this session:**
+- Updated `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.kicad_sch`: `Value` property changed from `LM74502DDFR` → `LM74502HDDFR` on `U9`, `U14`, `U15`, `U16`.
+
+**Still open:**
+- [ ] Update the `LCSC` BOM field on all four (currently `C3236215`, which is the wrong-variant part) once the correct LCSC SKU for `LM74502HDDFR` is confirmed.
+- [ ] Physically rework all four driver ICs on the bench board (same DDF-8/TSOT-23-8 footprint; drop-in swap). Physical spares on hand marked `LM502` are the wrong (base) variant — order/verify parts marked with an `H` suffix (e.g. `L502H`) before installing.
+- [ ] Re-measure `Vgs` per channel after rework to confirm full enhancement is reached.
+- [ ] While reworked, confirm the gate-source zener clamp value/orientation per channel (referenced in prior HAT Rev-B notes) — this determines the practical Vgs ceiling even once gate current is no longer the bottleneck.
+- [ ] Confirm no other boards/sheets in the repo carry the same `LM74502DDFR` substitution.
+
+**Related but distinct:** RB-003 (LM2596 enable-pin low-side MOSFET drive) is a separate, unrelated gate-drive path — do not conflate the two when reviewing gate-drive issues on this board.
+
+**Design Owner:** TBD (bench rework)
+**Next Step:** Source correct `LM74502HDDFR` stock, rework U9/U14/U15/U16, re-verify Vgs.
+
+---
+
 ## Summary of Next-Iter Deliverables
 
 | Issue | Next-Iter File | Action | Priority |
@@ -439,6 +471,7 @@ Primary buck control loops appear functional when enabled; failure remains in do
 | RB-009 (TS5A3157 footprint) | `dsp-regulator-next-iter/` | Fix footprint and symbol pin mapping | High |
 | RB-010 (VSENSE open/floating dominance) | `dsp-regulator-next-iter/` | Harden VSENSE_5V+ fallback behavior and validate by SPICE before routing | High (Rev-C routing blocker) |
 | RB-011 (3.3V selector/reference dependency on R25) | `dsp-regulator-next-iter/` | Remove ambiguity in 3.3V feedback selector path; keep-or-redesign decision with bench revalidation | High |
+| RB-013 (Wrong LM74502 driver variant on U9/U14/U15/U16) | `dsp-regulator-rev-c/` (schematic done) | Rework 4x driver ICs to `LM74502HDDFR`, update BOM/LCSC, re-verify Vgs | High |
 
 ---
 
@@ -449,6 +482,7 @@ Primary buck control loops appear functional when enabled; failure remains in do
 | 2026-05-10 | Tracker created; RB-001 and RB-002 opened | Bench bring-up session |
 | 2026-05-10 | Added RB-003 through RB-009 from bench bring-up findings | Bench bring-up session |
 | 2026-08-10 | Added RB-010 from SPICE fault-case results; marked as Rev-C routing blocker | Simulation and handoff session |
+| 2026-09-28 | Added RB-013: Rev-C output gate drivers (U9/U14/U15/U16) populated with wrong `LM74502DDFR` (60µA) variant instead of `LM74502HDDFR` (11mA); schematic `Value` fields corrected, physical rework pending | Bench gate-drive diagnostic session |
 | 2026-08-11 | Added RB-011 from bypass bench evidence; conditional keep-bypass rule recorded | Bench validation session |
 | 2026-08-13 | Corrected RB-011 interpretation; recorded remote-sense redesign bench pass and RB-010 TLV9352 plan | Bench validation and Rev-C schematic session |
 | 2026-08-14 | Implemented dual INA2180A2/TLV1702 four-channel Rev-C OCP, corrected supply and open-collector definitions, validated ERC/netlist, and added mandatory PCB completion gate | Rev-C OCP design session |
