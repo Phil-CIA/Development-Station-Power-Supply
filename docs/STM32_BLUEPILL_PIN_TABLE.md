@@ -48,28 +48,41 @@ Policy for this revision:
 
 These are not direct STM32 pins - they sit behind the AW9523 I2C GPIO
 expander (`AW95XX_ADDR_ACTIVE`, accessed over `I2C_SCL_PIN`/`I2C_SDA_PIN`
-above). Confirmed against the Rev-C schematic (U5 AW9523B + Q9/Q12 gate-drive
-sheet) on 2026-09-28.
+above). Confirmed against a Rev-C schematic screenshot (U5 AW9523B +
+Q9/Q12 gate-drive sheet) on 2026-09-28.
+
+> **Unresolved data conflict (see issue #62):** the current
+> `DSP-Regulator-HAT-RevC.net` lists `Q9` as an AO3400A power MOSFET wired to
+> the fan-control connector (`J7`), not the BSS138 shown in the schematic
+> screenshot this table is based on. `Q3`, `Q12`, and `U4` do not appear in
+> the current `.net` file at all. This means either the netlist is stale or
+> there's a genuine reference-designator collision across sheets. The P0.0/
+> P0.5/P0.7 rows below (Q3, Q9, Q12 gate paths) are schematic-screenshot-
+> sourced and **not yet cross-verified against a current netlist export** -
+> treat them as provisional until issue #62 resolves the conflict. The P0.1/
+> P0.2/P0.3/P0.4 rows are lower-risk: they match firmware function names
+> already in use (`setQ1PathEnabled()` etc.), independent of the Q9/Q12/U4
+> question.
 
 | AW9523 pin | Net label | Gate path | Controllable from firmware? | Notes |
 |---|---|---|---|---|
-| P0.0 | `ISET_MPU_5V` | Q3 gate | Yes - `setQ3OnlyEnabled()` | CH1 current-range select, not a full output on/off |
+| P0.0 | `ISET_MPU_5V` | Q3 gate | Yes - `setQ3OnlyEnabled()` | CH1 current-range select, not a full output on/off. Schematic-sourced, see conflict note above |
 | P0.1 | `ESP- GPIO 5V Hi` | Q2/Q8 gate | Yes - `setQ2PathEnabled()` | Was previously mislabeled "Q6/Q12 path" in code comments - corrected; not related to Q12 |
 | P0.2 | `ESP- GPIO 5V Low` | Q1/Q7 gate | Yes - `setQ1PathEnabled()` | |
 | P0.3 | `ESP- GPIO 3V3 High` | Q5/Q11 gate | Yes - `setQ5PathEnabled()` | Net comment previously said "Channel 3 Hi-Range" - Channel 3 was repurposed to the fixed 5V bootstrap supply in Rev B and is no longer an adjustable output, but this AW9523 net/gate path itself is unchanged |
 | P0.4 | `ESP- GPIO 3V3 Low` | Q4/Q10 gate | Yes - `setQ4PathEnabled()` | |
-| P0.5 | `ISET_MPU_3V3` | Q9 gate | Yes - `setQ9OnlyEnabled()` | CH2 current-range select, not a full output on/off |
+| P0.5 | `ISET_MPU_3V3` | Q9 gate | Yes - `setQ9OnlyEnabled()` | CH2 current-range select, not a full output on/off. Schematic-sourced, see conflict note above |
 | P0.6 | `FAULT_WARNING_SUM` | — (input only) | No (input) | |
-| P0.7 | `FAULT_CRITICAL_SUM` | Q12 gate (via D14/R53, pulled up through R50 to `+5V_Boot`) | **No** - Q12 is a hardware fault cutoff, not firmware-commandable | Same net is read as an AW9523 input on P0.7 *and* drives Q12's gate directly in hardware; Q12 turns off automatically when `FAULT_CRITICAL_SUM` trips and is not independently switchable from the AW9523 or STM32 |
+| P0.7 | `FAULT_CRITICAL_SUM` | Q12 gate (via D14/R53, pulled up through R50 to `+5V_Boot`) | Schematic shows **No** - Q12 is a hardware fault cutoff, not firmware-commandable | Same net is read as an AW9523 input on P0.7 *and* drives Q12's gate directly in hardware per the schematic screenshot; unverified against current netlist (see conflict note above) |
 
-**Open item:** none of P0.0-P0.7 is a full independent CH2 output enable/disable
-switch - `setD9PathEnabled()` (the only thing the UDI `OUTPUT ON`/`OUTPUT OFF`
-command drives) is the single combined output-enable path, and its AW9523
-branch writes P1.0, distinct from all of the P0.x nets above. If/when CH2
-needs its own independent output toggle (separate from CH1), the actual EN
-pin for U4 needs to be identified from the schematic before any firmware
-command is added - do not assume Q9/P0.5 is that pin, since it is a
-current-range select line, not an output enable.
+**Open item:** whether `setQ3OnlyEnabled()`/`setQ9OnlyEnabled()` (independent
+per-pin control) or the combined `Q39ON`/`Q39OFF` console command (which
+forces both together) reflects the actual intended hardware behavior for the
+CH1/CH2 current-range MOSFETs is unresolved - tracked in issue #62, not here.
+Separately: `setD9PathEnabled()` (the only thing the UDI `OUTPUT ON`/
+`OUTPUT OFF` command drives, via P1.0) is confirmed as a single output-enable
+shared by both CH1 and CH2 by hardware design - this is intentional, not a
+gap, and does not need a per-channel command.
 
 ## Drift-check workflow (for PRs touching STM32 pins)
 
