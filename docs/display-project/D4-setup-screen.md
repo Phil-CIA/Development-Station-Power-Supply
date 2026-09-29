@@ -1,5 +1,20 @@
 # D4 — CrowPanel Setup Screen (setpoint wizard)
 
+> **Scope gate (2026-09-29):** During bring-up the STM32 UDI command handler
+> (`stm32-bluepill-bringup/src/main.cpp`) was verified. It supports only
+> `OUTPUT ON/OFF`, `GET OUTPUT`, `GET STATE`, `GET ILIM CH1|CH2`, and
+> `ILIM CH1|CH2 <mA>`. There is **no `VSET`, no `MODE`, and no CH3 setpoint**
+> (CH1/CH2 are fixed 5.00 V / 3.30 V rails; CH3 is a monitor/bootstrap rail).
+> Per the guardrails below, the STM32 protocol was **not** extended. V_set,
+> mode, and CH3 setpoints are deferred to
+> [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73).
+>
+> **PR #71 delivers the achievable UI-only subset:** an edit → commit →
+> cancel/revert wizard state machine for the supported fields (Output enable +
+> CH1/CH2 I_limit) with await-ACK gating, inline `ERR:` display, UI-side
+> clamping, `GET`-driven refresh, and touch + encoder parity. Coarse/fine step
+> is deferred (no spare input on the current 4-button + encoder layout).
+
 Scoping doc + agent kickoff for bucket **D4** of the CrowPanel screens plan
 (see `docs/display-project/crowpanel-screens-tracker.md`).
 

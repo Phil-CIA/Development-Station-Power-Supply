@@ -38,6 +38,7 @@ constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimat
 constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
 constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
 constexpr uint16_t kSetupStep_mA = 50;
+constexpr uint32_t kSetupCommitTimeoutMs = 1500;  // give up waiting for host ACK/ERR after this
 constexpr float    kCh1SetVoltage_V = 5.00f;
 constexpr float    kCh2SetVoltage_V = 3.30f;
 constexpr float    kCh1SetCurrent_A = 3.00f;
@@ -87,6 +88,8 @@ static lv_obj_t* lbl_setup_param = nullptr;
 static lv_obj_t* lbl_setup_value = nullptr;
 static lv_obj_t* lbl_setup_list = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
+static lv_obj_t* lbl_setup_edit_action = nullptr;
+static lv_obj_t* lbl_setup_done_action = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
 static lv_obj_t* btn_settings_system = nullptr;
@@ -109,12 +112,20 @@ enum class SetupField : uint8_t {
 struct SetupBindingState {
   SetupField selected = SetupField::Output;
   bool editing = false;
+  // Last-known committed values (only updated from a host ACK/EVT).
   bool output_enabled = false;
   uint16_t ch1_limit_mA = kSetupCh1LimitMax_mA;
   uint16_t ch2_limit_mA = kSetupCh2LimitMax_mA;
   bool have_output = false;
   bool have_ch1_limit = false;
   bool have_ch2_limit = false;
+  // Scratch edit buffer for the field currently being edited (discarded on cancel).
+  bool edit_output_enabled = false;
+  uint16_t edit_limit_mA = 0;
+  // Await-ACK gating: block new sends until the host answers or we time out.
+  bool commit_pending = false;
+  SetupField pending_field = SetupField::Output;
+  uint32_t commit_deadline_ms = 0;
   char last_error[96] = "";
 };
 
@@ -559,6 +570,25 @@ void applySetupError(const char* err_payload) {
   setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
 }
 
+bool setupFieldIsEditing(SetupField field) {
+  return setup_binding.editing && setup_binding.selected == field;
+}
+
+bool setupDisplayOutput() {
+  return setupFieldIsEditing(SetupField::Output) ? setup_binding.edit_output_enabled
+                                                 : setup_binding.output_enabled;
+}
+
+uint16_t setupDisplayLimit(SetupField field) {
+  if (setupFieldIsEditing(field)) return setup_binding.edit_limit_mA;
+  return field == SetupField::Ch1CurrentLimit ? setup_binding.ch1_limit_mA : setup_binding.ch2_limit_mA;
+}
+
+const char* setupFieldStatusSuffix(SetupField field, bool have_value) {
+  if (setup_binding.commit_pending && setup_binding.pending_field == field) return "(sending)";
+  return have_value ? "" : "(pending)";
+}
+
 void refreshSetupScreenLabels() {
   if (!lbl_setup_param || !lbl_setup_value || !lbl_setup_list || !lbl_setup_hint) return;
 
@@ -566,11 +596,9 @@ void refreshSetupScreenLabels() {
 
   char value_buf[48];
   if (setup_binding.selected == SetupField::Output) {
-    snprintf(value_buf, sizeof(value_buf), "< %s >", setup_binding.output_enabled ? "ON" : "OFF");
-  } else if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch1_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "< %s >", setupDisplayOutput() ? "ON" : "OFF");
   } else {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch2_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setupDisplayLimit(setup_binding.selected) / 1000.0f);
   }
   lv_label_set_text(lbl_setup_value, value_buf);
 
@@ -581,27 +609,33 @@ void refreshSetupScreenLabels() {
            "%c CH1 Current Limit (I_max)      %.3f A %s\n"
            "%c CH2 Current Limit (I_max)      %.3f A %s",
            setup_binding.selected == SetupField::Output ? '>' : ' ',
-           setup_binding.output_enabled ? "ON " : "OFF",
-           setup_binding.have_output ? "" : "(pending)",
+           setupDisplayOutput() ? "ON " : "OFF",
+           setupFieldStatusSuffix(SetupField::Output, setup_binding.have_output),
            setup_binding.selected == SetupField::Ch1CurrentLimit ? '>' : ' ',
-           setup_binding.ch1_limit_mA / 1000.0f,
-           setup_binding.have_ch1_limit ? "" : "(pending)",
+           setupDisplayLimit(SetupField::Ch1CurrentLimit) / 1000.0f,
+           setupFieldStatusSuffix(SetupField::Ch1CurrentLimit, setup_binding.have_ch1_limit),
            setup_binding.selected == SetupField::Ch2CurrentLimit ? '>' : ' ',
-           setup_binding.ch2_limit_mA / 1000.0f,
-           setup_binding.have_ch2_limit ? "" : "(pending)");
+           setupDisplayLimit(SetupField::Ch2CurrentLimit) / 1000.0f,
+           setupFieldStatusSuffix(SetupField::Ch2CurrentLimit, setup_binding.have_ch2_limit));
   lv_label_set_text(lbl_setup_list, list_buf);
 
-  if (setup_binding.last_error[0] != '\0') {
+  if (lbl_setup_edit_action) {
+    lv_label_set_text(lbl_setup_edit_action, setup_binding.editing ? "Apply" : "Edit");
+  }
+  if (lbl_setup_done_action) {
+    lv_label_set_text(lbl_setup_done_action, setup_binding.editing ? "Cancel" : "Done");
+  }
+
+  if (setup_binding.commit_pending) {
+    lv_label_set_text(lbl_setup_hint, "Committing... waiting for host ACK/ERR.");
+  } else if (setup_binding.last_error[0] != '\0') {
     char hint_buf[160];
-    snprintf(hint_buf,
-             sizeof(hint_buf),
-             "Host error: %s",
-             setup_binding.last_error);
+    snprintf(hint_buf, sizeof(hint_buf), "Host error: %s", setup_binding.last_error);
     lv_label_set_text(lbl_setup_hint, hint_buf);
   } else if (setup_binding.editing) {
-    lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) to adjust, press (Edit/Apply) to commit.");
+    lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) adjusts, Apply commits, Cancel reverts.");
   } else {
-    lv_label_set_text(lbl_setup_hint, "Select with rotate (Prev/Next), press Edit/Apply to enter edit.");
+    lv_label_set_text(lbl_setup_hint, "Rotate (Prev/Next) selects, Edit enters edit, Done exits to Main.");
   }
 }
 
@@ -616,16 +650,14 @@ void setupSelectDelta(int8_t delta) {
 
 void setupAdjustDelta(int32_t delta_mA) {
   if (setup_binding.selected == SetupField::Output) {
-    setup_binding.output_enabled = !setup_binding.output_enabled;
+    setup_binding.edit_output_enabled = !setup_binding.edit_output_enabled;
     return;
   }
-  if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
-    const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch1_limit_mA) + delta_mA, 0, kSetupCh1LimitMax_mA);
-    setup_binding.ch1_limit_mA = static_cast<uint16_t>(next);
-    return;
-  }
-  const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch2_limit_mA) + delta_mA, 0, kSetupCh2LimitMax_mA);
-  setup_binding.ch2_limit_mA = static_cast<uint16_t>(next);
+  const int32_t max_mA = setup_binding.selected == SetupField::Ch1CurrentLimit
+                             ? kSetupCh1LimitMax_mA
+                             : kSetupCh2LimitMax_mA;
+  const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.edit_limit_mA) + delta_mA, 0, max_mA);
+  setup_binding.edit_limit_mA = static_cast<uint16_t>(next);
 }
 
 void setupRequestRefresh() {
@@ -649,16 +681,25 @@ void updateSetupBindingsFromUdi() {
     last_udi_ack_count = udi_link.ack_count;
     Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
     applySetupAck(udi_link.last_ack);
+    setup_binding.commit_pending = false;  // host answered; release the await-ACK gate
   }
   if (udi_link.err_count != last_udi_err_count) {
     last_udi_err_count = udi_link.err_count;
     Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
     applySetupError(udi_link.last_err);
+    setup_binding.commit_pending = false;
   }
   if (udi_link.evt_count != last_udi_evt_count) {
     last_udi_evt_count = udi_link.evt_count;
     Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
     applySetupEvent(udi_link.last_evt);
+  }
+
+  if (setup_binding.commit_pending &&
+      static_cast<int32_t>(millis() - setup_binding.commit_deadline_ms) >= 0) {
+    setup_binding.commit_pending = false;
+    strncpy(setup_binding.last_error, "no host ACK (timeout)", sizeof(setup_binding.last_error) - 1);
+    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
   }
 }
 
@@ -1001,8 +1042,57 @@ void handleSettingsEncoderLongPress() {
   set_active_screen(UiScreen::Main);
 }
 
+void setupSetError(const char* msg) {
+  strncpy(setup_binding.last_error, msg, sizeof(setup_binding.last_error) - 1);
+  setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+}
+
+void enterSetupEdit() {
+  // Snapshot the last-known committed value into the scratch edit buffer.
+  setup_binding.edit_output_enabled = setup_binding.output_enabled;
+  if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
+    setup_binding.edit_limit_mA = setup_binding.ch1_limit_mA;
+  } else if (setup_binding.selected == SetupField::Ch2CurrentLimit) {
+    setup_binding.edit_limit_mA = setup_binding.ch2_limit_mA;
+  }
+  setup_binding.editing = true;
+  setup_binding.last_error[0] = '\0';
+}
+
+void cancelSetupEdit() {
+  // Discard scratch edits; committed values are left untouched.
+  setup_binding.editing = false;
+  setup_binding.last_error[0] = '\0';
+}
+
+void commitSetupEdit() {
+  bool sent = false;
+  if (setup_binding.selected == SetupField::Output) {
+    sent = disp_link_slave::sendCommand(setup_binding.edit_output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+  } else {
+    char payload[40];
+    snprintf(payload,
+             sizeof(payload),
+             "ILIM %s %u",
+             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
+             static_cast<unsigned>(setup_binding.edit_limit_mA));
+    sent = disp_link_slave::sendCommand(payload);
+  }
+  setup_binding.editing = false;
+  if (sent) {
+    // Await-ACK gate: committed values update only when the host answers.
+    setup_binding.commit_pending = true;
+    setup_binding.pending_field = setup_binding.selected;
+    setup_binding.commit_deadline_ms = millis() + kSetupCommitTimeoutMs;
+    setup_binding.last_error[0] = '\0';
+  } else {
+    setupSetError("link not ready");
+  }
+}
+
 void handleSetupEncoderRotate(int8_t detents) {
   if (detents == 0) return;
+  if (setup_binding.commit_pending) return;  // gate input while a commit is outstanding
   const int8_t direction = detents > 0 ? 1 : -1;
   if (setup_binding.editing) {
     setupAdjustDelta(static_cast<int32_t>(direction) * static_cast<int32_t>(kSetupStep_mA));
@@ -1013,36 +1103,22 @@ void handleSetupEncoderRotate(int8_t detents) {
 }
 
 void handleSetupEncoderPress() {
-  setup_binding.last_error[0] = '\0';
+  if (setup_binding.commit_pending) return;
   if (!setup_binding.editing) {
-    setup_binding.editing = true;
-    refreshSetupScreenLabels();
-    return;
-  }
-
-  bool sent = false;
-  if (setup_binding.selected == SetupField::Output) {
-    sent = disp_link_slave::sendCommand(setup_binding.output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+    enterSetupEdit();
   } else {
-    char payload[40];
-    snprintf(payload,
-             sizeof(payload),
-             "ILIM %s %u",
-             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
-             static_cast<unsigned>(setup_binding.selected == SetupField::Ch1CurrentLimit
-                                       ? setup_binding.ch1_limit_mA
-                                       : setup_binding.ch2_limit_mA));
-    sent = disp_link_slave::sendCommand(payload);
+    commitSetupEdit();
   }
-  if (!sent) {
-    strncpy(setup_binding.last_error, "link not ready", sizeof(setup_binding.last_error) - 1);
-    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
-  }
-  setup_binding.editing = false;
   refreshSetupScreenLabels();
 }
 
 void handleSetupEncoderLongPress() {
+  if (setup_binding.editing) {
+    cancelSetupEdit();  // long-press reverts the in-progress edit
+    refreshSetupScreenLabels();
+    return;
+  }
+  if (setup_binding.commit_pending) return;  // don't navigate away mid-commit
   setup_done = true;
   set_active_screen(UiScreen::Main);
 }
@@ -1068,6 +1144,7 @@ void enterSetupScreen() {
   setup_done = false;
   setup_start_ms = millis();
   setup_binding.editing = false;
+  setup_binding.commit_pending = false;
   setupRequestRefresh();
   refreshSetupScreenLabels();
 }
@@ -1286,10 +1363,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_edit, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_edit, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_edit, setup_edit_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_edit = lv_label_create(btn_edit);
-  lv_label_set_text(lbl_edit, "Edit / Apply");
-  lv_obj_set_style_text_color(lbl_edit, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_center(lbl_edit);
+  lbl_setup_edit_action = lv_label_create(btn_edit);
+  lv_label_set_text(lbl_setup_edit_action, "Edit");
+  lv_obj_set_style_text_color(lbl_setup_edit_action, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_setup_edit_action);
 
   lv_obj_t* btn_done = lv_btn_create(panel);
   lv_obj_set_size(btn_done, 110, 40);
@@ -1299,10 +1376,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_done, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_done, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_done, setup_done_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_done = lv_label_create(btn_done);
-  lv_label_set_text(lbl_done, "Done");
-  lv_obj_set_style_text_color(lbl_done, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_center(lbl_done);
+  lbl_setup_done_action = lv_label_create(btn_done);
+  lv_label_set_text(lbl_setup_done_action, "Done");
+  lv_obj_set_style_text_color(lbl_setup_done_action, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_setup_done_action);
 
   lv_obj_t* footer = lv_obj_create(screen_setup);
   lv_obj_set_size(footer, kDisplayWidth - 40, 40);
