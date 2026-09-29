@@ -16,6 +16,38 @@
 > clamping, `GET`-driven refresh, and touch + encoder parity. Coarse/fine step
 > is deferred (no spare input on the current 4-button + encoder layout).
 
+## ▶ Session handoff (2026-09-29) — next agent resume here
+
+**State: code implemented + flashed to the physical CrowPanel. Bench validation
+NOT yet done. PR #71 stays DRAFT until it passes and screenshots are attached.**
+
+Done this session (branch `phil-cia-crowpanel-setup-screen`, PR #71):
+- `43ec6de` — D4 setup wizard UI subset in `crowpanel-43-bringup/src/main.cpp`
+  (edit buffer + cancel/revert, await-ACK gate w/ 1.5 s timeout, inline `ERR:`,
+  contextual Edit/Apply + Done/Cancel labels, per-field clamps, touch+encoder).
+- `08556aa` — dropped stale CH3 setpoint framing from this doc.
+- Issue [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73)
+  filed for the missing STM32 `VSET` / `MODE` commands (CH1/CH2 only; CH3 excluded).
+- Built clean for `crowpanel43` and **flashed to COM12** (MAC 80:B5:4E:E2:E4:08,
+  hash verified).
+
+To do (pick up here):
+1. Bench-test against the **Bench acceptance** checklist below on the physical panel.
+2. Capture screenshots (view / edit / error) → attach to PR #71.
+3. Flip the tracker D4 row to 🟢 and take PR #71 out of draft.
+
+Environment gotchas (verified this session, also in repo memory):
+- Flash the **worktree** build, not the main workspace: run
+  `scripts/guarded-flash.ps1 -Target crowpanel -Action upload` from
+  `copilot-worktrees/.../d4-setup-screen/` so PlatformIO uses the worktree project.
+- Uploads hang unless Python is forced to UTF-8: set `$env:PYTHONUTF8='1'` and
+  `$env:PYTHONIOENCODING='utf-8'` before the upload (cp1252 console codepage
+  crashes PlatformIO's echo thread and stalls esptool → blank display).
+- Redirect upload output with `*> file.log`; don't pipe through `Select-Object`.
+
+Unrelated loose end (do NOT mix into PR #71): an uncommitted STM32 `main.cpp`
+Q6/Q12 relabel is parked in `git stash@{0}` on `main`. Left untouched.
+
 Scoping doc + agent kickoff for bucket **D4** of the CrowPanel screens plan
 (see `docs/display-project/crowpanel-screens-tracker.md`).
 
