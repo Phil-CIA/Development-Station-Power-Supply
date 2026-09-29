@@ -31,7 +31,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D0 | `phil-cia-crowpanel-screens-focus` | This tracker doc + audit skeleton | — | 🟡 | — |
 | D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | [#66](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/66) | 🟢 | prep for #26 |
 | D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | [#67](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/67) | 🟢 | part of #26 |
-| D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟡 | #26 |
+| D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟢 | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: full setpoint edit (V_set, I_limit, mode LATCH/HICCUP/MONITOR), commit via UDI, cancel/back, validation. | — | ⬜ | #26 |
 | D5 | `phil-cia-crowpanel-graph-screen` | Trend: window selector (30 s / 5 min / 30 min), pause/resume, clear, per-channel visibility, autoscale. | — | ⬜ | #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
@@ -82,7 +82,7 @@ When returning to this session for a status sync:
   Main has no direct button to Settings; a real shared top-bar/bottom-nav
   component (replacing the per-screen duplicated header code) is the
   correct long-term fix — noted as a D2 follow-up, not a blocker for D3.
-- 2026-09-28: D3 (#68, open, not yet merged) wired Main's RUN/WAIT chip to
+- 2026-09-28: D3 (#68, merged) wired Main's RUN/WAIT chip to
   toggle `CMD:OUTPUT ON/OFF` directly. While scoping this, went down a
   research path on independent per-channel (CH1/CH2) output control that
   turned into real hardware/firmware data conflicts — spun out to issue #62
@@ -97,6 +97,6 @@ When returning to this session for a status sync:
   proceeds. A related pure-comment fix (stale/self-contradictory AW9523
   P0.x pin comments) landed separately as PR #69, not gated on that
   resolution.
-- **Next session should resume at D4** once PR #68 is reviewed/merged
-  (rebase `main` first). D3's open item (Main has no direct Settings button)
-  and issue #62 are tracked separately and don't block D4–D8.
+- **Next session should resume at D4** (rebase `main` first, D3/#68 is now
+  merged). D3's open item (Main has no direct Settings button) and issue
+  #62 are tracked separately and don't block D4–D8.

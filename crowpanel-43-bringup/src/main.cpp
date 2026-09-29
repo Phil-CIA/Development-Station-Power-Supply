@@ -1093,8 +1093,13 @@ void nav_btn_event_cb(lv_event_t* e) {
   }
 }
 
-lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, int x_ofs) {
-  lv_obj_t* btn = lv_btn_create(parent);
+void main_output_toggle_event_cb(lv_event_t* /*e*/) {
+  const DisplayTelemetry t = get_display_telemetry();
+  const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
+  disp_link_slave::sendCommand(ch1_enabled ? "OUTPUT OFF" : "OUTPUT ON");
+}
+
+lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, int x_ofs) {  lv_obj_t* btn = lv_btn_create(parent);
   lv_obj_set_size(btn, 102, 32);
   lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, 6);
   lv_obj_set_style_bg_color(btn, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
@@ -1699,6 +1704,9 @@ void create_main_screen(lv_obj_t* root) {
   chip_main_mode = create_state_chip(chip_col, "M1", 0x24364A, UiTheme::kAccentI, 52);
   chip_main_limit = create_state_chip(chip_col, "CV", 0x1F3A27, UiTheme::kAccentOk, 104);
   chip_main_run = create_state_chip(chip_col, "RUN", 0x1F3A27, UiTheme::kAccentOk, 156);
+  lv_obj_t* chip_main_run_container = lv_obj_get_parent(chip_main_run);
+  lv_obj_add_flag(chip_main_run_container, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(chip_main_run_container, main_output_toggle_event_cb, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t* footer = lv_label_create(panel_meta);
   lv_label_set_text(footer, "Fixed-rail live summary");

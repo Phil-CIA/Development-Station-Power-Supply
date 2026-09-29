@@ -79,6 +79,7 @@
 | `create_nav_btn(status, "Graphs", ...)` | `nav_btn_event_cb` | ✅ yes | Navigates to Graph screen | Same — correct | — |
 | Output badge (`lbl_status_output`, "OUTPUT --") | `nav_btn_event_cb` (D2) | ✅ yes (D2) | Badge is now clickable and navigates to Setup screen (top status bar had no free space left for a dedicated "Setup" button — see D2 PR) | Same — closes the Main→Setup nav gap | — |
 | (missing) nav to Settings screen | — | ❌ not present | No way to reach Settings directly from Main (status bar has no remaining free space for a 3rd/4th button without a larger top-bar redesign) | Reach via Graph→Settings (D2) for now; revisit with a real top-bar/bottom-nav component redesign | D2 (follow-up) |
+| `chip_main_run` ("RUN"/"WAIT" chip, SET/STATUS panel) | `main_output_toggle_event_cb` (D3) | ✅ yes (D3) | Tapping the chip reads live telemetry (`t.status & 0x80`) and sends `CMD:OUTPUT ON`/`CMD:OUTPUT OFF` (toggle) via `disp_link_slave::sendCommand` — UDI-conformant, same pattern as Setup | Same — closes the "output badge not tappable"/"no direct output toggle on Main" gaps from D1 | — |
 
 **Style constants used:** `lv_font_montserrat_16/14/12`, `UiTheme::kAccentV/kAccentI/kAccentWarn/kAccentOk`, state chips via `create_state_chip`.
 
