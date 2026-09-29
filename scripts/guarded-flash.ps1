@@ -76,14 +76,23 @@ function Write-PrecheckFailure {
 function Invoke-Esptool {
   param(
     [string]$Port,
-    [string]$CommandName
+    [string]$CommandName,
+    [switch]$NoStub
   )
 
   $stdoutFile = [System.IO.Path]::GetTempFileName()
   $stderrFile = [System.IO.Path]::GetTempFileName()
   try {
+    $args = New-Object System.Collections.ArrayList
+    [void]$args.Add("--port")
+    [void]$args.Add($Port)
+    if ($NoStub) {
+      [void]$args.Add("--no-stub")
+    }
+    [void]$args.Add($CommandName)
+
     $proc = Start-Process -FilePath $script:EsptoolExe `
-                -ArgumentList @("--port", $Port, $CommandName) `
+                -ArgumentList $args.ToArray() `
                 -NoNewWindow -PassThru -Wait `
                 -RedirectStandardOutput $stdoutFile `
                 -RedirectStandardError $stderrFile
@@ -151,7 +160,7 @@ function Get-PortMac {
     Write-PrecheckFailure "esptool executable not found at $($script:EsptoolExe)"
   }
 
-  $probe = Invoke-Esptool -Port $Port -CommandName "read-mac"
+  $probe = Invoke-Esptool -Port $Port -CommandName "read-mac" -NoStub
   $probeText = $probe.Text
   if ($probe.ExitCode -ne 0) {
     return ""
@@ -175,7 +184,7 @@ function Invoke-ChipProbe {
     Write-PrecheckFailure "esptool executable not found at $($script:EsptoolExe)"
   }
 
-  $probe = Invoke-Esptool -Port $Port -CommandName "chip-id"
+  $probe = Invoke-Esptool -Port $Port -CommandName "chip-id" -NoStub
   $probeText = $probe.Text
 
   if ($probe.ExitCode -ne 0) {
@@ -197,7 +206,7 @@ function Get-MatchingChipPorts {
   $portMatches = New-Object System.Collections.ArrayList
 
   foreach ($port in $serialPorts) {
-    $probe = Invoke-Esptool -Port $port -CommandName "chip-id"
+    $probe = Invoke-Esptool -Port $port -CommandName "chip-id" -NoStub
     $probeText = $probe.Text
     if ($probe.ExitCode -eq 0 -and $probeText -match [regex]::Escape($ExpectedChip)) {
       [void]$portMatches.Add([string]$port)
