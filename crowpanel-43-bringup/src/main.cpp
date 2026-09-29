@@ -93,6 +93,18 @@ static lv_obj_t* lbl_setup_done_action = nullptr;
 static lv_obj_t* lbl_setup_prev_action = nullptr;
 static lv_obj_t* lbl_setup_next_action = nullptr;
 static lv_obj_t* lbl_setup_mode = nullptr;
+static lv_obj_t* btn_setup_output_value = nullptr;
+static lv_obj_t* btn_setup_ch1_value = nullptr;
+static lv_obj_t* btn_setup_ch2_value = nullptr;
+static lv_obj_t* lbl_setup_output_value = nullptr;
+static lv_obj_t* lbl_setup_ch1_value = nullptr;
+static lv_obj_t* lbl_setup_ch2_value = nullptr;
+static lv_obj_t* setup_editor_overlay = nullptr;
+static lv_obj_t* setup_editor_card = nullptr;
+static lv_obj_t* lbl_setup_editor_title = nullptr;
+static lv_obj_t* ta_setup_editor_value = nullptr;
+static lv_obj_t* dd_setup_editor_output = nullptr;
+static lv_obj_t* kb_setup_editor = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
 static lv_obj_t* btn_settings_system = nullptr;
@@ -110,6 +122,12 @@ enum class SetupField : uint8_t {
   Ch1CurrentLimit = 1,
   Ch2CurrentLimit = 2,
   Count = 3,
+};
+
+enum class SetupTouchEditorMode : uint8_t {
+  None = 0,
+  Numeric = 1,
+  Output = 2,
 };
 
 struct SetupBindingState {
@@ -133,6 +151,8 @@ struct SetupBindingState {
 };
 
 static SetupBindingState setup_binding = {};
+static SetupTouchEditorMode setup_touch_editor_mode = SetupTouchEditorMode::None;
+static SetupField setup_touch_editor_field = SetupField::Output;
 
 enum class SettingsMenu : uint8_t {
   System = 0,
@@ -312,6 +332,12 @@ void setup_prev_btn_event_cb(lv_event_t* e);
 void setup_next_btn_event_cb(lv_event_t* e);
 void setup_edit_btn_event_cb(lv_event_t* e);
 void setup_done_btn_event_cb(lv_event_t* e);
+void setup_output_value_event_cb(lv_event_t* e);
+void setup_ch1_value_event_cb(lv_event_t* e);
+void setup_ch2_value_event_cb(lv_event_t* e);
+void setup_editor_apply_btn_event_cb(lv_event_t* e);
+void setup_editor_cancel_btn_event_cb(lv_event_t* e);
+void setup_editor_keyboard_event_cb(lv_event_t* e);
 
 size_t trendStartIndex() {
   if (trend_count == 0) return 0;
@@ -602,6 +628,95 @@ const char* setupFieldStatusSuffix(SetupField field, bool have_value) {
   return have_value ? "" : "(pending)";
 }
 
+void setSetupValueButtonStyle(lv_obj_t* btn, SetupField field) {
+  if (!btn) return;
+
+  uint32_t bg = UiTheme::kPanelSoft;
+  uint32_t border = UiTheme::kBorder;
+  uint32_t text = UiTheme::kTextPrimary;
+
+  if (setup_binding.commit_pending && setup_binding.pending_field == field) {
+    bg = UiTheme::kAccentWarn;
+    border = UiTheme::kAccentWarn;
+    text = UiTheme::kBg;
+  } else if (setup_binding.editing && setup_binding.selected == field) {
+    bg = UiTheme::kAccentOk;
+    border = UiTheme::kAccentOk;
+    text = UiTheme::kBg;
+  }
+
+  lv_obj_set_style_bg_color(btn, lv_color_hex(bg), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn, lv_color_hex(border), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
+  lv_obj_set_style_text_color(btn, lv_color_hex(text), LV_PART_MAIN);
+}
+
+bool parseSetupAmpsInput(const char* text, uint16_t max_mA, uint16_t* out_mA) {
+  if (!text || !out_mA) return false;
+  char* end_ptr = nullptr;
+  const float amps = strtof(text, &end_ptr);
+  if (end_ptr == text) return false;
+  while (*end_ptr == ' ') end_ptr++;
+  if (*end_ptr != '\0') return false;
+  const int32_t raw_mA = static_cast<int32_t>(lroundf(amps * 1000.0f));
+  if (raw_mA < 0) return false;
+  *out_mA = static_cast<uint16_t>(clamp_i32(raw_mA, 0, static_cast<int32_t>(max_mA)));
+  return true;
+}
+
+void closeSetupTouchEditor() {
+  setup_touch_editor_mode = SetupTouchEditorMode::None;
+  if (setup_editor_overlay) {
+    lv_obj_add_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void openSetupNumericEditor(SetupField field) {
+  if (!setup_editor_overlay || !ta_setup_editor_value || !kb_setup_editor || !lbl_setup_editor_title) return;
+  if (setup_binding.commit_pending) return;
+
+  setup_touch_editor_mode = SetupTouchEditorMode::Numeric;
+  setup_touch_editor_field = field;
+  setup_binding.selected = field;
+
+  const uint16_t current_mA = setupDisplayLimit(field);
+  char value_text[24];
+  snprintf(value_text, sizeof(value_text), "%.3f", current_mA / 1000.0f);
+  lv_textarea_set_text(ta_setup_editor_value, value_text);
+  lv_label_set_text(lbl_setup_editor_title,
+                    field == SetupField::Ch1CurrentLimit ? "Edit CH1 ILIM (A)" : "Edit CH2 ILIM (A)");
+
+  if (dd_setup_editor_output) lv_obj_add_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(ta_setup_editor_value, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(kb_setup_editor, LV_OBJ_FLAG_HIDDEN);
+  lv_keyboard_set_mode(kb_setup_editor, LV_KEYBOARD_MODE_NUMBER);
+  lv_keyboard_set_textarea(kb_setup_editor, ta_setup_editor_value);
+
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(setup_editor_overlay);
+}
+
+void openSetupOutputEditor() {
+  if (!setup_editor_overlay || !dd_setup_editor_output || !lbl_setup_editor_title) return;
+  if (setup_binding.commit_pending) return;
+
+  setup_touch_editor_mode = SetupTouchEditorMode::Output;
+  setup_touch_editor_field = SetupField::Output;
+  setup_binding.selected = SetupField::Output;
+  lv_label_set_text(lbl_setup_editor_title, "Set Output Enable");
+
+  const uint16_t idx = setupDisplayOutput() ? 1u : 0u;
+  lv_dropdown_set_selected(dd_setup_editor_output, idx);
+
+  if (ta_setup_editor_value) lv_obj_add_flag(ta_setup_editor_value, LV_OBJ_FLAG_HIDDEN);
+  if (kb_setup_editor) lv_obj_add_flag(kb_setup_editor, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(setup_editor_overlay);
+}
+
 void refreshSetupScreenLabels() {
   if (!lbl_setup_param || !lbl_setup_value || !lbl_setup_list || !lbl_setup_hint) return;
 
@@ -627,6 +742,7 @@ void refreshSetupScreenLabels() {
   char list_buf[320];
   snprintf(list_buf,
            sizeof(list_buf),
+           "Tap any value button to edit directly.\n"
            "%c Output Enable                 %s %s\n"
            "%c CH1 Current Limit (I_max)      %.3f A %s\n"
            "%c CH2 Current Limit (I_max)      %.3f A %s",
@@ -640,6 +756,32 @@ void refreshSetupScreenLabels() {
            setupDisplayLimit(SetupField::Ch2CurrentLimit) / 1000.0f,
            setupFieldStatusSuffix(SetupField::Ch2CurrentLimit, setup_binding.have_ch2_limit));
   lv_label_set_text(lbl_setup_list, list_buf);
+
+  if (lbl_setup_output_value) {
+    char out_buf[24];
+    snprintf(out_buf, sizeof(out_buf), "%s %s",
+             setupDisplayOutput() ? "ON" : "OFF",
+             setupFieldStatusSuffix(SetupField::Output, setup_binding.have_output));
+    lv_label_set_text(lbl_setup_output_value, out_buf);
+  }
+  if (lbl_setup_ch1_value) {
+    char ch1_buf[32];
+    snprintf(ch1_buf, sizeof(ch1_buf), "%.3f A %s",
+             setupDisplayLimit(SetupField::Ch1CurrentLimit) / 1000.0f,
+             setupFieldStatusSuffix(SetupField::Ch1CurrentLimit, setup_binding.have_ch1_limit));
+    lv_label_set_text(lbl_setup_ch1_value, ch1_buf);
+  }
+  if (lbl_setup_ch2_value) {
+    char ch2_buf[32];
+    snprintf(ch2_buf, sizeof(ch2_buf), "%.3f A %s",
+             setupDisplayLimit(SetupField::Ch2CurrentLimit) / 1000.0f,
+             setupFieldStatusSuffix(SetupField::Ch2CurrentLimit, setup_binding.have_ch2_limit));
+    lv_label_set_text(lbl_setup_ch2_value, ch2_buf);
+  }
+
+  setSetupValueButtonStyle(btn_setup_output_value, SetupField::Output);
+  setSetupValueButtonStyle(btn_setup_ch1_value, SetupField::Ch1CurrentLimit);
+  setSetupValueButtonStyle(btn_setup_ch2_value, SetupField::Ch2CurrentLimit);
 
   if (lbl_setup_edit_action) {
     lv_label_set_text(lbl_setup_edit_action, setup_binding.editing ? "Apply" : "Edit");
@@ -674,9 +816,9 @@ void refreshSetupScreenLabels() {
     snprintf(hint_buf, sizeof(hint_buf), "Host error: %s", setup_binding.last_error);
     lv_label_set_text(lbl_setup_hint, hint_buf);
   } else if (setup_binding.editing) {
-    lv_label_set_text(lbl_setup_hint, "Editing: use -/+ to adjust, Apply commits, Cancel reverts.");
+    lv_label_set_text(lbl_setup_hint, "Editing: touch value or use Value -/+ controls, Apply commits, Cancel reverts.");
   } else {
-    lv_label_set_text(lbl_setup_hint, "Use -/+ to select, Edit enters edit, Done exits to Main.");
+    lv_label_set_text(lbl_setup_hint, "Touch Output/ILIM value to edit directly. Use Field -/+ to move, Done exits to Main.");
   }
 }
 
@@ -1180,6 +1322,81 @@ void setup_done_btn_event_cb(lv_event_t* /*e*/) {
   handleSetupEncoderLongPress();
 }
 
+void setup_output_value_event_cb(lv_event_t* /*e*/) {
+  openSetupOutputEditor();
+  refreshSetupScreenLabels();
+}
+
+void setup_ch1_value_event_cb(lv_event_t* /*e*/) {
+  openSetupNumericEditor(SetupField::Ch1CurrentLimit);
+  refreshSetupScreenLabels();
+}
+
+void setup_ch2_value_event_cb(lv_event_t* /*e*/) {
+  openSetupNumericEditor(SetupField::Ch2CurrentLimit);
+  refreshSetupScreenLabels();
+}
+
+void setup_editor_apply_btn_event_cb(lv_event_t* /*e*/) {
+  if (setup_binding.commit_pending) {
+    setupSetError("commit already pending");
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+    return;
+  }
+
+  if (setup_touch_editor_mode == SetupTouchEditorMode::Output) {
+    const uint16_t idx = dd_setup_editor_output ? lv_dropdown_get_selected(dd_setup_editor_output) : 0u;
+    setup_binding.selected = SetupField::Output;
+    setup_binding.edit_output_enabled = (idx != 0u);
+    setup_binding.editing = true;
+    commitSetupEdit();
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+    return;
+  }
+
+  if (setup_touch_editor_mode == SetupTouchEditorMode::Numeric) {
+    if (!ta_setup_editor_value) {
+      closeSetupTouchEditor();
+      return;
+    }
+
+    const char* text = lv_textarea_get_text(ta_setup_editor_value);
+    const uint16_t max_mA = (setup_touch_editor_field == SetupField::Ch1CurrentLimit)
+        ? kSetupCh1LimitMax_mA
+        : kSetupCh2LimitMax_mA;
+    uint16_t parsed_mA = 0;
+    if (!parseSetupAmpsInput(text, max_mA, &parsed_mA)) {
+      setupSetError("invalid numeric input");
+      closeSetupTouchEditor();
+      refreshSetupScreenLabels();
+      return;
+    }
+
+    setup_binding.selected = setup_touch_editor_field;
+    setup_binding.edit_limit_mA = parsed_mA;
+    setup_binding.editing = true;
+    commitSetupEdit();
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+  }
+}
+
+void setup_editor_cancel_btn_event_cb(lv_event_t* /*e*/) {
+  closeSetupTouchEditor();
+  refreshSetupScreenLabels();
+}
+
+void setup_editor_keyboard_event_cb(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_READY) {
+    setup_editor_apply_btn_event_cb(nullptr);
+  } else if (code == LV_EVENT_CANCEL) {
+    setup_editor_cancel_btn_event_cb(nullptr);
+  }
+}
+
 void enterSetupScreen() {
   set_active_screen(UiScreen::Setup);
   setup_done = false;
@@ -1347,7 +1564,7 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_align(lbl_setup_mode, LV_ALIGN_TOP_RIGHT, -18, 10);
 
   lv_obj_t* hint = lv_label_create(header);
-  lv_label_set_text(hint, "Controls: use - / + to select or adjust, Edit/Apply to commit, Done/Cancel to exit.");
+  lv_label_set_text(hint, "Touch any value to edit: ILIM uses keypad, Output uses ON/OFF dropdown.");
   lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 20, -6);
@@ -1361,22 +1578,106 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_setup_param = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_param, "CH1 Current Limit (I_max)");
+  lv_label_set_text(lbl_setup_param, "Touch-first setup editor");
   lv_obj_set_style_text_color(lbl_setup_param, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_param, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(lbl_setup_param, LV_ALIGN_TOP_LEFT, 20, 20);
 
   lbl_setup_value = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_value, "< -- >");
+  lv_label_set_text(lbl_setup_value, "Tap value to edit");
   lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_MID, 0, 80);
+  lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_24, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_LEFT, 22, 56);
+
+  lv_obj_t* row_output = lv_obj_create(panel);
+  lv_obj_set_size(row_output, 500, 54);
+  lv_obj_align(row_output, LV_ALIGN_TOP_LEFT, 20, 98);
+  lv_obj_set_style_bg_color(row_output, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_output, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_output, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_output, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_output, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_output = lv_label_create(row_output);
+  lv_label_set_text(lbl_output, "Output Enable");
+  lv_obj_set_style_text_color(lbl_output, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_output, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_output, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_output_value = lv_btn_create(row_output);
+  lv_obj_set_size(btn_setup_output_value, 180, 38);
+  lv_obj_align(btn_setup_output_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_output_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_output_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_output_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_output_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_output_value, setup_output_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_output_value = lv_label_create(btn_setup_output_value);
+  lv_label_set_text(lbl_setup_output_value, "OFF");
+  lv_obj_set_style_text_font(lbl_setup_output_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_output_value);
+
+  lv_obj_t* row_ch1 = lv_obj_create(panel);
+  lv_obj_set_size(row_ch1, 500, 54);
+  lv_obj_align(row_ch1, LV_ALIGN_TOP_LEFT, 20, 158);
+  lv_obj_set_style_bg_color(row_ch1, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_ch1, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_ch1, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_ch1, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_ch1, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_ch1 = lv_label_create(row_ch1);
+  lv_label_set_text(lbl_ch1, "CH1 Current Limit (I_max)");
+  lv_obj_set_style_text_color(lbl_ch1, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_ch1, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_ch1, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_ch1_value = lv_btn_create(row_ch1);
+  lv_obj_set_size(btn_setup_ch1_value, 180, 38);
+  lv_obj_align(btn_setup_ch1_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_ch1_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_ch1_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_ch1_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_ch1_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_ch1_value, setup_ch1_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_ch1_value = lv_label_create(btn_setup_ch1_value);
+  lv_label_set_text(lbl_setup_ch1_value, "3.000 A");
+  lv_obj_set_style_text_font(lbl_setup_ch1_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_ch1_value);
+
+  lv_obj_t* row_ch2 = lv_obj_create(panel);
+  lv_obj_set_size(row_ch2, 500, 54);
+  lv_obj_align(row_ch2, LV_ALIGN_TOP_LEFT, 20, 218);
+  lv_obj_set_style_bg_color(row_ch2, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_ch2, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_ch2, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_ch2, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_ch2, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_ch2 = lv_label_create(row_ch2);
+  lv_label_set_text(lbl_ch2, "CH2 Current Limit (I_max)");
+  lv_obj_set_style_text_color(lbl_ch2, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_ch2, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_ch2, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_ch2_value = lv_btn_create(row_ch2);
+  lv_obj_set_size(btn_setup_ch2_value, 180, 38);
+  lv_obj_align(btn_setup_ch2_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_ch2_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_ch2_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_ch2_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_ch2_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_ch2_value, setup_ch2_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_ch2_value = lv_label_create(btn_setup_ch2_value);
+  lv_label_set_text(lbl_setup_ch2_value, "2.000 A");
+  lv_obj_set_style_text_font(lbl_setup_ch2_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_ch2_value);
 
   lbl_setup_list = lv_label_create(panel);
   lv_label_set_text(lbl_setup_list, "Loading setup values...");
   lv_obj_set_style_text_color(lbl_setup_list, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_setup_list, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_setup_list, LV_ALIGN_BOTTOM_LEFT, 20, -72);
+  lv_obj_set_style_text_font(lbl_setup_list, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_list, LV_ALIGN_TOP_LEFT, 546, 108);
 
   lv_obj_t* btn_prev = lv_btn_create(panel);
   lv_obj_set_size(btn_prev, 110, 40);
@@ -1443,6 +1744,74 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_text_color(lbl_setup_hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_center(lbl_setup_hint);
+
+  setup_editor_overlay = lv_obj_create(screen_setup);
+  lv_obj_set_size(setup_editor_overlay, kDisplayWidth, kDisplayHeight);
+  lv_obj_align(setup_editor_overlay, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_bg_color(setup_editor_overlay, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(setup_editor_overlay, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_set_style_border_width(setup_editor_overlay, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(setup_editor_overlay, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+
+  setup_editor_card = lv_obj_create(setup_editor_overlay);
+  lv_obj_set_size(setup_editor_card, 560, 300);
+  lv_obj_center(setup_editor_card);
+  lv_obj_set_style_bg_color(setup_editor_card, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(setup_editor_card, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(setup_editor_card, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(setup_editor_card, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(setup_editor_card, LV_OBJ_FLAG_SCROLLABLE);
+
+  lbl_setup_editor_title = lv_label_create(setup_editor_card);
+  lv_label_set_text(lbl_setup_editor_title, "Edit value");
+  lv_obj_set_style_text_color(lbl_setup_editor_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_editor_title, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_editor_title, LV_ALIGN_TOP_LEFT, 18, 12);
+
+  ta_setup_editor_value = lv_textarea_create(setup_editor_card);
+  lv_obj_set_size(ta_setup_editor_value, 230, 44);
+  lv_obj_align(ta_setup_editor_value, LV_ALIGN_TOP_LEFT, 18, 52);
+  lv_textarea_set_one_line(ta_setup_editor_value, true);
+  lv_textarea_set_max_length(ta_setup_editor_value, 10);
+  lv_obj_set_style_text_font(ta_setup_editor_value, &lv_font_montserrat_20, LV_PART_MAIN);
+
+  dd_setup_editor_output = lv_dropdown_create(setup_editor_card);
+  lv_dropdown_set_options(dd_setup_editor_output, "OFF\nON");
+  lv_obj_set_size(dd_setup_editor_output, 230, 44);
+  lv_obj_align(dd_setup_editor_output, LV_ALIGN_TOP_LEFT, 18, 52);
+  lv_obj_add_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t* btn_editor_apply = lv_btn_create(setup_editor_card);
+  lv_obj_set_size(btn_editor_apply, 130, 40);
+  lv_obj_align(btn_editor_apply, LV_ALIGN_TOP_RIGHT, -18, 52);
+  lv_obj_set_style_bg_color(btn_editor_apply, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_editor_apply, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_editor_apply, setup_editor_apply_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_apply = lv_label_create(btn_editor_apply);
+  lv_label_set_text(lbl_apply, "Apply");
+  lv_obj_set_style_text_color(lbl_apply, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_apply);
+
+  lv_obj_t* btn_editor_cancel = lv_btn_create(setup_editor_card);
+  lv_obj_set_size(btn_editor_cancel, 130, 40);
+  lv_obj_align(btn_editor_cancel, LV_ALIGN_TOP_RIGHT, -18, 98);
+  lv_obj_set_style_bg_color(btn_editor_cancel, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_editor_cancel, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_editor_cancel, setup_editor_cancel_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_cancel = lv_label_create(btn_editor_cancel);
+  lv_label_set_text(lbl_cancel, "Cancel");
+  lv_obj_set_style_text_color(lbl_cancel, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_cancel);
+
+  kb_setup_editor = lv_keyboard_create(setup_editor_card);
+  lv_obj_set_size(kb_setup_editor, 520, 170);
+  lv_obj_align(kb_setup_editor, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_keyboard_set_mode(kb_setup_editor, LV_KEYBOARD_MODE_NUMBER);
+  lv_keyboard_set_textarea(kb_setup_editor, ta_setup_editor_value);
+  lv_obj_add_event_cb(kb_setup_editor, setup_editor_keyboard_event_cb, LV_EVENT_READY, nullptr);
+  lv_obj_add_event_cb(kb_setup_editor, setup_editor_keyboard_event_cb, LV_EVENT_CANCEL, nullptr);
 
   refreshSetupScreenLabels();
 }
