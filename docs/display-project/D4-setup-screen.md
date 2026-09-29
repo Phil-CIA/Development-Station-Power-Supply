@@ -3,11 +3,12 @@
 > **Scope gate (2026-09-29):** During bring-up the STM32 UDI command handler
 > (`stm32-bluepill-bringup/src/main.cpp`) was verified. It supports only
 > `OUTPUT ON/OFF`, `GET OUTPUT`, `GET STATE`, `GET ILIM CH1|CH2`, and
-> `ILIM CH1|CH2 <mA>`. There is **no `VSET`, no `MODE`, and no CH3 setpoint**
-> (CH1/CH2 are fixed 5.00 V / 3.30 V rails; CH3 is a monitor/bootstrap rail).
-> Per the guardrails below, the STM32 protocol was **not** extended. V_set,
-> mode, and CH3 setpoints are deferred to
-> [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73).
+> `ILIM CH1|CH2 <mA>`. There is **no `VSET` and no `MODE`** (CH1/CH2 are fixed
+> 5.00 V / 3.30 V rails), and **CH3 has no command set at all** — it is the
+> fixed monitor / 5 V bootstrap rail, not an adjustable output. Per the
+> guardrails below, the STM32 protocol was **not** extended. V_set and mode are
+> deferred to [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73);
+> CH3 setpoint control is not a gap to fill and is intentionally excluded.
 >
 > **PR #71 delivers the achievable UI-only subset:** an edit → commit →
 > cancel/revert wizard state machine for the supported fields (Output enable +
@@ -26,26 +27,31 @@ Scoping doc + agent kickoff for bucket **D4** of the CrowPanel screens plan
 
 Turn the existing Setup screen in `crowpanel-43-bringup/src/main.cpp`
 (`create_setup_screen` / `handleSetup*` / `updateSetupBindingsFromUdi`) into a
-real setpoint wizard that lets the operator edit and commit all channel
-setpoints via UDI, and cancel cleanly.
+real setpoint wizard that lets the operator edit and commit the UDI-supported
+channel setpoints (Output enable + CH1/CH2 I_limit) via UDI, and cancel cleanly.
 
 ## In scope
 
-- **Setpoint fields per channel (CH1/CH2/CH3):**
-  - `V_set` (mV)
-  - `I_limit` (mA)
-  - Operating mode: `LATCH` / `HICCUP` / `MONITOR`
+- **Setpoint fields (only what the STM32 UDI protocol actually supports):**
+  - `Output` enable (`OUTPUT ON|OFF`)
+  - `I_limit` for **CH1** and **CH2** (`ILIM CH1|CH2 <mA>`)
+  - CH3 is **out of scope by design** — it is the fixed monitor / 5 V bootstrap
+    rail and has **no command set** (not an adjustable output). Do not add CH3
+    setpoint rows.
+  - `V_set` and operating mode (`LATCH` / `HICCUP` / `MONITOR`) are **not in the
+    protocol** (CH1/CH2 are fixed 5.00 V / 3.30 V rails) — deferred to
+    [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73).
 - **Interaction model** (touch + encoder — both must work):
   - Select field → edit → commit or cancel
-  - Coarse / fine step (long-press or on-screen toggle)
   - Field-level validation with min/max clamps and inline error hints
+  - Coarse / fine step is deferred (no spare input on the 4-button + encoder layout)
 - **UDI protocol** (per `docs/DISPLAY_INTERFACE_STANDARD.md`):
-  - Commit uses existing `CMD:VSET`, `CMD:ILIM`, `CMD:MODE` (verify exact
-    tokens against the STM32 firmware and the UDI spec before wiring)
+  - Commit uses the existing `CMD:OUTPUT` and `CMD:ILIM` tokens (verified
+    against the STM32 firmware). There is no `CMD:VSET` / `CMD:MODE`.
   - Wait for `ACK:` or `ERR:`; surface `ERR:` in the field-level hint
   - Never send while a prior CMD is still awaiting ACK
 - **Cancel / back**: revert local edits to last-known UDI state; do not send.
-- **Refresh**: pull current values via `CMD:GET STATE` on screen enter and
+- **Refresh**: pull current values via `CMD:GET` on screen enter and
   after any successful commit.
 
 ## Out of scope (do NOT expand into these)
