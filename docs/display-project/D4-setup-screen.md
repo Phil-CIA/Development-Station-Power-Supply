@@ -114,11 +114,11 @@ Do not touch STM32 firmware in this PR.
 
 - [ ] Enter Setup from Main; all fields populate from live UDI within 1 s
 - [ ] Encoder: rotate selects, press enters edit, rotate adjusts, press commits, long-press cancels
-- [ ] Touch: field tap enters edit, +/- adjusts, `Done` commits, `Cancel` reverts
+- [ ] Touch parity: `Prev/Next` selects or adjusts (while editing), `Edit/Apply` enters + commits, `Done/Cancel` exits + reverts
 - [ ] Commit sends exactly one `CMD:` per field change and updates only on `ACK:`
 - [ ] `ERR:` payload shows inline on the field, doesn't crash, doesn't leave edit mode stuck
 - [ ] Values persist across screen navigation (Main → Setup → Main → Setup)
-- [ ] Mode cycles through `LATCH` → `HICCUP` → `MONITOR` and commits correctly
+- [ ] Setup scope is limited to Output + CH1/CH2 I_limit (no `VSET`/`MODE` controls shown in this PR; deferred to #73)
 - [ ] Clamps: values below min / above max are rejected in the UI before send
 - [ ] Screenshots of Setup in view / edit / error states attached to the PR
 
