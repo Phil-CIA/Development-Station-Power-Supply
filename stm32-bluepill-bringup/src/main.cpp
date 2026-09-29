@@ -46,14 +46,23 @@ static const uint8_t AW95XX_REG_LED_MODE_P1 = 0x13; // 1=GPIO, 0=LED current mod
 static const uint8_t AW95XX_GCR_PORT_MODE_BIT = 0x10; // 1=push-pull, 0=open-drain
 static const uint8_t AW95XX_CFG_P0_POLICY = 0xC0; // P0.0..P0.5 output, P0.6..P0.7 input
 static const uint8_t AW95XX_P10_MASK = 0x01;
-static const uint8_t AW95XX_P01_MASK = 0x02; // P0.1: ESP- GPIO 5V Hi
+static const uint8_t AW95XX_P01_MASK = 0x02; // P0.1: ESP- GPIO 5V Hi (Q2/Q8 path)
 static const uint8_t AW95XX_P02_MASK = 0x04; // P0.2: ESP- GPIO 5V Low (Q1/Q7 path)
-static const uint8_t AW95XX_P03_MASK = 0x08; // P0.3: Channel 3 Hi-Range (Q5/Q11 path)
+static const uint8_t AW95XX_P03_MASK = 0x08; // P0.3: ESP- GPIO 3V3 High (Q5/Q11 path). Was
+                                              // "Channel 3 Hi-Range" pre-Rev-B; Channel 3
+                                              // is now the fixed 5V bootstrap supply, not
+                                              // an adjustable output, but this AW9523 net
+                                              // and its Q5/Q11 gate path are unchanged.
 static const uint8_t AW95XX_P04_MASK = 0x10; // P0.4: ESP- GPIO 3V3 Low (Q4/Q10 path)
 static const uint8_t AW95XX_P00_MASK = 0x01; // P0.0: ISET_MPU_5V -> Q3 gate path
 static const uint8_t AW95XX_P05_MASK = 0x20; // P0.5: ISET_MPU_3V3 -> Q9 gate path
-static const uint8_t AW95XX_P06_MASK = 0x40; // P0.6: input line (fault path candidate)
-static const uint8_t AW95XX_P07_MASK = 0x80; // P0.7: input line (fault path candidate)
+static const uint8_t AW95XX_P06_MASK = 0x40; // P0.6: input, FAULT_WARNING_SUM (schematic-confirmed)
+static const uint8_t AW95XX_P07_MASK = 0x80; // P0.7: input, FAULT_CRITICAL_SUM (schematic-confirmed).
+                                              // Same net also drives Q12's gate (via D14/R53,
+                                              // pulled up through R50 to +5V_Boot) as a hardware
+                                              // fault cutoff - Q12 is NOT independently
+                                              // commandable from the AW9523; it only turns off
+                                              // automatically when FAULT_CRITICAL_SUM trips.
 static const uint8_t AW95XX_FAULT_SUM_INPUT_MASK = static_cast<uint8_t>(AW95XX_P06_MASK | AW95XX_P07_MASK);
 static const uint8_t AW95XX_PIN_P0_0 = 0;
 static const uint8_t AW95XX_PIN_P0_1 = 1;
@@ -1148,12 +1157,12 @@ void handleCommand(const String& cmd_in) {
   }
 
   if (cmd == "Q612ON") {
-    setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", true);
+    setRangePairEnabled(SR_BIT_ADJ_LO, "Q2/Q8", true);
     return;
   }
 
   if (cmd == "Q612OFF") {
-    setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+    setRangePairEnabled(SR_BIT_ADJ_LO, "Q2/Q8", false);
     return;
   }
 
@@ -1537,7 +1546,9 @@ void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
     p0_mask = static_cast<uint8_t>(AW95XX_P00_MASK | AW95XX_P05_MASK);
     p0_desc = "P0.0+P0.5";
   } else if (bit == SR_BIT_ADJ_LO) {
-    p0_mask = AW95XX_P01_MASK; // P0.1 = ESP- GPIO 5V Hi (Q6/Q12 path)
+    p0_mask = AW95XX_P01_MASK; // P0.1 = ESP- GPIO 5V Hi (Q2/Q8 path, matches setQ2PathEnabled).
+                               // NOT a Q6/Q12 path - Q12's gate is driven by the
+                               // FAULT_CRITICAL_SUM fault network, not the AW9523.
     p0_desc = "P0.1";
   }
 
@@ -1799,11 +1810,10 @@ void printRangePairStates() {
     const unsigned q5_q11 = static_cast<unsigned>((p0_out & AW95XX_P03_MASK) != 0);
     const unsigned q4_q10 = static_cast<unsigned>((p0_out & AW95XX_P04_MASK) != 0);
     const unsigned q39_q9 = static_cast<unsigned>((p0_out & AW95XX_P05_MASK) != 0);
-    const unsigned q612 = static_cast<unsigned>((p0_out & AW95XX_P01_MASK) != 0);
     char msg[320];
     snprintf(msg,
              sizeof(msg),
-             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u Q6=%u",
+             "range: p0=0x%02X c0=0x%02X Q1=%u Q2=%u Q3=%u Q4=%u Q5=%u Q9=%u",
              static_cast<unsigned>(p0_out),
              static_cast<unsigned>(p0_cfg),
              q1_q7,
@@ -1811,23 +1821,22 @@ void printRangePairStates() {
              q39_q3,
              q4_q10,
              q5_q11,
-             q39_q9,
-             q612);
+             q39_q9);
     logBoth(msg);
     return;
   }
 
   char msg[120];
   const unsigned q39_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_3V3_HI) & 0x1u);
-  const unsigned q612_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_ADJ_LO) & 0x1u);
+  const unsigned q28_bit = static_cast<unsigned>((g_sr_state >> SR_BIT_ADJ_LO) & 0x1u);
   snprintf(msg,
            sizeof(msg),
-           "range: SR fallback sr=0x%04X Q39(b%u)=%u Q612(b%u)=%u",
+           "range: SR fallback sr=0x%04X Q39(b%u)=%u Q28(b%u)=%u",
            static_cast<unsigned>(g_sr_state),
            static_cast<unsigned>(SR_BIT_3V3_HI),
            q39_bit,
            static_cast<unsigned>(SR_BIT_ADJ_LO),
-           q612_bit);
+           q28_bit);
   logBoth(msg);
 }
 
@@ -1849,7 +1858,7 @@ void captureRangeSequenceSnapshot(const char* step) {
 }
 
 void runRangePairSequence() {
-  logBoth("range seq: begin (Q3/Q9 then Q6/Q12)");
+  logBoth("range seq: begin (Q3/Q9 then Q2/Q8)");
   captureRangeSequenceSnapshot("B0 baseline");
 
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", false);
@@ -1864,15 +1873,15 @@ void runRangePairSequence() {
   delay(40);
   captureRangeSequenceSnapshot("S3 Q39OFF");
 
-  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q2/Q8", false);
   delay(40);
   captureRangeSequenceSnapshot("S4 Q612OFF");
 
-  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", true);
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q2/Q8", true);
   delay(40);
   captureRangeSequenceSnapshot("S5 Q612ON");
 
-  setRangePairEnabled(SR_BIT_ADJ_LO, "Q6/Q12", false);
+  setRangePairEnabled(SR_BIT_ADJ_LO, "Q2/Q8", false);
   delay(40);
   captureRangeSequenceSnapshot("S6 Q612OFF");
 
