@@ -56,7 +56,7 @@
 | `btn_next` ("Next") | `setup_next_btn_event_cb` → `handleSetupEncoderRotate(1)` | ✅ yes | Moves field selection forward | Same — correct | — |
 | `btn_edit` ("Edit / Apply") | `setup_edit_btn_event_cb` → `handleSetupEncoderPress` | ✅ yes | First press enters edit mode; second press sends `CMD:OUTPUT ON/OFF` or `CMD:ILIM CHx <mA>` via `disp_link_slave::sendCommand` (UDI-conformant) | Same — correct, no changes needed | — |
 | `btn_done` ("Done") | `setup_done_btn_event_cb` → `handleSetupEncoderLongPress` | ✅ yes | Marks setup done, jumps to Main screen | Same — correct | — |
-| Field value edit (rotate while editing) | `handleSetupEncoderRotate` | ✅ yes | Adjusts `ch1_limit_mA`/`ch2_limit_mA` by `kSetupStep_mA`, or toggles `output_enabled` | No validation against `kSetupCh1LimitMax_mA`/`kSetupCh2LimitMax_mA` visible at the touch-button layer (only the physical encoder path clamps) — confirm clamp applies to button path too | D4 |
+| Field value edit (rotate while editing) | `handleSetupEncoderRotate` | ✅ yes | Adjusts `ch1_limit_mA`/`ch2_limit_mA` by `kSetupStep_mA`, or toggles `output_enabled` | Clamp is enforced in shared `setupAdjustDelta()` (`clamp_i32(..., 0, kSetupChXLimitMax_mA)`), and touch `Prev/Next` routes through the same handler path as encoder rotate | — |
 
 **Style constants used:** `lv_font_montserrat_48` (value), `_20` (title/param), `_16` (list), `_12` (hint), `UiTheme::kAccentI/kAccentOk/kPanelSoft`, 8px button radius, 12px panel radius.
 

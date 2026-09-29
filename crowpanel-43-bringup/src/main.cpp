@@ -38,6 +38,7 @@ constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimat
 constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
 constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
 constexpr uint16_t kSetupStep_mA = 50;
+constexpr uint32_t kSetupCommitTimeoutMs = 1500;  // give up waiting for host ACK/ERR after this
 constexpr float    kCh1SetVoltage_V = 5.00f;
 constexpr float    kCh2SetVoltage_V = 3.30f;
 constexpr float    kCh1SetCurrent_A = 3.00f;
@@ -87,6 +88,23 @@ static lv_obj_t* lbl_setup_param = nullptr;
 static lv_obj_t* lbl_setup_value = nullptr;
 static lv_obj_t* lbl_setup_list = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
+static lv_obj_t* lbl_setup_edit_action = nullptr;
+static lv_obj_t* lbl_setup_done_action = nullptr;
+static lv_obj_t* lbl_setup_prev_action = nullptr;
+static lv_obj_t* lbl_setup_next_action = nullptr;
+static lv_obj_t* lbl_setup_mode = nullptr;
+static lv_obj_t* btn_setup_output_value = nullptr;
+static lv_obj_t* btn_setup_ch1_value = nullptr;
+static lv_obj_t* btn_setup_ch2_value = nullptr;
+static lv_obj_t* lbl_setup_output_value = nullptr;
+static lv_obj_t* lbl_setup_ch1_value = nullptr;
+static lv_obj_t* lbl_setup_ch2_value = nullptr;
+static lv_obj_t* setup_editor_overlay = nullptr;
+static lv_obj_t* setup_editor_card = nullptr;
+static lv_obj_t* lbl_setup_editor_title = nullptr;
+static lv_obj_t* ta_setup_editor_value = nullptr;
+static lv_obj_t* dd_setup_editor_output = nullptr;
+static lv_obj_t* kb_setup_editor = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
 static lv_obj_t* btn_settings_system = nullptr;
@@ -106,19 +124,35 @@ enum class SetupField : uint8_t {
   Count = 3,
 };
 
+enum class SetupTouchEditorMode : uint8_t {
+  None = 0,
+  Numeric = 1,
+  Output = 2,
+};
+
 struct SetupBindingState {
   SetupField selected = SetupField::Output;
   bool editing = false;
+  // Last-known committed values (only updated from a host ACK/EVT).
   bool output_enabled = false;
   uint16_t ch1_limit_mA = kSetupCh1LimitMax_mA;
   uint16_t ch2_limit_mA = kSetupCh2LimitMax_mA;
   bool have_output = false;
   bool have_ch1_limit = false;
   bool have_ch2_limit = false;
+  // Scratch edit buffer for the field currently being edited (discarded on cancel).
+  bool edit_output_enabled = false;
+  uint16_t edit_limit_mA = 0;
+  // Await-ACK gating: block new sends until the host answers or we time out.
+  bool commit_pending = false;
+  SetupField pending_field = SetupField::Output;
+  uint32_t commit_deadline_ms = 0;
   char last_error[96] = "";
 };
 
 static SetupBindingState setup_binding = {};
+static SetupTouchEditorMode setup_touch_editor_mode = SetupTouchEditorMode::None;
+static SetupField setup_touch_editor_field = SetupField::Output;
 
 enum class SettingsMenu : uint8_t {
   System = 0,
@@ -152,9 +186,11 @@ static SettingsState settings_state = {};
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;
 static lv_obj_t* lbl_main_ch1_current = nullptr;
 static lv_obj_t* lbl_main_ch1_power = nullptr;
+static lv_obj_t* lbl_main_ch1_set = nullptr;
 static lv_obj_t* lbl_main_ch2_voltage = nullptr;
 static lv_obj_t* lbl_main_ch2_current = nullptr;
 static lv_obj_t* lbl_main_ch2_power = nullptr;
+static lv_obj_t* lbl_main_ch2_set = nullptr;
 static lv_obj_t* lbl_main_stats = nullptr;
 static lv_obj_t* bar_main_ch1_voltage = nullptr;
 static lv_obj_t* bar_main_ch1_current = nullptr;
@@ -224,6 +260,8 @@ static bool demo_tour = false;
 static uint32_t demo_start_ms = 0;
 static uint32_t demo_last_tour_switch_ms = 0;
 static uint32_t last_settings_ui_update_ms = 0;
+static uint16_t last_main_set_ch1_mA = 0xFFFFu;
+static uint16_t last_main_set_ch2_mA = 0xFFFFu;
 
 struct DisplayTelemetry {
   uint32_t rx_count;
@@ -294,6 +332,12 @@ void setup_prev_btn_event_cb(lv_event_t* e);
 void setup_next_btn_event_cb(lv_event_t* e);
 void setup_edit_btn_event_cb(lv_event_t* e);
 void setup_done_btn_event_cb(lv_event_t* e);
+void setup_output_value_event_cb(lv_event_t* e);
+void setup_ch1_value_event_cb(lv_event_t* e);
+void setup_ch2_value_event_cb(lv_event_t* e);
+void setup_editor_apply_btn_event_cb(lv_event_t* e);
+void setup_editor_cancel_btn_event_cb(lv_event_t* e);
+void setup_editor_keyboard_event_cb(lv_event_t* e);
 
 size_t trendStartIndex() {
   if (trend_count == 0) return 0;
@@ -454,6 +498,7 @@ void lvgl_touch_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 }
 
 void set_active_screen(UiScreen screen) {
+  const UiScreen prev_screen = active_screen;
   active_screen = screen;
   if (screen_splash) {
     if (screen == UiScreen::Splash) lv_obj_clear_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
@@ -474,6 +519,11 @@ void set_active_screen(UiScreen screen) {
   if (screen_settings) {
     if (screen == UiScreen::Settings) lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  // Keep Main setpoint displays aligned with host state whenever Main is entered.
+  if (screen == UiScreen::Main && prev_screen != UiScreen::Main && !setup_binding.commit_pending) {
+    setupRequestRefresh();
   }
 }
 
@@ -559,6 +609,114 @@ void applySetupError(const char* err_payload) {
   setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
 }
 
+bool setupFieldIsEditing(SetupField field) {
+  return setup_binding.editing && setup_binding.selected == field;
+}
+
+bool setupDisplayOutput() {
+  return setupFieldIsEditing(SetupField::Output) ? setup_binding.edit_output_enabled
+                                                 : setup_binding.output_enabled;
+}
+
+uint16_t setupDisplayLimit(SetupField field) {
+  if (setupFieldIsEditing(field)) return setup_binding.edit_limit_mA;
+  return field == SetupField::Ch1CurrentLimit ? setup_binding.ch1_limit_mA : setup_binding.ch2_limit_mA;
+}
+
+const char* setupFieldStatusSuffix(SetupField field, bool have_value) {
+  if (setup_binding.commit_pending && setup_binding.pending_field == field) return "(sending)";
+  return have_value ? "" : "(pending)";
+}
+
+void setSetupValueButtonStyle(lv_obj_t* btn, SetupField field) {
+  if (!btn) return;
+
+  uint32_t bg = UiTheme::kPanelSoft;
+  uint32_t border = UiTheme::kBorder;
+  uint32_t text = UiTheme::kTextPrimary;
+
+  if (setup_binding.commit_pending && setup_binding.pending_field == field) {
+    bg = UiTheme::kAccentWarn;
+    border = UiTheme::kAccentWarn;
+    text = UiTheme::kBg;
+  } else if (setup_binding.editing && setup_binding.selected == field) {
+    bg = UiTheme::kAccentOk;
+    border = UiTheme::kAccentOk;
+    text = UiTheme::kBg;
+  }
+
+  lv_obj_set_style_bg_color(btn, lv_color_hex(bg), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn, lv_color_hex(border), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
+  lv_obj_set_style_text_color(btn, lv_color_hex(text), LV_PART_MAIN);
+}
+
+bool parseSetupAmpsInput(const char* text, uint16_t max_mA, uint16_t* out_mA) {
+  if (!text || !out_mA) return false;
+  char* end_ptr = nullptr;
+  const float amps = strtof(text, &end_ptr);
+  if (end_ptr == text) return false;
+  while (*end_ptr == ' ') end_ptr++;
+  if (*end_ptr != '\0') return false;
+  const int32_t raw_mA = static_cast<int32_t>(lroundf(amps * 1000.0f));
+  if (raw_mA < 0) return false;
+  *out_mA = static_cast<uint16_t>(clamp_i32(raw_mA, 0, static_cast<int32_t>(max_mA)));
+  return true;
+}
+
+void closeSetupTouchEditor() {
+  setup_touch_editor_mode = SetupTouchEditorMode::None;
+  if (setup_editor_overlay) {
+    lv_obj_add_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void openSetupNumericEditor(SetupField field) {
+  if (!setup_editor_overlay || !ta_setup_editor_value || !kb_setup_editor || !lbl_setup_editor_title) return;
+  if (setup_binding.commit_pending) return;
+
+  setup_touch_editor_mode = SetupTouchEditorMode::Numeric;
+  setup_touch_editor_field = field;
+  setup_binding.selected = field;
+
+  const uint16_t current_mA = setupDisplayLimit(field);
+  char value_text[24];
+  snprintf(value_text, sizeof(value_text), "%.3f", current_mA / 1000.0f);
+  lv_textarea_set_text(ta_setup_editor_value, value_text);
+  lv_label_set_text(lbl_setup_editor_title,
+                    field == SetupField::Ch1CurrentLimit ? "Edit CH1 ILIM (A)" : "Edit CH2 ILIM (A)");
+
+  if (dd_setup_editor_output) lv_obj_add_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(ta_setup_editor_value, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(kb_setup_editor, LV_OBJ_FLAG_HIDDEN);
+  lv_keyboard_set_mode(kb_setup_editor, LV_KEYBOARD_MODE_NUMBER);
+  lv_keyboard_set_textarea(kb_setup_editor, ta_setup_editor_value);
+
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(setup_editor_overlay);
+}
+
+void openSetupOutputEditor() {
+  if (!setup_editor_overlay || !dd_setup_editor_output || !lbl_setup_editor_title) return;
+  if (setup_binding.commit_pending) return;
+
+  setup_touch_editor_mode = SetupTouchEditorMode::Output;
+  setup_touch_editor_field = SetupField::Output;
+  setup_binding.selected = SetupField::Output;
+  lv_label_set_text(lbl_setup_editor_title, "Set Output Enable");
+
+  const uint16_t idx = setupDisplayOutput() ? 1u : 0u;
+  lv_dropdown_set_selected(dd_setup_editor_output, idx);
+
+  if (ta_setup_editor_value) lv_obj_add_flag(ta_setup_editor_value, LV_OBJ_FLAG_HIDDEN);
+  if (kb_setup_editor) lv_obj_add_flag(kb_setup_editor, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(setup_editor_overlay);
+}
+
 void refreshSetupScreenLabels() {
   if (!lbl_setup_param || !lbl_setup_value || !lbl_setup_list || !lbl_setup_hint) return;
 
@@ -566,42 +724,101 @@ void refreshSetupScreenLabels() {
 
   char value_buf[48];
   if (setup_binding.selected == SetupField::Output) {
-    snprintf(value_buf, sizeof(value_buf), "< %s >", setup_binding.output_enabled ? "ON" : "OFF");
-  } else if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch1_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "< %s >", setupDisplayOutput() ? "ON" : "OFF");
   } else {
-    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setup_binding.ch2_limit_mA / 1000.0f);
+    snprintf(value_buf, sizeof(value_buf), "< %.3f A >", setupDisplayLimit(setup_binding.selected) / 1000.0f);
   }
   lv_label_set_text(lbl_setup_value, value_buf);
+
+  // Stronger value focus cue: selected/editing states are color-coded.
+  if (setup_binding.commit_pending) {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+  } else if (setup_binding.editing) {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  } else {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  }
 
   char list_buf[320];
   snprintf(list_buf,
            sizeof(list_buf),
+           "Tap any value button to edit directly.\n"
            "%c Output Enable                 %s %s\n"
            "%c CH1 Current Limit (I_max)      %.3f A %s\n"
            "%c CH2 Current Limit (I_max)      %.3f A %s",
            setup_binding.selected == SetupField::Output ? '>' : ' ',
-           setup_binding.output_enabled ? "ON " : "OFF",
-           setup_binding.have_output ? "" : "(pending)",
+           setupDisplayOutput() ? "ON " : "OFF",
+           setupFieldStatusSuffix(SetupField::Output, setup_binding.have_output),
            setup_binding.selected == SetupField::Ch1CurrentLimit ? '>' : ' ',
-           setup_binding.ch1_limit_mA / 1000.0f,
-           setup_binding.have_ch1_limit ? "" : "(pending)",
+           setupDisplayLimit(SetupField::Ch1CurrentLimit) / 1000.0f,
+           setupFieldStatusSuffix(SetupField::Ch1CurrentLimit, setup_binding.have_ch1_limit),
            setup_binding.selected == SetupField::Ch2CurrentLimit ? '>' : ' ',
-           setup_binding.ch2_limit_mA / 1000.0f,
-           setup_binding.have_ch2_limit ? "" : "(pending)");
+           setupDisplayLimit(SetupField::Ch2CurrentLimit) / 1000.0f,
+           setupFieldStatusSuffix(SetupField::Ch2CurrentLimit, setup_binding.have_ch2_limit));
   lv_label_set_text(lbl_setup_list, list_buf);
 
-  if (setup_binding.last_error[0] != '\0') {
+  if (lbl_setup_output_value) {
+    char out_buf[24];
+    snprintf(out_buf, sizeof(out_buf), "%s %s",
+             setupDisplayOutput() ? "ON" : "OFF",
+             setupFieldStatusSuffix(SetupField::Output, setup_binding.have_output));
+    lv_label_set_text(lbl_setup_output_value, out_buf);
+  }
+  if (lbl_setup_ch1_value) {
+    char ch1_buf[32];
+    snprintf(ch1_buf, sizeof(ch1_buf), "%.3f A %s",
+             setupDisplayLimit(SetupField::Ch1CurrentLimit) / 1000.0f,
+             setupFieldStatusSuffix(SetupField::Ch1CurrentLimit, setup_binding.have_ch1_limit));
+    lv_label_set_text(lbl_setup_ch1_value, ch1_buf);
+  }
+  if (lbl_setup_ch2_value) {
+    char ch2_buf[32];
+    snprintf(ch2_buf, sizeof(ch2_buf), "%.3f A %s",
+             setupDisplayLimit(SetupField::Ch2CurrentLimit) / 1000.0f,
+             setupFieldStatusSuffix(SetupField::Ch2CurrentLimit, setup_binding.have_ch2_limit));
+    lv_label_set_text(lbl_setup_ch2_value, ch2_buf);
+  }
+
+  setSetupValueButtonStyle(btn_setup_output_value, SetupField::Output);
+  setSetupValueButtonStyle(btn_setup_ch1_value, SetupField::Ch1CurrentLimit);
+  setSetupValueButtonStyle(btn_setup_ch2_value, SetupField::Ch2CurrentLimit);
+
+  if (lbl_setup_edit_action) {
+    lv_label_set_text(lbl_setup_edit_action, setup_binding.editing ? "Apply" : "Edit");
+  }
+  if (lbl_setup_done_action) {
+    lv_label_set_text(lbl_setup_done_action, setup_binding.editing ? "Cancel" : "Done");
+  }
+  if (lbl_setup_prev_action) {
+    lv_label_set_text(lbl_setup_prev_action, setup_binding.editing ? "Value -" : "Field -");
+  }
+  if (lbl_setup_next_action) {
+    lv_label_set_text(lbl_setup_next_action, setup_binding.editing ? "Value +" : "Field +");
+  }
+
+  if (lbl_setup_mode) {
+    if (setup_binding.commit_pending) {
+      lv_label_set_text(lbl_setup_mode, "MODE: WAIT ACK");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+    } else if (setup_binding.editing) {
+      lv_label_set_text(lbl_setup_mode, "MODE: EDIT");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+    } else {
+      lv_label_set_text(lbl_setup_mode, "MODE: SELECT");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+    }
+  }
+
+  if (setup_binding.commit_pending) {
+    lv_label_set_text(lbl_setup_hint, "Committing... waiting for host ACK/ERR.");
+  } else if (setup_binding.last_error[0] != '\0') {
     char hint_buf[160];
-    snprintf(hint_buf,
-             sizeof(hint_buf),
-             "Host error: %s",
-             setup_binding.last_error);
+    snprintf(hint_buf, sizeof(hint_buf), "Host error: %s", setup_binding.last_error);
     lv_label_set_text(lbl_setup_hint, hint_buf);
   } else if (setup_binding.editing) {
-    lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) to adjust, press (Edit/Apply) to commit.");
+    lv_label_set_text(lbl_setup_hint, "Editing: touch value or use Value -/+ controls, Apply commits, Cancel reverts.");
   } else {
-    lv_label_set_text(lbl_setup_hint, "Select with rotate (Prev/Next), press Edit/Apply to enter edit.");
+    lv_label_set_text(lbl_setup_hint, "Touch Output/ILIM value to edit directly. Use Field -/+ to move, Done exits to Main.");
   }
 }
 
@@ -616,16 +833,14 @@ void setupSelectDelta(int8_t delta) {
 
 void setupAdjustDelta(int32_t delta_mA) {
   if (setup_binding.selected == SetupField::Output) {
-    setup_binding.output_enabled = !setup_binding.output_enabled;
+    setup_binding.edit_output_enabled = !setup_binding.edit_output_enabled;
     return;
   }
-  if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
-    const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch1_limit_mA) + delta_mA, 0, kSetupCh1LimitMax_mA);
-    setup_binding.ch1_limit_mA = static_cast<uint16_t>(next);
-    return;
-  }
-  const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.ch2_limit_mA) + delta_mA, 0, kSetupCh2LimitMax_mA);
-  setup_binding.ch2_limit_mA = static_cast<uint16_t>(next);
+  const int32_t max_mA = setup_binding.selected == SetupField::Ch1CurrentLimit
+                             ? kSetupCh1LimitMax_mA
+                             : kSetupCh2LimitMax_mA;
+  const int32_t next = clamp_i32(static_cast<int32_t>(setup_binding.edit_limit_mA) + delta_mA, 0, max_mA);
+  setup_binding.edit_limit_mA = static_cast<uint16_t>(next);
 }
 
 void setupRequestRefresh() {
@@ -649,16 +864,25 @@ void updateSetupBindingsFromUdi() {
     last_udi_ack_count = udi_link.ack_count;
     Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
     applySetupAck(udi_link.last_ack);
+    setup_binding.commit_pending = false;  // host answered; release the await-ACK gate
   }
   if (udi_link.err_count != last_udi_err_count) {
     last_udi_err_count = udi_link.err_count;
     Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
     applySetupError(udi_link.last_err);
+    setup_binding.commit_pending = false;
   }
   if (udi_link.evt_count != last_udi_evt_count) {
     last_udi_evt_count = udi_link.evt_count;
     Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
     applySetupEvent(udi_link.last_evt);
+  }
+
+  if (setup_binding.commit_pending &&
+      static_cast<int32_t>(millis() - setup_binding.commit_deadline_ms) >= 0) {
+    setup_binding.commit_pending = false;
+    strncpy(setup_binding.last_error, "no host ACK (timeout)", sizeof(setup_binding.last_error) - 1);
+    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
   }
 }
 
@@ -1001,8 +1225,57 @@ void handleSettingsEncoderLongPress() {
   set_active_screen(UiScreen::Main);
 }
 
+void setupSetError(const char* msg) {
+  strncpy(setup_binding.last_error, msg, sizeof(setup_binding.last_error) - 1);
+  setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+}
+
+void enterSetupEdit() {
+  // Snapshot the last-known committed value into the scratch edit buffer.
+  setup_binding.edit_output_enabled = setup_binding.output_enabled;
+  if (setup_binding.selected == SetupField::Ch1CurrentLimit) {
+    setup_binding.edit_limit_mA = setup_binding.ch1_limit_mA;
+  } else if (setup_binding.selected == SetupField::Ch2CurrentLimit) {
+    setup_binding.edit_limit_mA = setup_binding.ch2_limit_mA;
+  }
+  setup_binding.editing = true;
+  setup_binding.last_error[0] = '\0';
+}
+
+void cancelSetupEdit() {
+  // Discard scratch edits; committed values are left untouched.
+  setup_binding.editing = false;
+  setup_binding.last_error[0] = '\0';
+}
+
+void commitSetupEdit() {
+  bool sent = false;
+  if (setup_binding.selected == SetupField::Output) {
+    sent = disp_link_slave::sendCommand(setup_binding.edit_output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+  } else {
+    char payload[40];
+    snprintf(payload,
+             sizeof(payload),
+             "ILIM %s %u",
+             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
+             static_cast<unsigned>(setup_binding.edit_limit_mA));
+    sent = disp_link_slave::sendCommand(payload);
+  }
+  setup_binding.editing = false;
+  if (sent) {
+    // Await-ACK gate: committed values update only when the host answers.
+    setup_binding.commit_pending = true;
+    setup_binding.pending_field = setup_binding.selected;
+    setup_binding.commit_deadline_ms = millis() + kSetupCommitTimeoutMs;
+    setup_binding.last_error[0] = '\0';
+  } else {
+    setupSetError("link not ready");
+  }
+}
+
 void handleSetupEncoderRotate(int8_t detents) {
   if (detents == 0) return;
+  if (setup_binding.commit_pending) return;  // gate input while a commit is outstanding
   const int8_t direction = detents > 0 ? 1 : -1;
   if (setup_binding.editing) {
     setupAdjustDelta(static_cast<int32_t>(direction) * static_cast<int32_t>(kSetupStep_mA));
@@ -1013,36 +1286,22 @@ void handleSetupEncoderRotate(int8_t detents) {
 }
 
 void handleSetupEncoderPress() {
-  setup_binding.last_error[0] = '\0';
+  if (setup_binding.commit_pending) return;
   if (!setup_binding.editing) {
-    setup_binding.editing = true;
-    refreshSetupScreenLabels();
-    return;
-  }
-
-  bool sent = false;
-  if (setup_binding.selected == SetupField::Output) {
-    sent = disp_link_slave::sendCommand(setup_binding.output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
+    enterSetupEdit();
   } else {
-    char payload[40];
-    snprintf(payload,
-             sizeof(payload),
-             "ILIM %s %u",
-             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
-             static_cast<unsigned>(setup_binding.selected == SetupField::Ch1CurrentLimit
-                                       ? setup_binding.ch1_limit_mA
-                                       : setup_binding.ch2_limit_mA));
-    sent = disp_link_slave::sendCommand(payload);
+    commitSetupEdit();
   }
-  if (!sent) {
-    strncpy(setup_binding.last_error, "link not ready", sizeof(setup_binding.last_error) - 1);
-    setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
-  }
-  setup_binding.editing = false;
   refreshSetupScreenLabels();
 }
 
 void handleSetupEncoderLongPress() {
+  if (setup_binding.editing) {
+    cancelSetupEdit();  // long-press reverts the in-progress edit
+    refreshSetupScreenLabels();
+    return;
+  }
+  if (setup_binding.commit_pending) return;  // don't navigate away mid-commit
   setup_done = true;
   set_active_screen(UiScreen::Main);
 }
@@ -1063,11 +1322,87 @@ void setup_done_btn_event_cb(lv_event_t* /*e*/) {
   handleSetupEncoderLongPress();
 }
 
+void setup_output_value_event_cb(lv_event_t* /*e*/) {
+  openSetupOutputEditor();
+  refreshSetupScreenLabels();
+}
+
+void setup_ch1_value_event_cb(lv_event_t* /*e*/) {
+  openSetupNumericEditor(SetupField::Ch1CurrentLimit);
+  refreshSetupScreenLabels();
+}
+
+void setup_ch2_value_event_cb(lv_event_t* /*e*/) {
+  openSetupNumericEditor(SetupField::Ch2CurrentLimit);
+  refreshSetupScreenLabels();
+}
+
+void setup_editor_apply_btn_event_cb(lv_event_t* /*e*/) {
+  if (setup_binding.commit_pending) {
+    setupSetError("commit already pending");
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+    return;
+  }
+
+  if (setup_touch_editor_mode == SetupTouchEditorMode::Output) {
+    const uint16_t idx = dd_setup_editor_output ? lv_dropdown_get_selected(dd_setup_editor_output) : 0u;
+    setup_binding.selected = SetupField::Output;
+    setup_binding.edit_output_enabled = (idx != 0u);
+    setup_binding.editing = true;
+    commitSetupEdit();
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+    return;
+  }
+
+  if (setup_touch_editor_mode == SetupTouchEditorMode::Numeric) {
+    if (!ta_setup_editor_value) {
+      closeSetupTouchEditor();
+      return;
+    }
+
+    const char* text = lv_textarea_get_text(ta_setup_editor_value);
+    const uint16_t max_mA = (setup_touch_editor_field == SetupField::Ch1CurrentLimit)
+        ? kSetupCh1LimitMax_mA
+        : kSetupCh2LimitMax_mA;
+    uint16_t parsed_mA = 0;
+    if (!parseSetupAmpsInput(text, max_mA, &parsed_mA)) {
+      setupSetError("invalid numeric input");
+      closeSetupTouchEditor();
+      refreshSetupScreenLabels();
+      return;
+    }
+
+    setup_binding.selected = setup_touch_editor_field;
+    setup_binding.edit_limit_mA = parsed_mA;
+    setup_binding.editing = true;
+    commitSetupEdit();
+    closeSetupTouchEditor();
+    refreshSetupScreenLabels();
+  }
+}
+
+void setup_editor_cancel_btn_event_cb(lv_event_t* /*e*/) {
+  closeSetupTouchEditor();
+  refreshSetupScreenLabels();
+}
+
+void setup_editor_keyboard_event_cb(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_READY) {
+    setup_editor_apply_btn_event_cb(nullptr);
+  } else if (code == LV_EVENT_CANCEL) {
+    setup_editor_cancel_btn_event_cb(nullptr);
+  }
+}
+
 void enterSetupScreen() {
   set_active_screen(UiScreen::Setup);
   setup_done = false;
   setup_start_ms = millis();
   setup_binding.editing = false;
+  setup_binding.commit_pending = false;
   setupRequestRefresh();
   refreshSetupScreenLabels();
 }
@@ -1222,8 +1557,14 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(lbl_setup_title, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(lbl_setup_title, LV_ALIGN_TOP_LEFT, 20, 10);
 
+  lbl_setup_mode = lv_label_create(header);
+  lv_label_set_text(lbl_setup_mode, "MODE: SELECT");
+  lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_mode, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_mode, LV_ALIGN_TOP_RIGHT, -18, 10);
+
   lv_obj_t* hint = lv_label_create(header);
-  lv_label_set_text(hint, "Encoder flow: rotate=Prev/Next, press=Edit/Apply, long-press=Done.");
+  lv_label_set_text(hint, "Touch any value to edit: ILIM uses keypad, Output uses ON/OFF dropdown.");
   lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 20, -6);
@@ -1237,22 +1578,106 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(panel, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_setup_param = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_param, "CH1 Current Limit (I_max)");
+  lv_label_set_text(lbl_setup_param, "Touch-first setup editor");
   lv_obj_set_style_text_color(lbl_setup_param, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_param, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(lbl_setup_param, LV_ALIGN_TOP_LEFT, 20, 20);
 
   lbl_setup_value = lv_label_create(panel);
-  lv_label_set_text(lbl_setup_value, "< -- >");
+  lv_label_set_text(lbl_setup_value, "Tap value to edit");
   lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_MID, 0, 80);
+  lv_obj_set_style_text_font(lbl_setup_value, &lv_font_montserrat_24, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_value, LV_ALIGN_TOP_LEFT, 22, 56);
+
+  lv_obj_t* row_output = lv_obj_create(panel);
+  lv_obj_set_size(row_output, 500, 54);
+  lv_obj_align(row_output, LV_ALIGN_TOP_LEFT, 20, 98);
+  lv_obj_set_style_bg_color(row_output, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_output, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_output, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_output, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_output, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_output = lv_label_create(row_output);
+  lv_label_set_text(lbl_output, "Output Enable");
+  lv_obj_set_style_text_color(lbl_output, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_output, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_output, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_output_value = lv_btn_create(row_output);
+  lv_obj_set_size(btn_setup_output_value, 180, 38);
+  lv_obj_align(btn_setup_output_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_output_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_output_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_output_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_output_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_output_value, setup_output_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_output_value = lv_label_create(btn_setup_output_value);
+  lv_label_set_text(lbl_setup_output_value, "OFF");
+  lv_obj_set_style_text_font(lbl_setup_output_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_output_value);
+
+  lv_obj_t* row_ch1 = lv_obj_create(panel);
+  lv_obj_set_size(row_ch1, 500, 54);
+  lv_obj_align(row_ch1, LV_ALIGN_TOP_LEFT, 20, 158);
+  lv_obj_set_style_bg_color(row_ch1, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_ch1, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_ch1, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_ch1, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_ch1, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_ch1 = lv_label_create(row_ch1);
+  lv_label_set_text(lbl_ch1, "CH1 Current Limit (I_max)");
+  lv_obj_set_style_text_color(lbl_ch1, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_ch1, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_ch1, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_ch1_value = lv_btn_create(row_ch1);
+  lv_obj_set_size(btn_setup_ch1_value, 180, 38);
+  lv_obj_align(btn_setup_ch1_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_ch1_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_ch1_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_ch1_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_ch1_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_ch1_value, setup_ch1_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_ch1_value = lv_label_create(btn_setup_ch1_value);
+  lv_label_set_text(lbl_setup_ch1_value, "3.000 A");
+  lv_obj_set_style_text_font(lbl_setup_ch1_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_ch1_value);
+
+  lv_obj_t* row_ch2 = lv_obj_create(panel);
+  lv_obj_set_size(row_ch2, 500, 54);
+  lv_obj_align(row_ch2, LV_ALIGN_TOP_LEFT, 20, 218);
+  lv_obj_set_style_bg_color(row_ch2, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
+  lv_obj_set_style_radius(row_ch2, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row_ch2, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(row_ch2, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(row_ch2, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* lbl_ch2 = lv_label_create(row_ch2);
+  lv_label_set_text(lbl_ch2, "CH2 Current Limit (I_max)");
+  lv_obj_set_style_text_color(lbl_ch2, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_ch2, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_align(lbl_ch2, LV_ALIGN_LEFT_MID, 14, 0);
+
+  btn_setup_ch2_value = lv_btn_create(row_ch2);
+  lv_obj_set_size(btn_setup_ch2_value, 180, 38);
+  lv_obj_align(btn_setup_ch2_value, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_bg_color(btn_setup_ch2_value, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_border_color(btn_setup_ch2_value, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn_setup_ch2_value, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_setup_ch2_value, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_setup_ch2_value, setup_ch2_value_event_cb, LV_EVENT_CLICKED, nullptr);
+  lbl_setup_ch2_value = lv_label_create(btn_setup_ch2_value);
+  lv_label_set_text(lbl_setup_ch2_value, "2.000 A");
+  lv_obj_set_style_text_font(lbl_setup_ch2_value, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_ch2_value);
 
   lbl_setup_list = lv_label_create(panel);
   lv_label_set_text(lbl_setup_list, "Loading setup values...");
   lv_obj_set_style_text_color(lbl_setup_list, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_setup_list, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_setup_list, LV_ALIGN_BOTTOM_LEFT, 20, -72);
+  lv_obj_set_style_text_font(lbl_setup_list, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_list, LV_ALIGN_TOP_LEFT, 546, 108);
 
   lv_obj_t* btn_prev = lv_btn_create(panel);
   lv_obj_set_size(btn_prev, 110, 40);
@@ -1262,9 +1687,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_prev, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_prev, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_prev, setup_prev_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_prev = lv_label_create(btn_prev);
-  lv_label_set_text(lbl_prev, "Prev");
-  lv_obj_center(lbl_prev);
+  lbl_setup_prev_action = lv_label_create(btn_prev);
+  lv_label_set_text(lbl_setup_prev_action, "Field -");
+  lv_obj_set_style_text_font(lbl_setup_prev_action, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_prev_action);
 
   lv_obj_t* btn_next = lv_btn_create(panel);
   lv_obj_set_size(btn_next, 110, 40);
@@ -1274,9 +1700,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_next, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_next, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_next, setup_next_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_next = lv_label_create(btn_next);
-  lv_label_set_text(lbl_next, "Next");
-  lv_obj_center(lbl_next);
+  lbl_setup_next_action = lv_label_create(btn_next);
+  lv_label_set_text(lbl_setup_next_action, "Field +");
+  lv_obj_set_style_text_font(lbl_setup_next_action, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_next_action);
 
   lv_obj_t* btn_edit = lv_btn_create(panel);
   lv_obj_set_size(btn_edit, 156, 40);
@@ -1286,10 +1713,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_edit, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_edit, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_edit, setup_edit_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_edit = lv_label_create(btn_edit);
-  lv_label_set_text(lbl_edit, "Edit / Apply");
-  lv_obj_set_style_text_color(lbl_edit, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_center(lbl_edit);
+  lbl_setup_edit_action = lv_label_create(btn_edit);
+  lv_label_set_text(lbl_setup_edit_action, "Edit");
+  lv_obj_set_style_text_color(lbl_setup_edit_action, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_setup_edit_action);
 
   lv_obj_t* btn_done = lv_btn_create(panel);
   lv_obj_set_size(btn_done, 110, 40);
@@ -1299,10 +1726,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_done, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_done, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_done, setup_done_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_done = lv_label_create(btn_done);
-  lv_label_set_text(lbl_done, "Done");
-  lv_obj_set_style_text_color(lbl_done, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_center(lbl_done);
+  lbl_setup_done_action = lv_label_create(btn_done);
+  lv_label_set_text(lbl_setup_done_action, "Done");
+  lv_obj_set_style_text_color(lbl_setup_done_action, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_setup_done_action);
 
   lv_obj_t* footer = lv_obj_create(screen_setup);
   lv_obj_set_size(footer, kDisplayWidth - 40, 40);
@@ -1317,6 +1744,74 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_text_color(lbl_setup_hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_setup_hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_center(lbl_setup_hint);
+
+  setup_editor_overlay = lv_obj_create(screen_setup);
+  lv_obj_set_size(setup_editor_overlay, kDisplayWidth, kDisplayHeight);
+  lv_obj_align(setup_editor_overlay, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_bg_color(setup_editor_overlay, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(setup_editor_overlay, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_set_style_border_width(setup_editor_overlay, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(setup_editor_overlay, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(setup_editor_overlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(setup_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+
+  setup_editor_card = lv_obj_create(setup_editor_overlay);
+  lv_obj_set_size(setup_editor_card, 560, 300);
+  lv_obj_center(setup_editor_card);
+  lv_obj_set_style_bg_color(setup_editor_card, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_radius(setup_editor_card, 12, LV_PART_MAIN);
+  lv_obj_set_style_border_width(setup_editor_card, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(setup_editor_card, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_clear_flag(setup_editor_card, LV_OBJ_FLAG_SCROLLABLE);
+
+  lbl_setup_editor_title = lv_label_create(setup_editor_card);
+  lv_label_set_text(lbl_setup_editor_title, "Edit value");
+  lv_obj_set_style_text_color(lbl_setup_editor_title, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_editor_title, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_editor_title, LV_ALIGN_TOP_LEFT, 18, 12);
+
+  ta_setup_editor_value = lv_textarea_create(setup_editor_card);
+  lv_obj_set_size(ta_setup_editor_value, 230, 44);
+  lv_obj_align(ta_setup_editor_value, LV_ALIGN_TOP_LEFT, 18, 52);
+  lv_textarea_set_one_line(ta_setup_editor_value, true);
+  lv_textarea_set_max_length(ta_setup_editor_value, 10);
+  lv_obj_set_style_text_font(ta_setup_editor_value, &lv_font_montserrat_20, LV_PART_MAIN);
+
+  dd_setup_editor_output = lv_dropdown_create(setup_editor_card);
+  lv_dropdown_set_options(dd_setup_editor_output, "OFF\nON");
+  lv_obj_set_size(dd_setup_editor_output, 230, 44);
+  lv_obj_align(dd_setup_editor_output, LV_ALIGN_TOP_LEFT, 18, 52);
+  lv_obj_add_flag(dd_setup_editor_output, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t* btn_editor_apply = lv_btn_create(setup_editor_card);
+  lv_obj_set_size(btn_editor_apply, 130, 40);
+  lv_obj_align(btn_editor_apply, LV_ALIGN_TOP_RIGHT, -18, 52);
+  lv_obj_set_style_bg_color(btn_editor_apply, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_editor_apply, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_editor_apply, setup_editor_apply_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_apply = lv_label_create(btn_editor_apply);
+  lv_label_set_text(lbl_apply, "Apply");
+  lv_obj_set_style_text_color(lbl_apply, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_apply);
+
+  lv_obj_t* btn_editor_cancel = lv_btn_create(setup_editor_card);
+  lv_obj_set_size(btn_editor_cancel, 130, 40);
+  lv_obj_align(btn_editor_cancel, LV_ALIGN_TOP_RIGHT, -18, 98);
+  lv_obj_set_style_bg_color(btn_editor_cancel, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+  lv_obj_set_style_radius(btn_editor_cancel, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(btn_editor_cancel, setup_editor_cancel_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* lbl_cancel = lv_label_create(btn_editor_cancel);
+  lv_label_set_text(lbl_cancel, "Cancel");
+  lv_obj_set_style_text_color(lbl_cancel, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_center(lbl_cancel);
+
+  kb_setup_editor = lv_keyboard_create(setup_editor_card);
+  lv_obj_set_size(kb_setup_editor, 520, 170);
+  lv_obj_align(kb_setup_editor, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_keyboard_set_mode(kb_setup_editor, LV_KEYBOARD_MODE_NUMBER);
+  lv_keyboard_set_textarea(kb_setup_editor, ta_setup_editor_value);
+  lv_obj_add_event_cb(kb_setup_editor, setup_editor_keyboard_event_cb, LV_EVENT_READY, nullptr);
+  lv_obj_add_event_cb(kb_setup_editor, setup_editor_keyboard_event_cb, LV_EVENT_CANCEL, nullptr);
 
   refreshSetupScreenLabels();
 }
@@ -1556,11 +2051,11 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_v, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_v, LV_ALIGN_TOP_LEFT, 18, 16);
 
-  lv_obj_t* hdr_v_set = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v_set, "SET 5.00V / 3.00A");
-  lv_obj_set_style_text_color(hdr_v_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_v_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_v_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  lbl_main_ch1_set = lv_label_create(panel_v);
+  lv_label_set_text(lbl_main_ch1_set, "SET 5.00V / 3.00A");
+  lv_obj_set_style_text_color(lbl_main_ch1_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_set, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
   lv_obj_t* hdr_v_meas = lv_label_create(panel_v);
   lv_label_set_text(hdr_v_meas, "V OUT");
@@ -1614,11 +2109,11 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_i, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_i, LV_ALIGN_TOP_LEFT, 18, 16);
 
-  lv_obj_t* hdr_i_set = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i_set, "SET 3.30V / 2.00A");
-  lv_obj_set_style_text_color(hdr_i_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_i_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_i_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  lbl_main_ch2_set = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch2_set, "SET 3.30V / 2.00A");
+  lv_obj_set_style_text_color(lbl_main_ch2_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch2_set, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
   lv_obj_t* hdr_i_meas = lv_label_create(panel_i);
   lv_label_set_text(hdr_i_meas, "V OUT");
@@ -1895,6 +2390,25 @@ void update_telemetry_labels() {
   if (now_ms - last_ui_update_ms < kUiUpdateMinMs) return;
 
   const DisplayTelemetry t = get_display_telemetry();
+  const uint16_t ch1_set_mA = setup_binding.have_ch1_limit ? setup_binding.ch1_limit_mA : static_cast<uint16_t>(kCh1SetCurrent_A * 1000.0f);
+  const uint16_t ch2_set_mA = setup_binding.have_ch2_limit ? setup_binding.ch2_limit_mA : static_cast<uint16_t>(kCh2SetCurrent_A * 1000.0f);
+  const bool setpoint_changed = (ch1_set_mA != last_main_set_ch1_mA) || (ch2_set_mA != last_main_set_ch2_mA);
+
+  if (setpoint_changed) {
+    if (lbl_main_ch1_set) {
+      char set1[40];
+      snprintf(set1, sizeof(set1), "SET 5.00V / %.3fA", ch1_set_mA / 1000.0f);
+      lv_label_set_text(lbl_main_ch1_set, set1);
+    }
+    if (lbl_main_ch2_set) {
+      char set2[40];
+      snprintf(set2, sizeof(set2), "SET 3.30V / %.3fA", ch2_set_mA / 1000.0f);
+      lv_label_set_text(lbl_main_ch2_set, set2);
+    }
+    last_main_set_ch1_mA = ch1_set_mA;
+    last_main_set_ch2_mA = ch2_set_mA;
+  }
+
   if (t.rx_count == last_drawn_count &&
       t.last_seq == last_drawn_seq) return;
 
@@ -1932,10 +2446,10 @@ void update_telemetry_labels() {
 
       char ibuf[32];
       snprintf(ibuf, sizeof(ibuf), "%0.3f", t.last_i12_mA / 1000.0f);
-      if (strcmp(ibuf, last_current_text) != 0) {
+      if (strcmp(ibuf, last_current_text) != 0 || setpoint_changed) {
         if (lbl_main_ch1_current) {
           char i_main[40];
-          snprintf(i_main, sizeof(i_main), "A %s  SET %.3f", ibuf, kCh1SetCurrent_A);
+          snprintf(i_main, sizeof(i_main), "A %s  SET %.3f", ibuf, ch1_set_mA / 1000.0f);
           lv_label_set_text(lbl_main_ch1_current, i_main);
         }
         if (lbl_graph_current) {
@@ -1959,10 +2473,10 @@ void update_telemetry_labels() {
 
       char i3buf[32];
       snprintf(i3buf, sizeof(i3buf), "%0.3f", t.last_i3v3_mA / 1000.0f);
-      if (strcmp(i3buf, last_ch2_current_text) != 0) {
+      if (strcmp(i3buf, last_ch2_current_text) != 0 || setpoint_changed) {
         if (lbl_main_ch2_current) {
           char i3_main[40];
-          snprintf(i3_main, sizeof(i3_main), "A %s  SET %.3f", i3buf, kCh2SetCurrent_A);
+          snprintf(i3_main, sizeof(i3_main), "A %s  SET %.3f", i3buf, ch2_set_mA / 1000.0f);
           lv_label_set_text(lbl_main_ch2_current, i3_main);
         }
         strncpy(last_ch2_current_text, i3buf, sizeof(last_ch2_current_text) - 1);
@@ -2012,9 +2526,9 @@ void update_telemetry_labels() {
            "ERRORS    %lu\n"
            "UPTIME    %02lu:%02lu:%02lu",
            kCh1SetVoltage_V,
-           kCh1SetCurrent_A,
+           ch1_set_mA / 1000.0f,
            kCh2SetVoltage_V,
-           kCh2SetCurrent_A,
+           ch2_set_mA / 1000.0f,
            static_cast<unsigned>(t.last_temp_C),
            static_cast<unsigned long>(t.uart_bytes),
            demo_mode ? "DEMO" : ((t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500) ? "STALE" : "LIVE"),
