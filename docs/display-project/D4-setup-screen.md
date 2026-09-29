@@ -28,6 +28,9 @@ Done this session (branch `phil-cia-crowpanel-setup-screen`, PR #71):
 - `08556aa` — dropped stale CH3 setpoint framing from this doc.
 - Issue [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73)
   filed for the missing STM32 `VSET` / `MODE` commands (CH1/CH2 only; CH3 excluded).
+- Issue [#74](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/74)
+  filed to track encoderless operation for the current hardware revision
+  (this rev has no rotary encoder populated).
 - Built clean for `crowpanel43` and **flashed to COM12** (MAC 80:B5:4E:E2:E4:08,
   hash verified).
 
@@ -73,7 +76,7 @@ channel setpoints (Output enable + CH1/CH2 I_limit) via UDI, and cancel cleanly.
   - `V_set` and operating mode (`LATCH` / `HICCUP` / `MONITOR`) are **not in the
     protocol** (CH1/CH2 are fixed 5.00 V / 3.30 V rails) — deferred to
     [#73](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/73).
-- **Interaction model** (touch + encoder — both must work):
+- **Interaction model** (touch-first for this hardware rev; encoder optional if present):
   - Select field → edit → commit or cancel
   - Field-level validation with min/max clamps and inline error hints
   - Coarse / fine step is deferred (no spare input on the 4-button + encoder layout)
@@ -113,7 +116,7 @@ Do not touch STM32 firmware in this PR.
 ## Bench acceptance (must pass before opening the PR non-draft)
 
 - [ ] Enter Setup from Main; all fields populate from live UDI within 1 s
-- [ ] Encoder: rotate selects, press enters edit, rotate adjusts, press commits, long-press cancels
+- [ ] Encoder path parity (only if encoder is physically present): rotate selects, press enters edit, rotate adjusts, press commits, long-press cancels
 - [ ] Touch parity: `Prev/Next` selects or adjusts (while editing), `Edit/Apply` enters + commits, `Done/Cancel` exits + reverts
 - [ ] Commit sends exactly one `CMD:` per field change and updates only on `ACK:`
 - [ ] `ERR:` payload shows inline on the field, doesn't crash, doesn't leave edit mode stuck
