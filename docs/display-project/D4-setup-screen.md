@@ -167,3 +167,20 @@ wizard has real state-machine complexity (view / edit / awaiting-ACK / error /
 revert) and must interleave encoder + touch + async UDI responses without
 deadlocks. Sonnet 5 is a fine fallback if Opus is unavailable, but not
 the mini / flash tiers.
+
+## Bench results (2026-09-29)
+
+Status key: Pass / Fail / N/A
+
+| # | Scenario | Expected | Result | Evidence | Notes |
+|---|---|---|---|---|---|
+| 1 | Cold boot → Splash → Main → Setup | Setup populates ILIM CH1/CH2 within 1 s of entering | N/A | Pending | Physical bench interaction not executed in this session environment. |
+| 2 | Tap ILIM CH1 → tap Edit → adjust value → Apply | Field shows pending marker; on ACK the value updates; pending clears | N/A | Pending | Requires on-device touch interaction + screenshot capture. |
+| 3 | Same as #2 for ILIM CH2 | Same behavior | N/A | Pending | Requires on-device touch interaction + screenshot capture. |
+| 4 | Tap Edit → adjust → Cancel | Value reverts to last committed; no CMD sent | N/A | Pending | Requires on-device touch interaction + serial/behavior observation. |
+| 5 | Tap Edit → adjust → Apply, then before ACK, tap another field | Second input blocked/queued until ACK or 1.5 s timeout | N/A | Pending | Requires timing-sensitive touch test on hardware. |
+| 6 | Force an ERR (out-of-range if defeatable, or unplug STM32 UDI mid-commit) | Inline ERR appears; edit state not stuck; retry works | N/A | Pending | Requires controlled fault injection on bench. |
+| 7 | Setup → Main → Setup navigation | Values persist and re-fetch cleanly | N/A | Pending | Requires repeated navigation on device. |
+| 8 | Output ON/OFF toggle still works from Main | Unaffected by D4 changes | N/A | Pending | Requires Main-screen interaction against live STM32 link. |
+
+Screenshot target folder: `docs/display-project/screenshots/D4/`
