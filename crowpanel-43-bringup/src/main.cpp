@@ -90,6 +90,9 @@ static lv_obj_t* lbl_setup_list = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
 static lv_obj_t* lbl_setup_edit_action = nullptr;
 static lv_obj_t* lbl_setup_done_action = nullptr;
+static lv_obj_t* lbl_setup_prev_action = nullptr;
+static lv_obj_t* lbl_setup_next_action = nullptr;
+static lv_obj_t* lbl_setup_mode = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
 static lv_obj_t* btn_settings_system = nullptr;
@@ -612,6 +615,15 @@ void refreshSetupScreenLabels() {
   }
   lv_label_set_text(lbl_setup_value, value_buf);
 
+  // Stronger value focus cue: selected/editing states are color-coded.
+  if (setup_binding.commit_pending) {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+  } else if (setup_binding.editing) {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  } else {
+    lv_obj_set_style_text_color(lbl_setup_value, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  }
+
   char list_buf[320];
   snprintf(list_buf,
            sizeof(list_buf),
@@ -634,6 +646,25 @@ void refreshSetupScreenLabels() {
   }
   if (lbl_setup_done_action) {
     lv_label_set_text(lbl_setup_done_action, setup_binding.editing ? "Cancel" : "Done");
+  }
+  if (lbl_setup_prev_action) {
+    lv_label_set_text(lbl_setup_prev_action, setup_binding.editing ? "Value -" : "Field -");
+  }
+  if (lbl_setup_next_action) {
+    lv_label_set_text(lbl_setup_next_action, setup_binding.editing ? "Value +" : "Field +");
+  }
+
+  if (lbl_setup_mode) {
+    if (setup_binding.commit_pending) {
+      lv_label_set_text(lbl_setup_mode, "MODE: WAIT ACK");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
+    } else if (setup_binding.editing) {
+      lv_label_set_text(lbl_setup_mode, "MODE: EDIT");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+    } else {
+      lv_label_set_text(lbl_setup_mode, "MODE: SELECT");
+      lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+    }
   }
 
   if (setup_binding.commit_pending) {
@@ -1309,6 +1340,12 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(lbl_setup_title, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(lbl_setup_title, LV_ALIGN_TOP_LEFT, 20, 10);
 
+  lbl_setup_mode = lv_label_create(header);
+  lv_label_set_text(lbl_setup_mode, "MODE: SELECT");
+  lv_obj_set_style_text_color(lbl_setup_mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_setup_mode, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_align(lbl_setup_mode, LV_ALIGN_TOP_RIGHT, -18, 10);
+
   lv_obj_t* hint = lv_label_create(header);
   lv_label_set_text(hint, "Controls: use - / + to select or adjust, Edit/Apply to commit, Done/Cancel to exit.");
   lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
@@ -1349,9 +1386,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_prev, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_prev, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_prev, setup_prev_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_prev = lv_label_create(btn_prev);
-  lv_label_set_text(lbl_prev, "-");
-  lv_obj_center(lbl_prev);
+  lbl_setup_prev_action = lv_label_create(btn_prev);
+  lv_label_set_text(lbl_setup_prev_action, "Field -");
+  lv_obj_set_style_text_font(lbl_setup_prev_action, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_prev_action);
 
   lv_obj_t* btn_next = lv_btn_create(panel);
   lv_obj_set_size(btn_next, 110, 40);
@@ -1361,9 +1399,10 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_border_width(btn_next, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(btn_next, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_next, setup_next_btn_event_cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* lbl_next = lv_label_create(btn_next);
-  lv_label_set_text(lbl_next, "+");
-  lv_obj_center(lbl_next);
+  lbl_setup_next_action = lv_label_create(btn_next);
+  lv_label_set_text(lbl_setup_next_action, "Field +");
+  lv_obj_set_style_text_font(lbl_setup_next_action, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_center(lbl_setup_next_action);
 
   lv_obj_t* btn_edit = lv_btn_create(panel);
   lv_obj_set_size(btn_edit, 156, 40);
