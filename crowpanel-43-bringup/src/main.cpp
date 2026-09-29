@@ -633,9 +633,9 @@ void refreshSetupScreenLabels() {
     snprintf(hint_buf, sizeof(hint_buf), "Host error: %s", setup_binding.last_error);
     lv_label_set_text(lbl_setup_hint, hint_buf);
   } else if (setup_binding.editing) {
-    lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) adjusts, Apply commits, Cancel reverts.");
+    lv_label_set_text(lbl_setup_hint, "Editing: use -/+ to adjust, Apply commits, Cancel reverts.");
   } else {
-    lv_label_set_text(lbl_setup_hint, "Rotate (Prev/Next) selects, Edit enters edit, Done exits to Main.");
+    lv_label_set_text(lbl_setup_hint, "Use -/+ to select, Edit enters edit, Done exits to Main.");
   }
 }
 
@@ -1300,7 +1300,7 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_align(lbl_setup_title, LV_ALIGN_TOP_LEFT, 20, 10);
 
   lv_obj_t* hint = lv_label_create(header);
-  lv_label_set_text(hint, "Encoder flow: rotate=Prev/Next, press=Edit/Apply, long-press=Done.");
+  lv_label_set_text(hint, "Controls: use - / + to select or adjust, Edit/Apply to commit, Done/Cancel to exit.");
   lv_obj_set_style_text_color(hint, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 20, -6);
@@ -1340,7 +1340,7 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(btn_prev, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_prev, setup_prev_btn_event_cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* lbl_prev = lv_label_create(btn_prev);
-  lv_label_set_text(lbl_prev, "Prev");
+  lv_label_set_text(lbl_prev, "-");
   lv_obj_center(lbl_prev);
 
   lv_obj_t* btn_next = lv_btn_create(panel);
@@ -1352,7 +1352,7 @@ void create_setup_screen(lv_obj_t* root) {
   lv_obj_set_style_radius(btn_next, 8, LV_PART_MAIN);
   lv_obj_add_event_cb(btn_next, setup_next_btn_event_cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* lbl_next = lv_label_create(btn_next);
-  lv_label_set_text(lbl_next, "Next");
+  lv_label_set_text(lbl_next, "+");
   lv_obj_center(lbl_next);
 
   lv_obj_t* btn_edit = lv_btn_create(panel);
