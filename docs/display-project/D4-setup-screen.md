@@ -175,7 +175,7 @@ Status key: Pass / Fail / N/A
 | # | Scenario | Expected | Result | Evidence | Notes |
 |---|---|---|---|---|---|
 | 1 | Cold boot → Splash → Main → Setup | Setup populates ILIM CH1/CH2 within 1 s of entering | Pass | Not captured (session policy) | Operator-confirmed on physical panel; artifact screenshots intentionally skipped unless needed for debugging. |
-| 2 | Tap ILIM CH1 → tap Edit → adjust value → Apply | Field shows pending marker; on ACK the value updates; pending clears | N/A | Pending | Requires on-device touch interaction + screenshot capture. |
+| 2 | Tap ILIM CH1 → tap Edit → adjust value → Apply | Field shows pending marker; on ACK the value updates; pending clears | Pass | Not captured (session policy) | Operator-confirmed on physical panel; controls relabeled to +/- for clarity during this session. |
 | 3 | Same as #2 for ILIM CH2 | Same behavior | N/A | Pending | Requires on-device touch interaction + screenshot capture. |
 | 4 | Tap Edit → adjust → Cancel | Value reverts to last committed; no CMD sent | N/A | Pending | Requires on-device touch interaction + serial/behavior observation. |
 | 5 | Tap Edit → adjust → Apply, then before ACK, tap another field | Second input blocked/queued until ACK or 1.5 s timeout | N/A | Pending | Requires timing-sensitive touch test on hardware. |

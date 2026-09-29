@@ -163,9 +163,11 @@ static SettingsState settings_state = {};
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;
 static lv_obj_t* lbl_main_ch1_current = nullptr;
 static lv_obj_t* lbl_main_ch1_power = nullptr;
+static lv_obj_t* lbl_main_ch1_set = nullptr;
 static lv_obj_t* lbl_main_ch2_voltage = nullptr;
 static lv_obj_t* lbl_main_ch2_current = nullptr;
 static lv_obj_t* lbl_main_ch2_power = nullptr;
+static lv_obj_t* lbl_main_ch2_set = nullptr;
 static lv_obj_t* lbl_main_stats = nullptr;
 static lv_obj_t* bar_main_ch1_voltage = nullptr;
 static lv_obj_t* bar_main_ch1_current = nullptr;
@@ -235,6 +237,8 @@ static bool demo_tour = false;
 static uint32_t demo_start_ms = 0;
 static uint32_t demo_last_tour_switch_ms = 0;
 static uint32_t last_settings_ui_update_ms = 0;
+static uint16_t last_main_set_ch1_mA = 0xFFFFu;
+static uint16_t last_main_set_ch2_mA = 0xFFFFu;
 
 struct DisplayTelemetry {
   uint32_t rx_count;
@@ -465,6 +469,7 @@ void lvgl_touch_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 }
 
 void set_active_screen(UiScreen screen) {
+  const UiScreen prev_screen = active_screen;
   active_screen = screen;
   if (screen_splash) {
     if (screen == UiScreen::Splash) lv_obj_clear_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
@@ -485,6 +490,11 @@ void set_active_screen(UiScreen screen) {
   if (screen_settings) {
     if (screen == UiScreen::Settings) lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  // Keep Main setpoint displays aligned with host state whenever Main is entered.
+  if (screen == UiScreen::Main && prev_screen != UiScreen::Main && !setup_binding.commit_pending) {
+    setupRequestRefresh();
   }
 }
 
@@ -1633,11 +1643,11 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_v, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_v, LV_ALIGN_TOP_LEFT, 18, 16);
 
-  lv_obj_t* hdr_v_set = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v_set, "SET 5.00V / 3.00A");
-  lv_obj_set_style_text_color(hdr_v_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_v_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_v_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  lbl_main_ch1_set = lv_label_create(panel_v);
+  lv_label_set_text(lbl_main_ch1_set, "SET 5.00V / 3.00A");
+  lv_obj_set_style_text_color(lbl_main_ch1_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch1_set, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch1_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
   lv_obj_t* hdr_v_meas = lv_label_create(panel_v);
   lv_label_set_text(hdr_v_meas, "V OUT");
@@ -1691,11 +1701,11 @@ void create_main_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(hdr_i, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_align(hdr_i, LV_ALIGN_TOP_LEFT, 18, 16);
 
-  lv_obj_t* hdr_i_set = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i_set, "SET 3.30V / 2.00A");
-  lv_obj_set_style_text_color(hdr_i_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_i_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_i_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  lbl_main_ch2_set = lv_label_create(panel_i);
+  lv_label_set_text(lbl_main_ch2_set, "SET 3.30V / 2.00A");
+  lv_obj_set_style_text_color(lbl_main_ch2_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_text_font(lbl_main_ch2_set, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_align(lbl_main_ch2_set, LV_ALIGN_TOP_RIGHT, -16, 18);
 
   lv_obj_t* hdr_i_meas = lv_label_create(panel_i);
   lv_label_set_text(hdr_i_meas, "V OUT");
@@ -1972,6 +1982,25 @@ void update_telemetry_labels() {
   if (now_ms - last_ui_update_ms < kUiUpdateMinMs) return;
 
   const DisplayTelemetry t = get_display_telemetry();
+  const uint16_t ch1_set_mA = setup_binding.have_ch1_limit ? setup_binding.ch1_limit_mA : static_cast<uint16_t>(kCh1SetCurrent_A * 1000.0f);
+  const uint16_t ch2_set_mA = setup_binding.have_ch2_limit ? setup_binding.ch2_limit_mA : static_cast<uint16_t>(kCh2SetCurrent_A * 1000.0f);
+  const bool setpoint_changed = (ch1_set_mA != last_main_set_ch1_mA) || (ch2_set_mA != last_main_set_ch2_mA);
+
+  if (setpoint_changed) {
+    if (lbl_main_ch1_set) {
+      char set1[40];
+      snprintf(set1, sizeof(set1), "SET 5.00V / %.3fA", ch1_set_mA / 1000.0f);
+      lv_label_set_text(lbl_main_ch1_set, set1);
+    }
+    if (lbl_main_ch2_set) {
+      char set2[40];
+      snprintf(set2, sizeof(set2), "SET 3.30V / %.3fA", ch2_set_mA / 1000.0f);
+      lv_label_set_text(lbl_main_ch2_set, set2);
+    }
+    last_main_set_ch1_mA = ch1_set_mA;
+    last_main_set_ch2_mA = ch2_set_mA;
+  }
+
   if (t.rx_count == last_drawn_count &&
       t.last_seq == last_drawn_seq) return;
 
@@ -2009,10 +2038,10 @@ void update_telemetry_labels() {
 
       char ibuf[32];
       snprintf(ibuf, sizeof(ibuf), "%0.3f", t.last_i12_mA / 1000.0f);
-      if (strcmp(ibuf, last_current_text) != 0) {
+      if (strcmp(ibuf, last_current_text) != 0 || setpoint_changed) {
         if (lbl_main_ch1_current) {
           char i_main[40];
-          snprintf(i_main, sizeof(i_main), "A %s  SET %.3f", ibuf, kCh1SetCurrent_A);
+          snprintf(i_main, sizeof(i_main), "A %s  SET %.3f", ibuf, ch1_set_mA / 1000.0f);
           lv_label_set_text(lbl_main_ch1_current, i_main);
         }
         if (lbl_graph_current) {
@@ -2036,10 +2065,10 @@ void update_telemetry_labels() {
 
       char i3buf[32];
       snprintf(i3buf, sizeof(i3buf), "%0.3f", t.last_i3v3_mA / 1000.0f);
-      if (strcmp(i3buf, last_ch2_current_text) != 0) {
+      if (strcmp(i3buf, last_ch2_current_text) != 0 || setpoint_changed) {
         if (lbl_main_ch2_current) {
           char i3_main[40];
-          snprintf(i3_main, sizeof(i3_main), "A %s  SET %.3f", i3buf, kCh2SetCurrent_A);
+          snprintf(i3_main, sizeof(i3_main), "A %s  SET %.3f", i3buf, ch2_set_mA / 1000.0f);
           lv_label_set_text(lbl_main_ch2_current, i3_main);
         }
         strncpy(last_ch2_current_text, i3buf, sizeof(last_ch2_current_text) - 1);
@@ -2089,9 +2118,9 @@ void update_telemetry_labels() {
            "ERRORS    %lu\n"
            "UPTIME    %02lu:%02lu:%02lu",
            kCh1SetVoltage_V,
-           kCh1SetCurrent_A,
+           ch1_set_mA / 1000.0f,
            kCh2SetVoltage_V,
-           kCh2SetCurrent_A,
+           ch2_set_mA / 1000.0f,
            static_cast<unsigned>(t.last_temp_C),
            static_cast<unsigned long>(t.uart_bytes),
            demo_mode ? "DEMO" : ((t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500) ? "STALE" : "LIVE"),
