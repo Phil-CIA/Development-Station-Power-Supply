@@ -63,7 +63,7 @@ session changes documentation only. The custom display path stays paused.
   missing values, stale telemetry, and demo data must be visibly distinct.
 - Current STM32 code infers CC from measured current reaching the limit;
   this is not evidence that the hardware sustains constant-current regulation.
-  #78 gates definitive CV/CC claims. Use explicit unavailable/unknown or
+  #77 gates definitive CV/CC claims. Use explicit unavailable/unknown or
   limit/trip wording where regulation cannot be observed or proven.
 
 ### Visual direction to approve before LVGL implementation
@@ -189,6 +189,136 @@ output/channel controls. Switching between slider and keypad must not
 reset the draft. Use the display's existing pending/ACK/error machinery,
 not a second competing command path.
 
+### Visual mockup and specification (#76) - BASELINE VISUAL APPROVAL RECORDED
+
+**Status (2026-10-02): baseline visual appearance and screen flow approved
+(user decision, PR #80 comment).** The approval covers the baseline appearance
+and screen flow for the first LVGL implementation (#78) only. It does NOT
+cover bench validation or the unresolved behavior questions below (zero-limit
+semantics, slider step, output-on confirmation, status validity), which stay
+open until their implementation phase. Network date/time (WiFi/NTP) remains
+later scope and is not part of the dashboard port. The Iset command-writing
+editor stays a separate phase until overlapping PR #71 is reconciled. The
+mockup is a simulated browser prototype;
+firmware, protocol, and hardware unchanged; not bench-tested; not an LVGL
+rendering. Browser text differs slightly from LVGL Montserrat, so final
+clipping must be re-checked on the panel (#78).
+
+Open it: double-click
+[`mockups/crowpanel-fixed-rail-mockup.html`](mockups/crowpanel-fixed-rail-mockup.html)
+(single file, no network or dependencies; any current browser). Click the
+display to "touch" it. The right-hand column (outside the 800x480 area)
+selects the example state (live, output off, stale, demo, unknown, pending,
+error, limit/trip), jumps to any view, picks the simulated Apply result
+(confirmed / ERR / timeout), toggles 44x44 target outlines and zoom, and runs
+a layout audit. Deep link: `...mockup.html#state=trip&view=d1`
+(views `main d1 d2 p1 p2 k1 k2`). Everything shown is simulated.
+
+Layout audit (in-page, all 8 states x main, both details, both popups, both
+keypads, error banners): no touch target under 44x44, no clipped text,
+nothing outside 800x480. This checks the browser mockup only.
+
+**Proposed dimensions (px, 800x480):**
+
+| Region | Geometry |
+|--------|----------|
+| Top bar | y0 h52. Title/Back 150x44; channel chip on detail; link chip (LIVE/STALE/DEMO/UNKNOWN); shared OUTPUT button 200x46 at x588 |
+| Info strip | y52 h28, all screens: date and time (left), unit temperature (center), SIMULATED tag (mockup-only, right) |
+| Main cards | CH1 x8 / CH2 x404, y84, 388x336, 10 px radius, 2 px channel-color border, 6 px channel-color top accent, whole card is the tap target |
+| Bottom nav | y428 h52, four 200x52 buttons (Main/Setup/Graph/Settings; only Main is live in the mockup) |
+| Detail readings | x8 y84 320x316 panel, left, channel-tinted with channel-color border and accent |
+| Detail graph | x336 y84 456x316 panel, right; plot area 456x244, V axis left (yellow), A axis right (blue) |
+| Detail footer | y408 h64: FIXED read-only box 230 wide (not a button); Iset button 330x64 (tappable); last ILIM result 208 wide |
+| Iset popup | x60 y36 680x408, scrim over the full 800x480 |
+| Popup controls | value field 300x76 (tap = keypad); slider track 648x48 (44 px thumb); Cancel 200x56; Apply 220x56 |
+| Keypad | Back 130x44; keys 76x60 in a 4x3 grid, wide 0 key 160x60; OK 76x196; entry box 300x84 |
+
+**Proposed fonts (all already enabled in `crowpanel-43-bringup/include/lv_conf.h`):**
+Montserrat 48 for V/A/W digits and popup values; 28 for units, CH label,
+Iset value, keypad keys, fixed-voltage text; 20 for status chips, buttons and
+nav; 16 for captions, labels and small chips. No new font sizes required.
+
+**Proposed colors:** existing `UiTheme` values: background `#14181D`, panel
+`#2A2F36`, soft panel `#22272D`, bar `#1B2026`, border `#3B434D`, text
+`#F2F4F7`, muted `#B4BDC8`, voltage yellow `#F5C316`, current cyan-blue
+`#2EA5F9`, OK green `#30C95E`, warn orange `#FF8C3A`. New proposed additions:
+neutral power `#D5DAE0`, error red `#FF5A5F`, demo violet `#B48CFF`, unknown
+gray `#8A94A3` (dashed outline). Status is always text plus color plus outline
+style; no status is color-only.
+
+**Channel identity colors (proposed, 2026-10-02 tweak):** CH1 pink `#FF79C6`
+with card tint `#35262F`; CH2 teal `#2DD4BF` with card tint `#1E3837`. Applied
+to the card/panel border, top accent, filled CH chip, graph panel border and
+the Iset popup border and chip. Reading colors stay yellow/cyan-blue/neutral
+for both channels, and the CH1/CH2 text is always shown, so channels are not
+distinguished by color alone. Pink and teal were chosen to avoid the status
+colors (green, orange, red, violet, gray).
+
+**Unit temperature and date/time (proposed, 2026-10-02 tweak):** shown in the
+info strip on every screen. Unit temperature is one integer value in degrees C
+from the existing telemetry field `last_temp_C` (already parsed by the
+CrowPanel firmware); it shows `--` when no telemetry exists and is dimmed when
+stale. No temperature warning thresholds are invented. This revision has only
+one temperature sensor, which is effectively the enclosure temperature (user
+confirmation, 2026-10-02), so the value is not per-channel or regulator
+temperature. Date/time is shown as
+`YYYY-MM-DD HH:MM:SS` and as `CLOCK NOT SET` when unset. **Clock source
+(user direction, 2026-10-02):** a later step will connect the CrowPanel to
+WiFi and take the time from the router (network time). Until then, and until a
+sync succeeds, the display shows `CLOCK NOT SET`. The current firmware has no
+WiFi/time code and the UDI has no time message, so the mockup clock is
+simulated and no protocol change is implied. WiFi/time-sync firmware is a
+separate future PR, not part of this design-only PR.
+
+**Proposed numeric precision and slider:** voltage 2 decimals (V), current
+3 decimals (A), power 2 decimals (W), I LIMIT 3 decimals (A). Canonical draft
+is integer mA. Slider step 10 mA (0.010 A); range 0..3000 mA (CH1) and
+0..2000 mA (CH2). Keypad accepts up to 3 decimals (1 mA) and up to 2 integer
+digits; extra digits/decimals, a second decimal point, and values above the
+channel maximum are rejected with a visible message, never clamped. A keypad
+value off the 10 mA grid (for example 1.678 A) stays exact in the draft; the
+slider handle shows the nearest step and the draft only changes to a grid
+value if the slider is moved afterwards. Protocol ranges, not hardware ratings.
+
+**Status wording shown (no inferred CC as proven):** `ON - BELOW LIMIT` with
+note "CV/CC not verified (#77)"; `AT LIMIT` with "I >= limit - CC not
+verified"; `TRIP` with "cause not reported"; `OUTPUT OFF`; `NO DATA - STALE`;
+`UNKNOWN`. Link chip: `LIVE`, `STALE n s`, `DEMO DATA`, `UNKNOWN`. On Main,
+demo additionally tags each channel `DEMO`. The shared OUTPUT button appears in the
+top bar on every screen and is labeled "CH1 + CH2 (shared)"; it is disabled
+with explanatory text when the link is stale or unknown.
+
+**Popup behavior demonstrated:** opens on the channel's confirmed limit;
+slider drag edits the draft only ("DRAFT - NOT APPLIED"); tapping the value
+opens the keypad (digits, `.`, backspace, OK, Back); OK returns to the popup
+with the same draft and slider position and does not apply; Back keeps the
+prior draft; Cancel discards; Apply shows PENDING with Apply and slider
+disabled, then CONFIRMED, ERR (confirmed value unchanged), or TIMEOUT
+(readback, retry allowed). Apply is disabled for no change, demo, stale, and
+unknown states. The underlying screen is inert and the scrim swallows touches
+while a modal is open.
+
+**Open questions for the reviewer** (baseline visual approval does not answer
+these; items 1-4 stay UNRESOLVED until their implementation phase):
+
+1. UNRESOLVED (slider/editor phase): slider step 10 mA vs coarser (for
+   example 50 mA)? Keypad covers exact values.
+2. UNRESOLVED (slider/editor phase, gated on #77): is a 0.000 A limit allowed
+   from the UI? Its firmware meaning is part of #77.
+3. UNRESOLVED: keep the top-bar OUTPUT button identical on Main and detail
+   (current), or add a confirm step before turning OUTPUT ON? The first
+   dashboard PR preserves existing OUTPUT confirmation/error handling as-is.
+4. UNRESOLVED (gated on #77): status labels `AT LIMIT` / `TRIP` acceptable
+   until #77 gives evidence? The dashboard uses explicit unknown/limit wording.
+5. Setup/Graph/Settings tabs are placeholders here; their layouts are D4-D6.
+6. The original reference photos were not available to this session; the
+   look follows the written reference notes above.
+7. Date/time source: RESOLVED by user direction (WiFi network time, later).
+   Open detail: time zone and daylight-saving handling, and wording when WiFi
+   is connected but the sync has failed.
+8. Temperature: RESOLVED. One sensor this revision (enclosure temperature);
+   the label stays `UNIT TEMP` unless you prefer `ENCL TEMP`.
+
 ### Issues, dependencies, and PR sequence
 
 These extend #65's D buckets rather than creating a competing roadmap.
@@ -199,8 +329,8 @@ evidence. Do not open empty implementation PRs ahead of work.
 |------|----------------|------------|-------------|
 | P0 | This documentation PR | None | Fixed-rail decisions, issue links, VS Code prompts; no firmware changes |
 | P1 | [#76](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/76), `display/fnirsi-visual-spec` | P0 merged; user reference photos and wireframe approval | Documentation PR with approved 800x480 visual/interaction specification |
-| P2 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `firmware/fixed-rail-regulation-status` | P0 merged; hardware-safe bench conditions | Regulation/status evidence and truth table; behavior PR only if justified. Can run independently of P1 |
-| P3 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
+| P2 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `firmware/fixed-rail-regulation-status` | P0 merged; hardware-safe bench conditions | Regulation/status evidence and truth table; behavior PR only if justified. Can run independently of P1 |
+| P3 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
 | P4 | [#74](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/74) / [#75](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/75), `display/touch-current-limit-editor` | #71 disposition resolved; P1 approved; P3 merged where shared layout is used | Touch-only current editor and UX polish PR, reusing D4 command/ACK/error flow |
 | P5 | Existing D5-D8 | Accepted common UI patterns; relevant data contracts | Separate Graph, Settings, fault, and self-test PRs; no new duplicate issues |
 
@@ -262,13 +392,13 @@ PR referencing #76 and #65; state firmware unchanged/not bench-tested.
 Stop after the specification PR; do not start LVGL implementation.
 ```
 
-**Session 2: regulation/status evidence (#78)**
+**Session 2: regulation/status evidence (#77)**
 
 ```text
 Work on firmware/fixed-rail-regulation-status. Read the project/workflow/
 firmware plan, screen tracker, DISPLAY_INTERFACE_STANDARD,
 STM32_BLUEPILL_PIN_TABLE, and relevant hardware change trackers.
-Read #78, #14, #62, and #73. Trace routed ISET/OCP/control paths and
+Read #77, #14, #62, and #73. Trace routed ISET/OCP/control paths and
 publishTelemetry CV bits against the CrowPanel parser/status bindings.
 Determine what is observed versus inferred. Write a safe operator-run
 bench procedure for both fixed rails below/near/at their current limits;
@@ -282,11 +412,11 @@ edits; keep Bucket 3 primary with Buckets 2/4 dependencies explicit.
 Open a focused PR with actual evidence or clearly stated remaining gates.
 ```
 
-**Session 3: dashboard (#77)**
+**Session 3: dashboard (#78)**
 
 ```text
 Work on display/fnirsi-dual-rail-dashboard after #76's spec PR merges.
-Read the project/workflow/firmware plan and display tracker, then #77 and
+Read the project/workflow/firmware plan and display tracker, then #78 and
 the accepted spec. Review #71's disposition before editing shared code.
 Implement the approved LVGL 8.3 layout in crowpanel-43-bringup, reusing
 theme/helpers and existing telemetry/UDI. No STM32/protocol/hardware edits.
@@ -300,13 +430,13 @@ Show both rails' measured V/I/P, read-only nominal voltages, confirmed
 GET ILIM CH1/CH2 values, and individual status. Redraw setpoints even if
 measurements have not changed. Preserve shared OUTPUT semantics and label
 that action as affecting both rails even on a single-channel detail view.
-Never guess CC from missing CV bits/current thresholds: use #78 evidence
+Never guess CC from missing CV bits/current thresholds: use #77 evidence
 or explicit unknown/limit wording. Distinguish live/stale/demo/off/pending/
 fault states; preserve ACK/ERR handling. All navigation is touch-only.
 Build with pio run -d crowpanel-43-bringup -e crowpanel43 (using local
 PlatformIO executable if not on PATH). Request my bench photos/logs for
 the acceptance states; do not fabricate evidence. Update the tracker and
-affected firmware inventory. Open one Bucket 4 PR referencing #77/#65;
+affected firmware inventory. Open one Bucket 4 PR referencing #78/#65;
 state exact bench-tested status. Stop before Setup/Graph feature expansion.
 ```
 
@@ -341,9 +471,11 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 
 ### Review/evidence checklist for this UI effort
 
-- [ ] User-selected reference images and original wireframe approved (#76).
+- [x] Mockup approved as the baseline visual appearance and screen flow (#76,
+  PR #80 comment, 2026-10-02). Not bench validation; behavior questions open.
 - [x] Reference compositions supplied; side-by-side overview and channel-detail
-  navigation selected by the user. Final geometry/fonts remain unapproved.
+  navigation selected by the user. Mockup geometry/fonts are the approved
+  baseline; LVGL clipping must still be re-checked on the panel (#78).
 - [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
 - [ ] Each card opens its own detail view; both V/I traces use that channel,
   and Back to Main works by touch.
@@ -351,7 +483,7 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
   keypad, with one synchronized draft and no command before Apply.
 - [ ] Cancel preserves the confirmed value; pending/error/timeout handling
   never promises an unsent rollback or unconfirmed success.
-- [ ] Hardware CC/limit/trip behavior and status validity documented (#78).
+- [ ] Hardware CC/limit/trip behavior and status validity documented (#77).
 - [ ] Main and current editor usable by touch without prior LVGL knowledge.
 - [ ] Both confirmed limits refresh independently of measured V/I changes.
 - [ ] No misleading live/demo, healthy/fault, off/CV, or unknown/CC states.
@@ -418,5 +550,18 @@ When returning to this session for a status sync:
   resolution.
 - 2026-10-02: Next visual session starts with #76 reference/wireframe approval
   under the fixed-rail plan above. D4 remains open in #71; reconcile it before
-  overlapping work. #74/#75 own touch/edit clarity, and #78 gates proven
-  CV/CC semantics. D3's navigation follow-up is included in #77.
+  overlapping work. #74/#75 own touch/edit clarity, and #77 gates proven
+  CV/CC semantics. D3's navigation follow-up is included in #78.
+- 2026-10-02: #79 merged by user decision. Opened the #76 visual-spec branch
+  with a standalone simulated mockup under `mockups/` and the proposed spec
+  above. Awaiting user visual approval; design not marked approved, no LVGL
+  work started. #71 remains open and unmerged; its scope was read but not
+  reused. Issue-number correction: the merged #79 text had #77/#78 swapped;
+  per the GitHub issue titles #77 is regulation/CV-CC validation and #78 is
+  the dashboard, and the tracker and firmware plan now say so.
+- 2026-10-02: User approved the #80 mockup as the baseline visual appearance
+  and screen flow for the first LVGL implementation (#78). Recorded here;
+  bench validation and the unresolved behavior questions (zero-limit
+  semantics, slider step, output-on confirmation, status validity) are NOT
+  approved or resolved. Iset editing stays a separate phase after #71
+  reconciliation; WiFi/NTP remains later scope.
