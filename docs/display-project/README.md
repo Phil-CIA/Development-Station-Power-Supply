@@ -37,7 +37,8 @@ display hardware redesign or secondary-path restart is included.
 
 A simulated, browser-viewable 800x480 mockup for visual review is at
 [mockups/crowpanel-fixed-rail-mockup.html](mockups/crowpanel-fixed-rail-mockup.html)
-(proposed, not approved; not bench-tested).
+(baseline visual appearance and screen flow approved 2026-10-02; behavior
+questions unresolved; not bench-tested; not an LVGL rendering).
 
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display

@@ -189,9 +189,17 @@ output/channel controls. Switching between slider and keypad must not
 reset the draft. Use the display's existing pending/ACK/error machinery,
 not a second competing command path.
 
-### Visual mockup and proposed specification (#76) - AWAITING USER APPROVAL
+### Visual mockup and specification (#76) - BASELINE VISUAL APPROVAL RECORDED
 
-**Status (2026-10-02): proposed, not approved.** Simulated browser prototype;
+**Status (2026-10-02): baseline visual appearance and screen flow approved
+(user decision, PR #80 comment).** The approval covers the baseline appearance
+and screen flow for the first LVGL implementation (#78) only. It does NOT
+cover bench validation or the unresolved behavior questions below (zero-limit
+semantics, slider step, output-on confirmation, status validity), which stay
+open until their implementation phase. Network date/time (WiFi/NTP) remains
+later scope and is not part of the dashboard port. The Iset command-writing
+editor stays a separate phase until overlapping PR #71 is reconciled. The
+mockup is a simulated browser prototype;
 firmware, protocol, and hardware unchanged; not bench-tested; not an LVGL
 rendering. Browser text differs slightly from LVGL Montserrat, so final
 clipping must be re-checked on the panel (#78).
@@ -290,13 +298,18 @@ disabled, then CONFIRMED, ERR (confirmed value unchanged), or TIMEOUT
 unknown states. The underlying screen is inert and the scrim swallows touches
 while a modal is open.
 
-**Open questions for the reviewer:**
+**Open questions for the reviewer** (baseline visual approval does not answer
+these; items 1-4 stay UNRESOLVED until their implementation phase):
 
-1. Slider step 10 mA vs coarser (for example 50 mA)? Keypad covers exact values.
-2. Is a 0.000 A limit allowed from the UI? Its firmware meaning is part of #77.
-3. Keep the top-bar OUTPUT button identical on Main and detail (current), or
-   add a confirm step before turning OUTPUT ON?
-4. Status labels `AT LIMIT` / `TRIP` acceptable until #77 gives evidence?
+1. UNRESOLVED (slider/editor phase): slider step 10 mA vs coarser (for
+   example 50 mA)? Keypad covers exact values.
+2. UNRESOLVED (slider/editor phase, gated on #77): is a 0.000 A limit allowed
+   from the UI? Its firmware meaning is part of #77.
+3. UNRESOLVED: keep the top-bar OUTPUT button identical on Main and detail
+   (current), or add a confirm step before turning OUTPUT ON? The first
+   dashboard PR preserves existing OUTPUT confirmation/error handling as-is.
+4. UNRESOLVED (gated on #77): status labels `AT LIMIT` / `TRIP` acceptable
+   until #77 gives evidence? The dashboard uses explicit unknown/limit wording.
 5. Setup/Graph/Settings tabs are placeholders here; their layouts are D4-D6.
 6. The original reference photos were not available to this session; the
    look follows the written reference notes above.
@@ -458,9 +471,11 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 
 ### Review/evidence checklist for this UI effort
 
-- [ ] User-selected reference images and original wireframe approved (#76).
+- [x] Mockup approved as the baseline visual appearance and screen flow (#76,
+  PR #80 comment, 2026-10-02). Not bench validation; behavior questions open.
 - [x] Reference compositions supplied; side-by-side overview and channel-detail
-  navigation selected by the user. Final geometry/fonts remain unapproved.
+  navigation selected by the user. Mockup geometry/fonts are the approved
+  baseline; LVGL clipping must still be re-checked on the panel (#78).
 - [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
 - [ ] Each card opens its own detail view; both V/I traces use that channel,
   and Back to Main works by touch.
@@ -544,3 +559,9 @@ When returning to this session for a status sync:
   reused. Issue-number correction: the merged #79 text had #77/#78 swapped;
   per the GitHub issue titles #77 is regulation/CV-CC validation and #78 is
   the dashboard, and the tracker and firmware plan now say so.
+- 2026-10-02: User approved the #80 mockup as the baseline visual appearance
+  and screen flow for the first LVGL implementation (#78). Recorded here;
+  bench validation and the unresolved behavior questions (zero-limit
+  semantics, slider step, output-on confirmation, status validity) are NOT
+  approved or resolved. Iset editing stays a separate phase after #71
+  reconciliation; WiFi/NTP remains later scope.
