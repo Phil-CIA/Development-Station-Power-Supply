@@ -145,6 +145,50 @@ fonts, spacing, and error examples are outputs of #76, not implied by this
 sketch. Do not add decorative fan/protection/statistics indicators unless
 their data source is actually supported.
 
+### User-selected Iset popup interaction
+
+**Decision (2026-10-02):** On a channel's detail screen, tap its **Iset**
+panel to open a current-limit popup for that channel. Iset means the
+configured current limit, not measured output current. Label units in A
+and show channel identity throughout.
+
+1. Open with the host-confirmed limit as the initial draft, a slider, a
+   tappable numeric value field, and Apply / Cancel actions.
+2. Dragging the slider changes the draft and numeric field only.
+3. Tap the numeric field inside the popup to open a numeric keypad for
+   exact entry. Keypad completion validates and updates the same draft
+   and slider; it does **not** send a command. Keypad dismissal preserves
+   the preceding draft. Support decimal entry and backspace.
+4. Apply sends the existing channel-specific `ILIM` command once, then
+   shows Pending while awaiting matching host confirmation. Disable
+   duplicate Apply and channel switching while the write is pending.
+5. Matching ACK/readback updates the confirmed limit. Send failure, ERR,
+   timeout, or link loss must be visible; do not claim success or silently
+   replace the confirmed value. On an uncertain timeout, refresh from the
+   host before retrying, because the command may already have applied.
+6. Cancel before sending discards the draft without a command. After
+   sending, dismissal cannot undo the host write: retain pending/result
+   visibility and refresh on re-entry rather than promising rollback.
+
+The user explicitly selected **draft editing plus Apply/Cancel**, not live
+updates while dragging. Opening/editing never enables an output. Missing
+confirmed values must trigger a host refresh and explicit loading/error
+state, not a fabricated default.
+
+Use integer mA as the canonical draft and convert displayed A without
+floating-point rounding surprises. Respect actual host limits/precision
+(currently CH1 0..3000 mA and CH2 0..2000 mA); protocol ranges are not
+validated safe hardware ratings. Reject malformed, negative, out-of-range,
+or unsupported-precision keypad input visibly rather than silently
+clamping it. Determine slider step and permitted decimal precision in the
+visual specification against the actual command contract.
+
+The popup/keypad must fit 800x480 with >=44x44 px touch targets, preserve
+the selected channel, and prevent touches from reaching the underlying
+output/channel controls. Switching between slider and keypad must not
+reset the draft. Use the display's existing pending/ACK/error machinery,
+not a second competing command path.
+
 ### Issues, dependencies, and PR sequence
 
 These extend #65's D buckets rather than creating a competing roadmap.
@@ -206,6 +250,10 @@ Tap each card to open its channel detail: readings left, own V/I graph
 right, clear channel identity and Back to Main. Include
 read-only nominal voltages, confirmed I LIMIT, per-channel status,
 one shared OUTPUT control, persistent link/demo state, touch navigation.
+Specify the selected Iset popup: slider first, tap its numeric field for
+a keypad; both edit one draft. Keypad completion returns to the popup;
+only Apply sends ILIM, Cancel discards unsent edits. Include channel/units,
+slider step/decimal precision, validation and pending/error examples.
 Specify dimensions/fonts/spacing, >=44x44 px targets, edit/pending/error
 states, and live/off/stale/demo/fault/unknown examples. No voltage editor,
 manual CV/CC selector, new UDI commands, or firmware/hardware edits.
@@ -268,17 +316,26 @@ state exact bench-tested status. Stop before Setup/Graph feature expansion.
 Work on display/touch-current-limit-editor after reconciling #71 and the
 approved shared layout. Read #74/#75, the screen tracker, and actual
 merged D4 command/ACK/error state machine before changing it.
-Implement touch-only Select/Edit/Pending/Error flow for shared OUTPUT and
-CH1/CH2 current limits: select target, enter edit, adjust, apply, cancel,
-exit. Highlight the active channel/field and adapt action labels by state.
+Implement the user-selected Iset interaction on channel detail: tap Iset
+to open a modal with that channel's confirmed limit, slider, numeric field,
+Apply and Cancel. Drag edits a draft only; tap the numeric field to open
+a decimal numeric keypad with backspace. Keypad completion validates and
+updates the same draft/slider without sending; keypad dismissal preserves
+the previous draft. Apply alone sends ILIM; Cancel discards unsent edits.
+Follow the full popup contract in this tracker, including pending writes,
+uncertain-timeout readback, visible errors, and modal touch isolation.
+Reuse existing shared OUTPUT handling without changing its semantics.
+Highlight the active channel/field and adapt action labels by state.
 Use host-supported ILIM validation (currently CH1 0..3000 mA, CH2
 0..2000 mA); these are protocol ranges, not proof of safe bench ratings.
 No editable voltage, manual CV/CC, recovery-mode policy, CH3 controls,
 independent output toggles, or new UDI commands. Keep confirmed values
 separate from drafts; show send failure/ERR/timeout, refresh host values,
 and prevent duplicate pending writes. Do not auto-enable outputs.
-Build crowpanel43, exercise touch select/edit/apply/cancel and success/
-ERR/timeout/stale paths, and request bench evidence. Update the tracker
+Build crowpanel43; exercise slider/keypad draft parity, channel isolation,
+decimal/backspace/range validation, Apply/Cancel, and success/ERR/timeout/
+stale paths. Verify no write before Apply, no duplicate pending writes,
+and no implicit output enable. Request bench evidence. Update the tracker
 and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 ```
 
@@ -290,6 +347,10 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 - [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
 - [ ] Each card opens its own detail view; both V/I traces use that channel,
   and Back to Main works by touch.
+- [ ] Iset opens the slider popup; tapping its numeric field opens the
+  keypad, with one synchronized draft and no command before Apply.
+- [ ] Cancel preserves the confirmed value; pending/error/timeout handling
+  never promises an unsent rollback or unconfirmed success.
 - [ ] Hardware CC/limit/trip behavior and status validity documented (#78).
 - [ ] Main and current editor usable by touch without prior LVGL knowledge.
 - [ ] Both confirmed limits refresh independently of measured V/I changes.
