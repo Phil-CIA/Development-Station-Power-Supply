@@ -136,6 +136,11 @@ PR description.
 | #34 Milestone D fail-safe policy + telemetry/UDI integration | Bucket 3 | In scope now |
 | #36 Fan-control milestone tracker | Bucket 3 | In scope now |
 | #26 CrowPanel display screens | Bucket 4 | In scope now |
+| #76 FNIRSI-inspired fixed-rail visual specification | Bucket 4 | In scope now; user wireframe approval before LVGL implementation |
+| #77 Dual-rail instrument dashboard | Bucket 4 | In scope after #76 specification merges; truthful CV/CC gated by #78 |
+| #78 Fixed-rail current-limiting / CV-CC status validation | Bucket 3 | Evidence first; depends on real Bucket 2 control paths and Bucket 4 status mapping |
+| #74 / #75 Touch-only Setup interaction and visual clarity | Bucket 4 | Reuse/reconcile open D4 PR #71; no voltage editor or manual CV/CC selector |
+| #73 VSET / recovery-MODE request | Bucket 4 | VSET is not required by the fixed-rail UI plan; re-scope before execution. Recovery modes remain separate under #14 |
 | #40 CrowPanel startup test | Bucket 4 | In scope now |
 | #38 SPI memory test | Bucket 5 | In scope now |
 | #27 Bootup log and testing | Bucket 6 | In scope now |
@@ -180,6 +185,14 @@ expansion until the scoping PR for the relevant bucket is merged.
 | STM32 build | ✅ Builds | `stm32-bluepill-bringup/` | `bluepill_f103c8` builds in the current tree. Flash headroom is tight (~99.5%), so new features should stay size-conscious. |
 
 ## Milestones and branches
+
+For the active FNIRSI-inspired CrowPanel visual improvement sequence and
+VS Code Copilot prompts, use
+[`docs/display-project/crowpanel-screens-tracker.md`](display-project/crowpanel-screens-tracker.md).
+This extends existing display milestones without restarting them. CH1/CH2
+voltage stays fixed, current limits are editable, output enable is shared,
+and CV/CC is automatic status only if validated; it is not a synonym for
+LATCH/HICCUP/MONITOR fault-recovery policy.
 
 Work in this order — each milestone unblocks the next. Branch names follow
 `docs/SYSTEM_DEVELOPMENT_WORKFLOW.md`'s `firmware/<topic>` / `display/<topic>`

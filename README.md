@@ -73,6 +73,12 @@ Current firmware work in this repo includes:
 - current-limit operating modes
 - TFT front-panel support hooks
 
+The active [CrowPanel UI plan](docs/display-project/crowpanel-screens-tracker.md)
+adapts FNIRSI DPS-150 / IPS3608 styling to fixed +5V/+3.3V rails with editable
+current limits and shared output control. It includes the issue/PR sequence
+and VS Code Copilot session prompts; definitive CV/CC indication remains
+gated on hardware validation.
+
 ## Current bench priorities
 
 - Complete DRC checks and generate fabrication outputs for RegulatorRevB and HAT-RevB

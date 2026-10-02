@@ -5,6 +5,15 @@
 **Scope:** Bind real system parameters to CrowPanel UI for 2-fixed-channel power supply  
 **Reference:** IPS3608 dark-theme adaptation, Phase 4 visual baseline, UDI UART contract
 
+> Historical design proposal, not the current implementation contract.
+> The active [screen tracker](display-project/crowpanel-screens-tracker.md)
+> supersedes this document's adjustable-voltage examples, per-channel output
+> controls, always-CV assumptions, speculative thresholds, and proposed frame
+> layout. Use actual firmware and `DISPLAY_INTERFACE_STANDARD.md` for the
+> shipped protocol. Current UI work is fixed +5V/+3.3V, per-channel current
+> limits, one shared output control, and touch-first operation; CV/CC claims
+> require hardware validation.
+
 ---
 
 ## 1. Boot Sequence

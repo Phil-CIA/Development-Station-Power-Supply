@@ -14,6 +14,21 @@ The display effort is now on **two paths with a defined priority**:
 - **Primary**: Elecrow CrowPanel Advance 4.3 inch HMI — main development target going forward
 - **Secondary**: Custom front-panel hardware with Hosyond MSP4021 (ST7796S SPI module) — retained as a documented path but paused pending a replacement module
 
+## Active UI improvement plan
+
+Use FNIRSI DPS-150 / IPS3608 as visual references for an original, touch-first
+800x480 interface. Our CH1 +5V and CH2 +3.3V rails remain fixed; users edit
+current limits, not voltage or a manual CV/CC selector. One master OUTPUT
+control serves both rails. Automatic CV/CC indication is conditional on
+proven hardware behavior, not just a software threshold comparison.
+
+The [screen tracker](crowpanel-screens-tracker.md) contains the issue/PR
+sequence, reference-photo approval gate, and copy-paste VS Code Copilot
+session instructions. The [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
+is already in the repo; DPS-150-specific visuals still need user-selected
+reference images. No display hardware redesign or secondary-path restart
+is included.
+
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display
 - 800x480 IPS panel
@@ -97,7 +112,9 @@ This redesign is Phase 3 — scoped as a requirements spec. KiCad work starts af
 - Local PlatformIO starter path (CrowPanel):
   - `crowpanel-43-bringup/`
 - Starter is based on official Elecrow V1.2 4.3-inch example pin mapping for RGB data bus and touch I2C.
-- Current scope is bench bring-up with a minimal serial command stub, not full LVGL UI firmware yet.
+- Current code includes LVGL Splash/Setup/Main/Graph/Settings screens and
+  telemetry/UDI bindings. See the screen tracker for merged versus open
+  implementation work and remaining bench evidence.
 
 ## Hosyond MSP4021 (secondary path) reference
 - Hardware spec, confirmed pin map, DC polarity, init sequence, and official resource links:
