@@ -137,8 +137,8 @@ PR description.
 | #36 Fan-control milestone tracker | Bucket 3 | In scope now |
 | #26 CrowPanel display screens | Bucket 4 | In scope now |
 | #76 FNIRSI-inspired fixed-rail visual specification | Bucket 4 | In scope now; user wireframe approval before LVGL implementation |
-| #77 Dual-rail instrument dashboard | Bucket 4 | In scope after #76 specification merges; truthful CV/CC gated by #78 |
-| #78 Fixed-rail current-limiting / CV-CC status validation | Bucket 3 | Evidence first; depends on real Bucket 2 control paths and Bucket 4 status mapping |
+| #78 Dual-rail instrument dashboard | Bucket 4 | In scope after #76 specification merges; truthful CV/CC gated by #77 |
+| #77 Fixed-rail current-limiting / CV-CC status validation | Bucket 3 | Evidence first; depends on real Bucket 2 control paths and Bucket 4 status mapping |
 | #74 / #75 Touch-only Setup interaction and visual clarity | Bucket 4 | Reuse/reconcile open D4 PR #71; no voltage editor or manual CV/CC selector |
 | #73 VSET / recovery-MODE request | Bucket 4 | VSET is not required by the fixed-rail UI plan; re-scope before execution. Recovery modes remain separate under #14 |
 | #40 CrowPanel startup test | Bucket 4 | In scope now |

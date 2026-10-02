@@ -35,6 +35,10 @@ selected screen composition are described in the tracker. Exact product
 identity is unverified and final geometry remains to be approved. No
 display hardware redesign or secondary-path restart is included.
 
+A simulated, browser-viewable 800x480 mockup for visual review is at
+[mockups/crowpanel-fixed-rail-mockup.html](mockups/crowpanel-fixed-rail-mockup.html)
+(proposed, not approved; not bench-tested).
+
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display
 - 800x480 IPS panel
