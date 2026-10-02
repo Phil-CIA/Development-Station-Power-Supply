@@ -68,6 +68,11 @@ session changes documentation only. The custom display path stays paused.
 
 ### Visual direction to approve before LVGL implementation
 
+**User-selected direction (2026-10-02):** Blend DPS-150 simplicity with
+IPS3608 colors and status indicators. This selects the design direction,
+not approval of the proposed wireframe. Reference photos and final layout
+approval remain open.
+
 The existing [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
 documents yellow voltage, blue current, a dark background, neutral power
 readouts, and instrument-style status chips. DPS-150-specific visual details
@@ -143,7 +148,9 @@ docs/display-project/crowpanel-screens-tracker.md, and
 docs/IPS3608_REFERENCE_MANUAL_KEY_SPECS.md. Read issue #76 and review #71,
 #74, #75, and #73 for conflicts. Inspect current CrowPanel source and audit
 photos; do not assume open PR code has merged.
-Ask me for the DPS-150 / IPS3608 photos and visual elements I prefer.
+Use my selected blend: DPS-150 simplicity with IPS3608 colors and status
+indicators. Ask me for reference photos and which details to retain;
+the direction is selected but the wireframe is not yet approved.
 Create an original 800x480 wireframe/spec in the existing screen tracker:
 equal CH1 +5 V / CH2 +3.3 V cards, large yellow V / blue A, neutral W,
 read-only nominal voltages, confirmed I LIMIT, per-channel status,
