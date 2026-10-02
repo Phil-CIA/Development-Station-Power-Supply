@@ -4,6 +4,13 @@
 
 This document extracts key specifications from the IPS3608 manual for design adaptation to a 2-fixed-channel power supply system.
 
+**Current adaptation decisions:** See
+[`display-project/crowpanel-screens-tracker.md`](display-project/crowpanel-screens-tracker.md)
+for the active FNIRSI-inspired UI plan and VS Code session prompts. Reference
+device features below are not claims about our hardware. Fixed voltages,
+per-channel current limits, shared output enable, and touch-only operation
+take precedence over older adjustable-supply examples.
+
 ---
 
 ## Hardware Specifications
@@ -143,9 +150,9 @@ Settings
 |-----------------|-------------------|
 | Single voltage dial (0–36V) | Channel 1: Fixed +5V, Channel 2: Fixed +3.3V |
 | Single current limit (0–8A) | CH1: User-configurable limit, CH2: User-configurable limit |
-| CV indicator | Applies to both channels (always-on for fixed rail) |
+| CV/CC indicator | Per-channel automatic status, only where supported by validated hardware evidence; otherwise show limit/trip/unknown |
 | Data groups (M1–M6) | Retain for storing presets per channel pair or scenario |
-| RUN/STOP button | Split to CH1 Enable / CH2 Enable (or single global toggle) |
+| RUN/STOP button | One shared master output toggle for the current hardware |
 | Status chips | Adapt to show CH1/CH2 status separately |
 | VI curve | Show both channels on same graph (dual traces) or selector |
 | Protection flags | OVP/OCP/OTP per channel |
@@ -159,7 +166,7 @@ Settings
 ### Key UI Changes vs IPS3608
 - **Dual channel layout:** Main screen shows CH1 top, CH2 bottom (or side-by-side)
 - **No voltage adjustment:** Voltage is fixed per channel; only current limit is user-configurable
-- **Simplified output control:** Enable/disable per channel instead of single V/I dial
+- **Simplified output control:** One shared master output control, not independent channel toggles
 - **Simplified data groups:** Store current-limit presets instead of full V/I pairs
 - **Graph page:** Show dual traces (one per channel) on same timebase
 

@@ -5,7 +5,7 @@ This file is the source of truth for status across sessions. Update it in each
 merged PR so the next session can rebase / continue cleanly.
 
 - Scope target: `crowpanel-43-bringup/` (ESP32-S3, LVGL, UDI UART to STM32 HAT)
-- Coordination branch (this file lives here): `phil-cia-crowpanel-screens-focus`
+- Coordination: this tracker lives on `main` after its documentation PR merges.
 - Related issues: #26 (crowpanel display screens), #27 (Bootup log and testing),
   #37 (ESP32 startup test), #38 (SPI memory test), #39 (I2C startup test),
   #40 (CrowPanel startup test)
@@ -32,7 +32,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D1 | `phil-cia-crowpanel-ui-audit` | Screen-by-screen audit + layout-only fixes (padding, alignment, font, chip colors). No behavior changes. | [#66](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/66) | 🟢 | prep for #26 |
 | D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | [#67](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/67) | 🟢 | part of #26 |
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟢 | #26 |
-| D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: full setpoint edit (V_set, I_limit, mode LATCH/HICCUP/MONITOR), commit via UDI, cancel/back, validation. | — | ⬜ | #26 |
+| D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
 | D5 | `phil-cia-crowpanel-graph-screen` | Trend: window selector (30 s / 5 min / 30 min), pause/resume, clear, per-channel visibility, autoscale. | — | ⬜ | #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
@@ -40,6 +40,325 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 
 When #26 is fully covered by D2–D6, close it in the D6 PR.
 When #27/#37/#38/#39/#40 are covered by D8, close them in the D8 PR.
+
+## FNIRSI-inspired fixed-rail UI plan
+
+**Decision (2026-10-02):** Use FNIRSI DPS-150 / IPS3608 as visual and
+interaction references, adapted to this supply rather than copied as an
+adjustable-voltage product. Implementation stays in VS Code; this planning
+session changes documentation only. The custom display path stays paused.
+
+### Product contract
+
+- CH1 is fixed +5 V; CH2 is fixed +3.3 V. Show nominal voltage read-only,
+  separately from measured output voltage. No voltage editor or `VSET`.
+- Users set a current limit per rail. CV/CC is automatic status, not a manual
+  mode selector. The user chose this behavior **if supported by hardware**.
+  LATCH/HICCUP/MONITOR are fault-recovery policies, not CV/CC choices.
+- There is one shared master OUTPUT control. Do not invent independent
+  per-channel ON/OFF buttons. CH3 is not an adjustable output.
+- Touch alone must support every action on current bench hardware (#74).
+  Encoder support may remain optional, never an acceptance prerequisite.
+- Host-confirmed values are authoritative. Pending edits, rejected commands,
+  missing values, stale telemetry, and demo data must be visibly distinct.
+- Current STM32 code infers CC from measured current reaching the limit;
+  this is not evidence that the hardware sustains constant-current regulation.
+  #78 gates definitive CV/CC claims. Use explicit unavailable/unknown or
+  limit/trip wording where regulation cannot be observed or proven.
+
+### Visual direction to approve before LVGL implementation
+
+**User-selected direction (2026-10-02):** Blend DPS-150 simplicity with
+IPS3608 colors and status indicators. This selects the design direction,
+not approval of final pixel dimensions/fonts. The user supplied two reference
+images and selected the overview/detail structure below. A current-edit
+reference and final detailed layout approval remain open.
+
+The existing [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
+documents yellow voltage, blue current, a dark background, neutral power
+readouts, and instrument-style status chips. The supplied first image
+(user-described DPS-150 or a variant) shows large left-aligned, vertically
+stacked voltage/current/power digits: yellow voltage, cyan current, and pale
+neutral power. Its exact product identity is unverified; the visual preference
+does not depend on that identity. The supplied second image shows a single
+channel's readings on the left and yellow/cyan V/I traces on the right,
+with status above and setpoints below. These are visual references, not
+proof of supported device features. Create an original layout without
+copied logos/assets or a pixel-identical clone.
+
+**User-directed screen structure:**
+
+- Main is a two-channel overview: CH1 on the left, CH2 on the right
+  (side-by-side explicitly selected by the user). Each card has a large
+  vertical V/A/W stack, following the first reference's reading hierarchy.
+- No Energy/Ah/Wh/runtime statistics panel or Input panel on Main.
+- Tap either channel card to open its own single-channel detail screen.
+  Keep readings on the left and a V/I graph for that channel on the right,
+  following the second reference's composition.
+- Detail includes clearly labeled channel identity, read-only nominal
+  voltage, confirmed current limit, status, and a visible Back to Main
+  touch action. Switching channel changes both readings and graph source;
+  do not silently mix CH1 voltage with CH2 current.
+- The graph timebase and supported interactions remain D5 work. A reference
+  image's 0.1 s label is not a requirement to invent a faster sample rate.
+- Shared OUTPUT remains shared even on a single-channel screen; label it
+  as affecting both outputs. There is no editable Vset.
+
+800x480 composition (structure selected; exact geometry/fonts pending):
+
+```text
++----------------------------------------------------------------+
+| WORKSTATION PSU     LIVE / STALE / DEMO     OUTPUT ON / OFF      |
++-------------------------------+--------------------------------+
+| CH1  FIXED +5 V               | CH2  FIXED +3.3 V               |
+| large voltage value       V   | large voltage value        V   |
+| large current value       A   | large current value        A   |
+| large power value         W   | large power value          W   |
+| I LIMIT: confirmed value      | I LIMIT: confirmed value       |
+| regulation / fault / unknown  | regulation / fault / unknown   |
+| tap for CH1 detail            | tap for CH2 detail             |
++-------------------------------+--------------------------------+
+| Main           Setup            Graph             Settings     |
++----------------------------------------------------------------+
+```
+
+Single-channel detail composition:
+
+```text
++----------------------------------------------------------------+
+| Back to Main   CH1 / CH2   LINK STATUS   SHARED OUTPUT (BOTH)    |
++--------------------+-------------------------------------------+
+| measured voltage V | selected channel's V / I graph            |
+| measured current A | yellow V trace / cyan-blue A trace        |
+| measured power   W | labeled axes, units, truthful timebase    |
+| channel status     | stale/demo/unknown indication             |
++--------------------+-------------------------------------------+
+| FIXED: 5.00 / 3.30 V (read-only) | I LIMIT: confirmed value     |
++----------------------------------------------------------------+
+```
+
+Both rail cards have equal priority. Debug sequence counters and detailed
+uptime belong in diagnostics, not the main measurement hierarchy. Require
+at least 44x44 px touch targets, persistent units, text plus color for
+status, and visible Select/Edit/Pending/Error states. Final dimensions,
+fonts, spacing, and error examples are outputs of #76, not implied by this
+sketch. Do not add decorative fan/protection/statistics indicators unless
+their data source is actually supported.
+
+### User-selected Iset popup interaction
+
+**Decision (2026-10-02):** On a channel's detail screen, tap its **Iset**
+panel to open a current-limit popup for that channel. Iset means the
+configured current limit, not measured output current. Label units in A
+and show channel identity throughout.
+
+1. Open with the host-confirmed limit as the initial draft, a slider, a
+   tappable numeric value field, and Apply / Cancel actions.
+2. Dragging the slider changes the draft and numeric field only.
+3. Tap the numeric field inside the popup to open a numeric keypad for
+   exact entry. Keypad completion validates and updates the same draft
+   and slider; it does **not** send a command. Keypad dismissal preserves
+   the preceding draft. Support decimal entry and backspace.
+4. Apply sends the existing channel-specific `ILIM` command once, then
+   shows Pending while awaiting matching host confirmation. Disable
+   duplicate Apply and channel switching while the write is pending.
+5. Matching ACK/readback updates the confirmed limit. Send failure, ERR,
+   timeout, or link loss must be visible; do not claim success or silently
+   replace the confirmed value. On an uncertain timeout, refresh from the
+   host before retrying, because the command may already have applied.
+6. Cancel before sending discards the draft without a command. After
+   sending, dismissal cannot undo the host write: retain pending/result
+   visibility and refresh on re-entry rather than promising rollback.
+
+The user explicitly selected **draft editing plus Apply/Cancel**, not live
+updates while dragging. Opening/editing never enables an output. Missing
+confirmed values must trigger a host refresh and explicit loading/error
+state, not a fabricated default.
+
+Use integer mA as the canonical draft and convert displayed A without
+floating-point rounding surprises. Respect actual host limits/precision
+(currently CH1 0..3000 mA and CH2 0..2000 mA); protocol ranges are not
+validated safe hardware ratings. Reject malformed, negative, out-of-range,
+or unsupported-precision keypad input visibly rather than silently
+clamping it. Determine slider step and permitted decimal precision in the
+visual specification against the actual command contract.
+
+The popup/keypad must fit 800x480 with >=44x44 px touch targets, preserve
+the selected channel, and prevent touches from reaching the underlying
+output/channel controls. Switching between slider and keypad must not
+reset the draft. Use the display's existing pending/ACK/error machinery,
+not a second competing command path.
+
+### Issues, dependencies, and PR sequence
+
+These extend #65's D buckets rather than creating a competing roadmap.
+All firmware work names its primary scope bucket and includes its exit
+evidence. Do not open empty implementation PRs ahead of work.
+
+| Step | Owner / branch | Dependency | Deliverable |
+|------|----------------|------------|-------------|
+| P0 | This documentation PR | None | Fixed-rail decisions, issue links, VS Code prompts; no firmware changes |
+| P1 | [#76](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/76), `display/fnirsi-visual-spec` | P0 merged; user reference photos and wireframe approval | Documentation PR with approved 800x480 visual/interaction specification |
+| P2 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `firmware/fixed-rail-regulation-status` | P0 merged; hardware-safe bench conditions | Regulation/status evidence and truth table; behavior PR only if justified. Can run independently of P1 |
+| P3 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
+| P4 | [#74](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/74) / [#75](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/75), `display/touch-current-limit-editor` | #71 disposition resolved; P1 approved; P3 merged where shared layout is used | Touch-only current editor and UX polish PR, reusing D4 command/ACK/error flow |
+| P5 | Existing D5-D8 | Accepted common UI patterns; relevant data contracts | Separate Graph, Settings, fault, and self-test PRs; no new duplicate issues |
+
+D5 owns the selected-channel V/I graph on the detail screen, adapting the
+existing Graph implementation rather than adding a competing graph family.
+P3 can reuse the existing chart for a basic selected-channel view; history,
+timebase/window selection, pause/resume, clear, and autoscale remain D5.
+An unfinished detail chart must be marked unavailable, not filled with
+unlabeled synthetic history.
+
+**Scope conflict:** #73 still proposes `VSET` and recovery `MODE` commands.
+The user-directed fixed-rail UI plan removes the VSET requirement from this
+effort. Recovery-policy work stays separate under #14; do not implement
+#73 merely to make this visual plan work. Re-scope the existing issue with
+these findings before any protocol expansion. Do not silently close it.
+
+**Current checkout vs open work:** #71 is open, not part of this checkout's
+merged baseline. Its referenced `D4-setup-screen.md` is absent here. Review
+that PR before reusing its wizard; do not assume unmerged files or behavior
+are present, and do not mix overlapping layout changes without reconciliation.
+
+### Copy-paste VS Code Copilot session instructions
+
+Use one prompt per session/branch. Start from updated `main` only after the
+dependency PRs merge. If the checkout is dirty or on someone else's active
+branch, stop before switching it. Do not merge or close issues without
+review and the evidence required by the workflow.
+
+**Session 1: visual specification (#76)**
+
+```text
+Work in Development-Station-Power-Supply on display/fnirsi-visual-spec.
+Read README.md, docs/SYSTEM_DEVELOPMENT_WORKFLOW.md,
+docs/FIRMWARE_DEVELOPMENT_PLAN.md, docs/display-project/README.md,
+docs/display-project/crowpanel-screens-tracker.md, and
+docs/IPS3608_REFERENCE_MANUAL_KEY_SPECS.md. Read issue #76 and review #71,
+#74, #75, and #73 for conflicts. Inspect current CrowPanel source and audit
+photos; do not assume open PR code has merged.
+Use my selected blend: DPS-150 simplicity with IPS3608 colors and status
+indicators. Use the two supplied reference descriptions and the selected
+screen structure in the tracker; do not re-ask settled layout decisions.
+Request the original images if they are not available in your session.
+Create an original 800x480 wireframe/spec in the existing screen tracker:
+side-by-side CH1 +5 V / CH2 +3.3 V cards, each with a vertical stack of
+large yellow V / cyan-blue A / neutral W; no Energy or Input panels.
+Tap each card to open its channel detail: readings left, own V/I graph
+right, clear channel identity and Back to Main. Include
+read-only nominal voltages, confirmed I LIMIT, per-channel status,
+one shared OUTPUT control, persistent link/demo state, touch navigation.
+Specify the selected Iset popup: slider first, tap its numeric field for
+a keypad; both edit one draft. Keypad completion returns to the popup;
+only Apply sends ILIM, Cancel discards unsent edits. Include channel/units,
+slider step/decimal precision, validation and pending/error examples.
+Specify dimensions/fonts/spacing, >=44x44 px targets, edit/pending/error
+states, and live/off/stale/demo/fault/unknown examples. No voltage editor,
+manual CV/CC selector, new UDI commands, or firmware/hardware edits.
+Get my approval before marking the design accepted. Open a documentation
+PR referencing #76 and #65; state firmware unchanged/not bench-tested.
+Stop after the specification PR; do not start LVGL implementation.
+```
+
+**Session 2: regulation/status evidence (#78)**
+
+```text
+Work on firmware/fixed-rail-regulation-status. Read the project/workflow/
+firmware plan, screen tracker, DISPLAY_INTERFACE_STANDARD,
+STM32_BLUEPILL_PIN_TABLE, and relevant hardware change trackers.
+Read #78, #14, #62, and #73. Trace routed ISET/OCP/control paths and
+publishTelemetry CV bits against the CrowPanel parser/status bindings.
+Determine what is observed versus inferred. Write a safe operator-run
+bench procedure for both fixed rails below/near/at their current limits;
+do not enable outputs or claim physical measurements without me.
+Cover invalid sensors, output off, zero limit, stale/legacy telemetry,
+threshold noise, and trip/clear. Record CV/confirmed CC/limit/trip/unknown
+truth table and evidence in the existing tracker. If CC is not proven,
+specify truthful labels, not a guessed regulation state. No hardware
+redesign or adjustable voltage. Propose contract changes before incompatible
+edits; keep Bucket 3 primary with Buckets 2/4 dependencies explicit.
+Open a focused PR with actual evidence or clearly stated remaining gates.
+```
+
+**Session 3: dashboard (#77)**
+
+```text
+Work on display/fnirsi-dual-rail-dashboard after #76's spec PR merges.
+Read the project/workflow/firmware plan and display tracker, then #77 and
+the accepted spec. Review #71's disposition before editing shared code.
+Implement the approved LVGL 8.3 layout in crowpanel-43-bringup, reusing
+theme/helpers and existing telemetry/UDI. No STM32/protocol/hardware edits.
+Main has CH1 left / CH2 right with large vertical V/A/W stacks and no
+Energy or Input panels. Tap each card to open the selected-channel detail
+shell: readings left, existing selected-channel V/I chart right, visible
+Back to Main. Bind both traces to the selected rail, preserve its history
+identity, and mark missing chart data explicitly. Expanded graph controls
+and history behavior stay in D5; do not invent faster telemetry.
+Show both rails' measured V/I/P, read-only nominal voltages, confirmed
+GET ILIM CH1/CH2 values, and individual status. Redraw setpoints even if
+measurements have not changed. Preserve shared OUTPUT semantics and label
+that action as affecting both rails even on a single-channel detail view.
+Never guess CC from missing CV bits/current thresholds: use #78 evidence
+or explicit unknown/limit wording. Distinguish live/stale/demo/off/pending/
+fault states; preserve ACK/ERR handling. All navigation is touch-only.
+Build with pio run -d crowpanel-43-bringup -e crowpanel43 (using local
+PlatformIO executable if not on PATH). Request my bench photos/logs for
+the acceptance states; do not fabricate evidence. Update the tracker and
+affected firmware inventory. Open one Bucket 4 PR referencing #77/#65;
+state exact bench-tested status. Stop before Setup/Graph feature expansion.
+```
+
+**Session 4: current-limit editor (#74 / #75)**
+
+```text
+Work on display/touch-current-limit-editor after reconciling #71 and the
+approved shared layout. Read #74/#75, the screen tracker, and actual
+merged D4 command/ACK/error state machine before changing it.
+Implement the user-selected Iset interaction on channel detail: tap Iset
+to open a modal with that channel's confirmed limit, slider, numeric field,
+Apply and Cancel. Drag edits a draft only; tap the numeric field to open
+a decimal numeric keypad with backspace. Keypad completion validates and
+updates the same draft/slider without sending; keypad dismissal preserves
+the previous draft. Apply alone sends ILIM; Cancel discards unsent edits.
+Follow the full popup contract in this tracker, including pending writes,
+uncertain-timeout readback, visible errors, and modal touch isolation.
+Reuse existing shared OUTPUT handling without changing its semantics.
+Highlight the active channel/field and adapt action labels by state.
+Use host-supported ILIM validation (currently CH1 0..3000 mA, CH2
+0..2000 mA); these are protocol ranges, not proof of safe bench ratings.
+No editable voltage, manual CV/CC, recovery-mode policy, CH3 controls,
+independent output toggles, or new UDI commands. Keep confirmed values
+separate from drafts; show send failure/ERR/timeout, refresh host values,
+and prevent duplicate pending writes. Do not auto-enable outputs.
+Build crowpanel43; exercise slider/keypad draft parity, channel isolation,
+decimal/backspace/range validation, Apply/Cancel, and success/ERR/timeout/
+stale paths. Verify no write before Apply, no duplicate pending writes,
+and no implicit output enable. Request bench evidence. Update the tracker
+and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
+```
+
+### Review/evidence checklist for this UI effort
+
+- [ ] User-selected reference images and original wireframe approved (#76).
+- [x] Reference compositions supplied; side-by-side overview and channel-detail
+  navigation selected by the user. Final geometry/fonts remain unapproved.
+- [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
+- [ ] Each card opens its own detail view; both V/I traces use that channel,
+  and Back to Main works by touch.
+- [ ] Iset opens the slider popup; tapping its numeric field opens the
+  keypad, with one synchronized draft and no command before Apply.
+- [ ] Cancel preserves the confirmed value; pending/error/timeout handling
+  never promises an unsent rollback or unconfirmed success.
+- [ ] Hardware CC/limit/trip behavior and status validity documented (#78).
+- [ ] Main and current editor usable by touch without prior LVGL knowledge.
+- [ ] Both confirmed limits refresh independently of measured V/I changes.
+- [ ] No misleading live/demo, healthy/fault, off/CV, or unknown/CC states.
+- [ ] Physical photos show no clipping across the required state matrix.
+- [ ] Serial evidence covers a successful command and ERR/timeout recovery.
+- [ ] Each PR states bench-tested status, updates this tracker, and preserves
+  existing UDI compatibility; only affected firmware targets are built.
 
 ## Close-out checklist (return here to run)
 
@@ -97,6 +416,7 @@ When returning to this session for a status sync:
   proceeds. A related pure-comment fix (stale/self-contradictory AW9523
   P0.x pin comments) landed separately as PR #69, not gated on that
   resolution.
-- **Next session should resume at D4** (rebase `main` first, D3/#68 is now
-  merged). D3's open item (Main has no direct Settings button) and issue
-  #62 are tracked separately and don't block D4–D8.
+- 2026-10-02: Next visual session starts with #76 reference/wireframe approval
+  under the fixed-rail plan above. D4 remains open in #71; reconcile it before
+  overlapping work. #74/#75 own touch/edit clarity, and #78 gates proven
+  CV/CC semantics. D3's navigation follow-up is included in #77.
