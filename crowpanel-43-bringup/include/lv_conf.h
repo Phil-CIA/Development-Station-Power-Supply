@@ -2,7 +2,8 @@
  * lv_conf.h — LVGL 8.3.x configuration for CrowPanel 4.3" Advance V1.2
  *
  * Tick:   LV_TICK_CUSTOM stays 0 (default). loop() calls lv_tick_inc() manually.
- * Memory: LV_MEM_CUSTOM stays 0 (default 48 KB internal heap).  LVGL draw
+ * Memory: LV_MEM_CUSTOM stays 0. The internal heap size is set by -DLV_MEM_SIZE in platformio.ini
+ *         (128 KB; the 48 KB default is too small for the dashboard). LVGL draw
  *         framebuffers are allocated from PSRAM explicitly in init_lvgl().
  * Fonts:  Montserrat 12/16/20/28/48 enabled via -D flags in platformio.ini
  *         (build_flags guarantees library compilation units see them too).

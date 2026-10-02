@@ -711,19 +711,21 @@ void updateSetupBindingsFromUdi() {
   static uint32_t last_udi_evt_count = 0;
 
   const auto udi_link = disp_link_slave::commandSnapshot();
+  // On UART0 the console is the host link; any non-CMD: line we print draws an ERR reply, which we would echo again.
+  const bool echo = !disp_link_slave::telemetryOnConsoleSerial();
   if (udi_link.ack_count != last_udi_ack_count) {
     last_udi_ack_count = udi_link.ack_count;
-    Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
+    if (echo) Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
     applySetupAck(udi_link.last_ack);
   }
   if (udi_link.err_count != last_udi_err_count) {
     last_udi_err_count = udi_link.err_count;
-    Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
+    if (echo) Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
     applySetupError(udi_link.last_err);
   }
   if (udi_link.evt_count != last_udi_evt_count) {
     last_udi_evt_count = udi_link.evt_count;
-    Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
+    if (echo) Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
     applySetupEvent(udi_link.last_evt);
   }
 }
@@ -3106,6 +3108,15 @@ void setup() {
 
   init_lvgl();
   create_dashboard();
+  {
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    Serial.printf("lvgl heap: total=%lu free=%lu used=%u%% biggest_free=%lu\n",
+                  static_cast<unsigned long>(mon.total_size),
+                  static_cast<unsigned long>(mon.free_size),
+                  static_cast<unsigned>(mon.used_pct),
+                  static_cast<unsigned long>(mon.free_biggest_size));
+  }
   splash_start_ms = millis();
   demo_start_ms = splash_start_ms;
   demo_last_tour_switch_ms = splash_start_ms;

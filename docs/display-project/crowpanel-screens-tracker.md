@@ -385,6 +385,23 @@ after #71 reconciliation). Build: `pio run -d crowpanel-43-bringup -e crowpanel4
   in Setup` until the dedicated editor (which owns ILIM results) exists. The
   Iset box is read-only here (`CONFIRMED` / `NO VALUE`), not a tap target.
 
+**First flash findings (2026-10-02, panel on COM12; serial only, panel visuals
+not yet reviewed):**
+
+- The first build boot-looped (`LoadProhibited` in `lv_label_create`): the
+  default 48 KB LVGL heap ran out while creating the last screen. Fixed by
+  `-DLV_MEM_SIZE=131072` in `crowpanel-43-bringup/platformio.ini`; at boot the
+  firmware now logs `lvgl heap: total=131072 free=76060 used=42%`. `crowpanel43`
+  RAM use rose from about 116 KB to 198 KB.
+- With the HAT attached, the console shares UART0 with the host link, so the
+  display's own `udi ack/err/evt:` echo lines drew `ERR:FORMAT need CMD:` replies
+  from the STM32 and re-triggered themselves (about 90 lines/s) and polluted
+  Setup's host-error text. The echo is now skipped while the console is the
+  host link (`telemetryOnConsoleSerial()`); after the fix the boot log is quiet
+  and shows only the expected `CMD:GET OUTPUT` / `GET ILIM CH1` / `GET ILIM CH2`.
+  Consequence: in UART0 mode, ACK/ERR evidence must come from the STM32 side or
+  the UART1 transport, not the display console.
+
 **Known limitations (not fixed here, by scope):**
 
 - The STM32 telemetry frame cannot flag a failed INA3221/AHT20 read: on a
