@@ -22,12 +22,18 @@ current limits, not voltage or a manual CV/CC selector. One master OUTPUT
 control serves both rails. Automatic CV/CC indication is conditional on
 proven hardware behavior, not just a software threshold comparison.
 
+The user-selected Main layout has side-by-side CH1/CH2 cards with large
+vertical voltage/current/power readouts and no Energy or Input panels.
+Tapping a card opens that channel's detail view: readings on the left,
+its V/I graph on the right, and a touch action back to Main.
+
 The [screen tracker](crowpanel-screens-tracker.md) contains the issue/PR
 sequence, reference-photo approval gate, and copy-paste VS Code Copilot
 session instructions. The [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
-is already in the repo; DPS-150-specific visuals still need user-selected
-reference images. No display hardware redesign or secondary-path restart
-is included.
+is already in the repo; the user's two supplied visual references and
+selected screen composition are described in the tracker. Exact product
+identity is unverified and final geometry remains to be approved. No
+display hardware redesign or secondary-path restart is included.
 
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display

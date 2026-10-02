@@ -70,30 +70,70 @@ session changes documentation only. The custom display path stays paused.
 
 **User-selected direction (2026-10-02):** Blend DPS-150 simplicity with
 IPS3608 colors and status indicators. This selects the design direction,
-not approval of the proposed wireframe. Reference photos and final layout
-approval remain open.
+not approval of final pixel dimensions/fonts. The user supplied two reference
+images and selected the overview/detail structure below. A current-edit
+reference and final detailed layout approval remain open.
 
 The existing [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
 documents yellow voltage, blue current, a dark background, neutral power
-readouts, and instrument-style status chips. DPS-150-specific visual details
-are not yet verified here. Ask the user for preferred Main and current-edit
-photos from either reference; record which elements they want. Create an
-original layout without copied logos/assets or a pixel-identical clone.
+readouts, and instrument-style status chips. The supplied first image
+(user-described DPS-150 or a variant) shows large left-aligned, vertically
+stacked voltage/current/power digits: yellow voltage, cyan current, and pale
+neutral power. Its exact product identity is unverified; the visual preference
+does not depend on that identity. The supplied second image shows a single
+channel's readings on the left and yellow/cyan V/I traces on the right,
+with status above and setpoints below. These are visual references, not
+proof of supported device features. Create an original layout without
+copied logos/assets or a pixel-identical clone.
 
-Proposed 800x480 structure (not yet user-approved):
+**User-directed screen structure:**
+
+- Main is a two-channel overview: CH1 on the left, CH2 on the right
+  (side-by-side explicitly selected by the user). Each card has a large
+  vertical V/A/W stack, following the first reference's reading hierarchy.
+- No Energy/Ah/Wh/runtime statistics panel or Input panel on Main.
+- Tap either channel card to open its own single-channel detail screen.
+  Keep readings on the left and a V/I graph for that channel on the right,
+  following the second reference's composition.
+- Detail includes clearly labeled channel identity, read-only nominal
+  voltage, confirmed current limit, status, and a visible Back to Main
+  touch action. Switching channel changes both readings and graph source;
+  do not silently mix CH1 voltage with CH2 current.
+- The graph timebase and supported interactions remain D5 work. A reference
+  image's 0.1 s label is not a requirement to invent a faster sample rate.
+- Shared OUTPUT remains shared even on a single-channel screen; label it
+  as affecting both outputs. There is no editable Vset.
+
+800x480 composition (structure selected; exact geometry/fonts pending):
 
 ```text
 +----------------------------------------------------------------+
 | WORKSTATION PSU     LIVE / STALE / DEMO     OUTPUT ON / OFF      |
 +-------------------------------+--------------------------------+
 | CH1  FIXED +5 V               | CH2  FIXED +3.3 V               |
-| measured voltage (yellow)     | measured voltage (yellow)      |
-| measured current (blue)       | measured current (blue)        |
-| measured power (neutral)      | measured power (neutral)       |
+| large voltage value       V   | large voltage value        V   |
+| large current value       A   | large current value        A   |
+| large power value         W   | large power value          W   |
 | I LIMIT: confirmed value      | I LIMIT: confirmed value       |
 | regulation / fault / unknown  | regulation / fault / unknown   |
+| tap for CH1 detail            | tap for CH2 detail             |
 +-------------------------------+--------------------------------+
 | Main           Setup            Graph             Settings     |
++----------------------------------------------------------------+
+```
+
+Single-channel detail composition:
+
+```text
++----------------------------------------------------------------+
+| Back to Main   CH1 / CH2   LINK STATUS   SHARED OUTPUT (BOTH)    |
++--------------------+-------------------------------------------+
+| measured voltage V | selected channel's V / I graph            |
+| measured current A | yellow V trace / cyan-blue A trace        |
+| measured power   W | labeled axes, units, truthful timebase    |
+| channel status     | stale/demo/unknown indication             |
++--------------------+-------------------------------------------+
+| FIXED: 5.00 / 3.30 V (read-only) | I LIMIT: confirmed value     |
 +----------------------------------------------------------------+
 ```
 
@@ -116,9 +156,16 @@ evidence. Do not open empty implementation PRs ahead of work.
 | P0 | This documentation PR | None | Fixed-rail decisions, issue links, VS Code prompts; no firmware changes |
 | P1 | [#76](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/76), `display/fnirsi-visual-spec` | P0 merged; user reference photos and wireframe approval | Documentation PR with approved 800x480 visual/interaction specification |
 | P2 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `firmware/fixed-rail-regulation-status` | P0 merged; hardware-safe bench conditions | Regulation/status evidence and truth table; behavior PR only if justified. Can run independently of P1 |
-| P3 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Main dashboard and navigation PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
+| P3 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
 | P4 | [#74](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/74) / [#75](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/75), `display/touch-current-limit-editor` | #71 disposition resolved; P1 approved; P3 merged where shared layout is used | Touch-only current editor and UX polish PR, reusing D4 command/ACK/error flow |
 | P5 | Existing D5-D8 | Accepted common UI patterns; relevant data contracts | Separate Graph, Settings, fault, and self-test PRs; no new duplicate issues |
+
+D5 owns the selected-channel V/I graph on the detail screen, adapting the
+existing Graph implementation rather than adding a competing graph family.
+P3 can reuse the existing chart for a basic selected-channel view; history,
+timebase/window selection, pause/resume, clear, and autoscale remain D5.
+An unfinished detail chart must be marked unavailable, not filled with
+unlabeled synthetic history.
 
 **Scope conflict:** #73 still proposes `VSET` and recovery `MODE` commands.
 The user-directed fixed-rail UI plan removes the VSET requirement from this
@@ -149,10 +196,14 @@ docs/IPS3608_REFERENCE_MANUAL_KEY_SPECS.md. Read issue #76 and review #71,
 #74, #75, and #73 for conflicts. Inspect current CrowPanel source and audit
 photos; do not assume open PR code has merged.
 Use my selected blend: DPS-150 simplicity with IPS3608 colors and status
-indicators. Ask me for reference photos and which details to retain;
-the direction is selected but the wireframe is not yet approved.
+indicators. Use the two supplied reference descriptions and the selected
+screen structure in the tracker; do not re-ask settled layout decisions.
+Request the original images if they are not available in your session.
 Create an original 800x480 wireframe/spec in the existing screen tracker:
-equal CH1 +5 V / CH2 +3.3 V cards, large yellow V / blue A, neutral W,
+side-by-side CH1 +5 V / CH2 +3.3 V cards, each with a vertical stack of
+large yellow V / cyan-blue A / neutral W; no Energy or Input panels.
+Tap each card to open its channel detail: readings left, own V/I graph
+right, clear channel identity and Back to Main. Include
 read-only nominal voltages, confirmed I LIMIT, per-channel status,
 one shared OUTPUT control, persistent link/demo state, touch navigation.
 Specify dimensions/fonts/spacing, >=44x44 px targets, edit/pending/error
@@ -191,9 +242,16 @@ Read the project/workflow/firmware plan and display tracker, then #77 and
 the accepted spec. Review #71's disposition before editing shared code.
 Implement the approved LVGL 8.3 layout in crowpanel-43-bringup, reusing
 theme/helpers and existing telemetry/UDI. No STM32/protocol/hardware edits.
+Main has CH1 left / CH2 right with large vertical V/A/W stacks and no
+Energy or Input panels. Tap each card to open the selected-channel detail
+shell: readings left, existing selected-channel V/I chart right, visible
+Back to Main. Bind both traces to the selected rail, preserve its history
+identity, and mark missing chart data explicitly. Expanded graph controls
+and history behavior stay in D5; do not invent faster telemetry.
 Show both rails' measured V/I/P, read-only nominal voltages, confirmed
 GET ILIM CH1/CH2 values, and individual status. Redraw setpoints even if
-measurements have not changed. Preserve shared OUTPUT semantics.
+measurements have not changed. Preserve shared OUTPUT semantics and label
+that action as affecting both rails even on a single-channel detail view.
 Never guess CC from missing CV bits/current thresholds: use #78 evidence
 or explicit unknown/limit wording. Distinguish live/stale/demo/off/pending/
 fault states; preserve ACK/ERR handling. All navigation is touch-only.
@@ -227,6 +285,11 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 ### Review/evidence checklist for this UI effort
 
 - [ ] User-selected reference images and original wireframe approved (#76).
+- [x] Reference compositions supplied; side-by-side overview and channel-detail
+  navigation selected by the user. Final geometry/fonts remain unapproved.
+- [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
+- [ ] Each card opens its own detail view; both V/I traces use that channel,
+  and Back to Main works by touch.
 - [ ] Hardware CC/limit/trip behavior and status validity documented (#78).
 - [ ] Main and current editor usable by touch without prior LVGL knowledge.
 - [ ] Both confirmed limits refresh independently of measured V/I changes.
