@@ -49,8 +49,8 @@ pre#log,pre#audit{background:#0f1216;border:1px solid #3b434d;padding:8px;margin
 .navbtn{border:1px solid var(--border)!important;background:var(--soft)!important;font-size:20px;color:var(--muted)}
 .navbtn.on{background:var(--badge)!important;color:var(--text);border-color:var(--i)!important;font-weight:700}
 .panel,.card{background:var(--panel);border:1px solid var(--border);border-radius:10px}
-.card{display:block;text-align:left!important}
-.card:hover{border-color:var(--i)}
+.card{display:block;text-align:left!important;overflow:hidden}
+.card:hover{filter:brightness(1.15)}
 .card.dim{opacity:1}
 .hr{background:var(--border)}
 .numrow{font-size:28px;font-weight:600;display:flex;align-items:center}
@@ -151,9 +151,11 @@ body.outline #display .touch{outline:2px dashed #ff2bd6;outline-offset:-2px}
 /* ================= model ================= */
 const N = 120;                       // simulated trend samples
 const CH = {
-  1: {name:'CH1', nom:5.0, nomText:'+5 V',   nomFull:'+5.00 V', maxmA:3000, vAxis:6, iAxis:4},
-  2: {name:'CH2', nom:3.3, nomText:'+3.3 V', nomFull:'+3.30 V', maxmA:2000, vAxis:4, iAxis:3}
+  1: {name:'CH1', nom:5.0, nomText:'+5 V',   nomFull:'+5.00 V', maxmA:3000, vAxis:6, iAxis:4, col:'#FF79C6', tint:'#35262F'},
+  2: {name:'CH2', nom:3.3, nomText:'+3.3 V', nomFull:'+3.30 V', maxmA:2000, vAxis:4, iAxis:3, col:'#2DD4BF', tint:'#1E3837'}
 };
+const chFill = c => `background:${CH[c].col};color:#14181D;border-color:${CH[c].col}`;
+const CLOCK0 = {date:'2026-10-02', secs:14*3600+37*60+5, wall:Date.now()};
 const BASE = {limits:{1:2500,2:1500}, iBase:{1:0.842,2:0.317}};
 const PRESETS = {
   live:   {label:'Live',        desc:'Host linked, output ON, both rails below limit', link:'live',  output:true,  modes:{1:'ok',2:'ok'}},
@@ -189,9 +191,9 @@ function txt(x,y,w,h,cls,text,extra,id){
   const lh = /\b(chip|sim)\b/.test(cls||'') ? h-4 : h;
   return `<div ${id?`id="${id}" `:''}class="t ${cls||''}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;line-height:${lh}px;${extra||''}">${text}</div>`;
 }
-function btn(x,y,w,h,cls,attrs,inner,simple,disabled){
+function btn(x,y,w,h,cls,attrs,inner,simple,disabled,style){
   const lh = h-4;
-  return `<button class="touch ${simple?'t ':''}${cls||''}" ${attrs||''} ${disabled?'disabled':''} style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${simple?`line-height:${lh}px;`:''}">${inner||''}</button>`;
+  return `<button class="touch ${simple?'t ':''}${cls||''}" ${attrs||''} ${disabled?'disabled':''} style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${simple?`line-height:${lh}px;`:''}${style||''}">${inner||''}</button>`;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const logLines = [];
@@ -292,13 +294,11 @@ function topBar(detail){
   let h = box(0,0,800,52,'bar');
   if(detail){
     h += btn(8,4,150,44,'backbtn','data-act="back"','&lsaquo; Back to Main',true);
-    h += txt(166,8,90,36,'chip f28 k-info b c','CH'+state.ch,'font-size:28px');
-    h += txt(264,10,124,32,'sim f16','SIMULATED');
-    h += txt(396,10,182,32,'chip f20 '+L.cls,L.text);
+    h += txt(166,8,92,36,'chip f28 b c',CH[state.ch].name,chFill(state.ch));
+    h += txt(270,10,200,32,'chip f20 '+L.cls,L.text);
   } else {
     h += txt(12,0,210,52,'f20 b','WORKSTATION PSU');
-    h += txt(226,10,124,32,'sim f16','SIMULATED');
-    h += txt(358,10,220,32,'chip f20 '+L.cls,L.text);
+    h += txt(226,10,200,32,'chip f20 '+L.cls,L.text);
   }
   // one shared OUTPUT control (affects both rails everywhere)
   let cls='out-off', main='OUTPUT OFF', sub='CH1 + CH2 (shared)', dis=false;
@@ -307,7 +307,31 @@ function topBar(detail){
   if(l==='stale'){ cls='out-dis'; main='OUTPUT ON ?'; sub='stale - no control'; dis=true; }
   h += btn(588,3,200,46,'outbtn '+cls,'data-act="output" aria-label="Shared OUTPUT, affects CH1 and CH2"',
     txt(0,1,196,22,'f20 b c',main)+txt(0,22,196,18,'f16 c mut',sub),false,dis);
+  return h + infoStrip();
+}
+// Unit temperature (telemetry field last_temp_C, integer degC) and wall clock (source undecided, see tracker)
+function tempC(){ return link()==='unknown' ? null : Math.round(31 + 2*Math.sin(state.t*0.22)); }
+function clockText(){
+  if(link()==='unknown') return {date:'', time:'CLOCK NOT SET', set:false};
+  const s = (CLOCK0.secs + Math.floor((Date.now()-CLOCK0.wall)/1000)) % 86400;
+  const p = n => String(n).padStart(2,'0');
+  return {date:CLOCK0.date, time:`${p(Math.floor(s/3600))}:${p(Math.floor(s/60)%60)}:${p(s%60)}`, set:true};
+}
+function tempHTML(){
+  const t = tempC(), dim = link()==='stale' ? ' dim' : '';
+  return `<span class="mut f16">UNIT TEMP</span> <span class="b${dim}">${t===null?'-- ':t}\u00b0C</span>`;
+}
+function infoStrip(){
+  const c = clockText();
+  let h = box(0,52,800,28,'bar','','background:#171B20');
+  h += txt(12,52,250,28,'f20 '+(c.set?'':'mut'),c.set?`${c.date}&nbsp; <span id="clk">${c.time}</span>`:c.time);
+  h += txt(290,52,230,28,'f20',tempHTML());
+  h += txt(664,54,124,24,'sim f16','SIMULATED');
   return h;
+}
+function tickClock(){
+  const c = clockText(), el = $('#clk');
+  if(el && c.set) el.textContent = c.time;
 }
 function navBar(){
   let h = box(0,428,800,52,'nav');
@@ -330,18 +354,18 @@ function mainHTML(){
   let h = topBar(false);
   [1,2].forEach(c=>{
     const ch = CH[c], f = fmtVals(c), st = chStatus(c), x = c===1?8:404, W = 388;
-    let inner = '';
-    inner += txt(12,8,76,40,'f28 b',ch.name);
-    inner += txt(88,14,170,28,'f20 mut','FIXED '+ch.nomText);
-    if(link()==='demo') inner += txt(W-128,10,76,28,'chip f16 k-demo','DEMO');
-    inner += txt(W-44,8,36,40,'f28 mut c','&rsaquo;');
+    let inner = box(0,0,W,6,'','',`background:${ch.col}`);
+    inner += txt(12,12,92,36,'chip f28 b c',ch.name,chFill(c));
+    inner += txt(112,16,148,28,'f20 mut','FIXED '+ch.nomText);
+    if(link()==='demo') inner += txt(262,12,76,32,'chip f16 k-demo c','DEMO');
+    inner += txt(W-44,12,36,36,'f28 mut c','&rsaquo;');
     inner += readingRow(12,52,W-24,'VOLTAGE',f.v,'V','cV',f.dim,104);
-    inner += readingRow(12,110,W-24,'CURRENT',f.i,'A','cI',f.dim,104);
-    inner += readingRow(12,168,W-24,'POWER',f.p,'W','cW',f.dim,104);
-    inner += limitLine(c,12,232,W-24);
-    inner += txt(12,276,W-24,36,'chip f20 '+st.cls,st.text);
-    inner += txt(12,318,W-24,24,'mut',st.note);
-    h += btn(x,60,W,360,'card',`data-act="open" data-ch="${c}" aria-label="Open ${ch.name} detail"`,inner,false);
+    inner += readingRow(12,106,W-24,'CURRENT',f.i,'A','cI',f.dim,104);
+    inner += readingRow(12,160,W-24,'POWER',f.p,'W','cW',f.dim,104);
+    inner += limitLine(c,12,222,W-24);
+    inner += txt(12,264,W-24,36,'chip f20 '+st.cls,st.text);
+    inner += txt(12,304,W-24,24,'mut',st.note);
+    h += btn(x,84,W,336,'card',`data-act="open" data-ch="${c}" aria-label="Open ${ch.name} detail"`,inner,false,false,`border:2px solid ${ch.col};background:${ch.tint}`);
   });
   h += navBar();
   return h;
@@ -350,21 +374,20 @@ function detailHTML(){
   const c = state.ch, ch = CH[c], f = fmtVals(c), st = chStatus(c), conf = state.limits[c], chip = limitChip(c), l = link();
   let h = topBar(true);
   // left readings panel
-  let p = txt(12,8,76,40,'f28 b',ch.name) + txt(88,14,210,28,'f20 mut','FIXED '+ch.nomText+' RAIL');
-  if(l==='demo') p += txt(236,10,72,28,'chip f16 k-demo','DEMO');
+  let p = box(0,0,320,6,'','',`background:${ch.col}`) + txt(12,12,92,36,'chip f28 b c',ch.name,chFill(c)) + txt(112,16,196,28,'f20 mut','FIXED '+ch.nomText);
   p += readingRow(12,52,296,'VOLTAGE',f.v,'V','cV',f.dim,84);
-  p += readingRow(12,118,296,'CURRENT',f.i,'A','cI',f.dim,84);
-  p += readingRow(12,184,296,'POWER',f.p,'W','cW',f.dim,84);
-  p += txt(12,256,296,36,'chip f20 '+st.cls,st.text);
-  p += txt(12,298,296,24,'mut',st.note);
-  h += box(8,60,320,340,'panel',p);
+  p += readingRow(12,112,296,'CURRENT',f.i,'A','cI',f.dim,84);
+  p += readingRow(12,172,296,'POWER',f.p,'W','cW',f.dim,84);
+  p += txt(12,240,296,36,'chip f20 '+st.cls,st.text);
+  p += txt(12,282,296,24,'mut',st.note);
+  h += box(8,84,320,316,'panel',p,`border:2px solid ${ch.col};background:${ch.tint};overflow:hidden`);
   // graph panel
-  let g = txt(12,4,250,26,'f16 b',ch.name+' TREND \u00b7 SIMULATED');
-  g += txt(250,4,194,26,'f16 mut r','<span class="sw" style="background:var(--v)"></span>V<span class="sw" style="background:var(--i)"></span>I<span class="sw dash"></span>LIMIT');
-  g += `<canvas id="graph" width="456" height="280" style="left:0;top:30px;width:456px;height:280px"></canvas>`;
-  g += txt(12,312,340,22,'mut','-60 s window (simulated; real timebase = D5)');
-  g += txt(360,312,84,22,'mut r','now');
-  h += box(336,60,456,340,'panel',g);
+  let g = box(0,0,456,6,'','',`background:${ch.col}`) + txt(12,10,250,24,'f16 b',ch.name+' TREND \u00b7 SIMULATED');
+  g += txt(250,10,194,24,'f16 mut r','<span class="sw" style="background:var(--v)"></span>V<span class="sw" style="background:var(--i)"></span>I<span class="sw dash"></span>LIMIT');
+  g += `<canvas id="graph" width="456" height="244" style="left:0;top:36px;width:456px;height:244px"></canvas>`;
+  g += txt(12,284,340,22,'mut','-60 s window (simulated; real timebase = D5)');
+  g += txt(360,284,84,22,'mut r','now');
+  h += box(336,84,456,316,'panel',g,`border:2px solid ${ch.col};overflow:hidden`);
   // bottom strip: read-only nominal, Iset (tappable), last ILIM result
   h += box(8,408,230,64,'flat',
     txt(10,4,210,24,'mut','FIXED \u00b7 READ-ONLY')+txt(10,28,210,32,'f28 b',ch.nomFull));
@@ -386,7 +409,7 @@ function detailHTML(){
 /* ================= graph ================= */
 function drawGraph(){
   const cv = $('#graph'); if(!cv) return;
-  const c = state.ch, ch = CH[c], g = cv.getContext('2d'), W = 456, H = 280;
+  const c = state.ch, ch = CH[c], g = cv.getContext('2d'), W = 456, H = 244;
   const ml=52, mr=56, mt=26, mb=10, pw=W-ml-mr, ph=H-mt-mb;
   g.clearRect(0,0,W,H);
   g.font = '12px "Segoe UI",Arial,sans-serif';
@@ -468,7 +491,8 @@ function modalHTML(){
   let d = '';
   if(m.mode==='slider'){
     const pend = m.apply==='pending', blk = applyBlock(m), b = banner(m);
-    d += txt(16,10,320,36,'f28 b',`${c.name} \u00b7 ${c.nomText}`);
+    d += txt(16,10,92,36,'chip f28 b c',c.name,chFill(m.ch));
+    d += txt(118,10,200,36,'f28 b',c.nomText);
     d += txt(344,14,320,28,'f20 mut r','Iset \u00b7 CURRENT LIMIT');
     d += box(0,56,680,1,'hr');
     d += txt(16,64,648,28,'mut',`Confirmed limit: <b>${fmtA(conf)} A</b> \u00b7 allowed 0.000-${fmtA(max)} A`);
@@ -486,7 +510,8 @@ function modalHTML(){
   } else {
     const b = m.msg || {kind:'info', text:'Type the new limit, then tap OK. The draft is not applied yet.'};
     d += btn(12,6,130,44,'btn','data-act="kback" aria-label="Back, keep draft"','&lsaquo; Back',true);
-    d += txt(156,10,330,36,'f28 b',`${c.name} \u00b7 Enter Iset`);
+    d += txt(156,10,92,36,'chip f28 b c',c.name,chFill(m.ch));
+    d += txt(258,10,230,36,'f28 b','Enter Iset');
     d += txt(500,16,164,28,'mut r','max '+fmtA(max)+' A');
     d += box(0,56,680,1,'hr');
     d += txt(16,66,300,22,'mut','TYPED VALUE');
@@ -503,7 +528,7 @@ function modalHTML(){
     d += btn(336+252,132,76,196,'key ok','data-act="kok"','OK',true);
     d += txt(16,350,648,24,'mut','Keypad edits the draft only. Nothing is sent until Apply.');
   }
-  return `<div class="scrim" data-act="scrim"></div><div class="dialog" data-act="dialog">${d}</div>`;
+  return `<div class="scrim" data-act="scrim"></div><div class="dialog" data-act="dialog" style="border-color:${c.col}">${d}</div>`;
 }
 function renderModal(){
   const el = $('#modal');
@@ -646,6 +671,7 @@ function setScale(s){
   $('#scaler').style.width = (800*s)+'px'; $('#scaler').style.height = (480*s)+'px';
 }
 $('#scale').addEventListener('change',e=>setScale(+e.target.value));
+setInterval(tickClock,1000);
 setInterval(()=>{
   if(!$('#jitter').checked || state.down) return;
   state.t++; renderScreen();

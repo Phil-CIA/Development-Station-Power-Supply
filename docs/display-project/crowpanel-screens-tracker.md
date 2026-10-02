@@ -214,11 +214,12 @@ nothing outside 800x480. This checks the browser mockup only.
 
 | Region | Geometry |
 |--------|----------|
-| Top bar | y0 h52. Title/Back 150x44; SIMULATED tag; link chip (LIVE/STALE/DEMO/UNKNOWN); shared OUTPUT button 200x46 at x588 |
-| Main cards | CH1 x8 / CH2 x404, y60, 388x360, 10 px radius, whole card is the tap target |
+| Top bar | y0 h52. Title/Back 150x44; channel chip on detail; link chip (LIVE/STALE/DEMO/UNKNOWN); shared OUTPUT button 200x46 at x588 |
+| Info strip | y52 h28, all screens: date and time (left), unit temperature (center), SIMULATED tag (mockup-only, right) |
+| Main cards | CH1 x8 / CH2 x404, y84, 388x336, 10 px radius, 2 px channel-color border, 6 px channel-color top accent, whole card is the tap target |
 | Bottom nav | y428 h52, four 200x52 buttons (Main/Setup/Graph/Settings; only Main is live in the mockup) |
-| Detail readings | x8 y60 320x340 panel, left |
-| Detail graph | x336 y60 456x340 panel, right; plot area 456x280, V axis left (yellow), A axis right (blue) |
+| Detail readings | x8 y84 320x316 panel, left, channel-tinted with channel-color border and accent |
+| Detail graph | x336 y84 456x316 panel, right; plot area 456x244, V axis left (yellow), A axis right (blue) |
 | Detail footer | y408 h64: FIXED read-only box 230 wide (not a button); Iset button 330x64 (tappable); last ILIM result 208 wide |
 | Iset popup | x60 y36 680x408, scrim over the full 800x480 |
 | Popup controls | value field 300x76 (tap = keypad); slider track 648x48 (44 px thumb); Cancel 200x56; Apply 220x56 |
@@ -237,6 +238,26 @@ neutral power `#D5DAE0`, error red `#FF5A5F`, demo violet `#B48CFF`, unknown
 gray `#8A94A3` (dashed outline). Status is always text plus color plus outline
 style; no status is color-only.
 
+**Channel identity colors (proposed, 2026-10-02 tweak):** CH1 pink `#FF79C6`
+with card tint `#35262F`; CH2 teal `#2DD4BF` with card tint `#1E3837`. Applied
+to the card/panel border, top accent, filled CH chip, graph panel border and
+the Iset popup border and chip. Reading colors stay yellow/cyan-blue/neutral
+for both channels, and the CH1/CH2 text is always shown, so channels are not
+distinguished by color alone. Pink and teal were chosen to avoid the status
+colors (green, orange, red, violet, gray).
+
+**Unit temperature and date/time (proposed, 2026-10-02 tweak):** shown in the
+info strip on every screen. Unit temperature is one integer value in degrees C
+from the existing telemetry field `last_temp_C` (already parsed by the
+CrowPanel firmware); it shows `--` when no telemetry exists and is dimmed when
+stale. No temperature warning thresholds are invented. Date/time is shown as
+`YYYY-MM-DD HH:MM:SS` and as `CLOCK NOT SET` when unset. **The clock source is
+not decided:** the current firmware and UDI have no wall-clock source (no RTC
+readout, no time message), so the mockup clock is simulated. Choosing a source
+(for example host-sent time via a new UDI command, or an RTC if the CrowPanel
+hardware provides one) is a separate decision and protocol change, and is not
+part of this design-only PR.
+
 **Proposed numeric precision and slider:** voltage 2 decimals (V), current
 3 decimals (A), power 2 decimals (W), I LIMIT 3 decimals (A). Canonical draft
 is integer mA. Slider step 10 mA (0.010 A); range 0..3000 mA (CH1) and
@@ -250,8 +271,8 @@ value if the slider is moved afterwards. Protocol ranges, not hardware ratings.
 **Status wording shown (no inferred CC as proven):** `ON - BELOW LIMIT` with
 note "CV/CC not verified (#77)"; `AT LIMIT` with "I >= limit - CC not
 verified"; `TRIP` with "cause not reported"; `OUTPUT OFF`; `NO DATA - STALE`;
-`UNKNOWN`. Link chip: `LIVE`, `STALE n s`, `DEMO DATA`, `UNKNOWN`. Demo
-additionally tags each channel `DEMO`. The shared OUTPUT button appears in the
+`UNKNOWN`. Link chip: `LIVE`, `STALE n s`, `DEMO DATA`, `UNKNOWN`. On Main,
+demo additionally tags each channel `DEMO`. The shared OUTPUT button appears in the
 top bar on every screen and is labeled "CH1 + CH2 (shared)"; it is disabled
 with explanatory text when the link is stale or unknown.
 
@@ -275,6 +296,10 @@ while a modal is open.
 5. Setup/Graph/Settings tabs are placeholders here; their layouts are D4-D6.
 6. The original reference photos were not available to this session; the
    look follows the written reference notes above.
+7. Date/time source: decide host-sent time, RTC if present, or omit. This
+   needs a protocol or hardware decision before firmware work.
+8. Is the single unit temperature enough, or should per-channel or
+   regulator temperatures be shown? Only `last_temp_C` exists today.
 
 ### Issues, dependencies, and PR sequence
 
