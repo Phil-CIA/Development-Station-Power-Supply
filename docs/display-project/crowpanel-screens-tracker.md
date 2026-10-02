@@ -427,6 +427,50 @@ scrolling notice, by design). All touch targets are >= 44 x 44 (`static_assert`
 in the firmware). Geometry is the mockup's 800 x 480 layout. Actual clipping and
 touch behavior still need the physical-panel photos.
 
+**Panel review round 1 (2026-10-02, from the user's Main and Detail photos;
+build-verified, NOT yet re-flashed or re-photographed):**
+
+- Naming: `CH1` / `FIXED +5 V` merged into `+5V Supply` and `+3.3V Supply`
+  on Main cards, the Detail chip and trend title, the top-bar Detail chip and
+  the Graph screen value labels. Not renamed (by scope): Setup labels (#71 owns
+  Setup; draft, conflicting) and the Graph fault row (D5).
+- CH1 color: pink/purple `0xFF79C6` replaced by yellow-green `0x84D82E` (tint
+  `0x28361C`). Chosen to stay apart from CH2 teal `0x2DD4BF`, the yellow
+  voltage text and the LIVE/OK green. Easy to change in `UiTheme::kCh1`.
+- OUTPUT widget: wider (240 px), sub-line `BOTH CHANNELS` /
+  `BOTH - tap to turn ON|OFF`. OFF is one tap. ON now opens a confirmation
+  dialog (`TURN OUTPUT ON?`, CANCEL / TURN ON, 10 s timeout) over a touch-blocking
+  scrim; it closes with a notice if the link stops being live, closes silently
+  if the output is already on or a command is pending, and re-checks the link
+  before sending. This answers open question 3 for the dashboard (modal, per user).
+  The protocol only has the shared `OUTPUT ON|OFF`; per-channel control is a
+  protocol change and is NOT part of this PR.
+- Bottom nav (Main / Setup / Graph / Settings) is now a shared builder used on
+  Main and Detail (Detail highlights Main; Back stays). To fit it, Detail panels
+  were compacted (276 px high, chart plot 348 x 176, footer 56 px, Back button
+  110 px). Setup / Graph / Settings keep their top-right nav buttons for now:
+  Setup waits for #71, Graph/Settings for D5/D6.
+- Detail trend panel is tappable and opens the Graph screen (hint
+  `Tap for Graphs >`). The Graph screen has no per-channel selection yet.
+- Clock: `CLOCK NOT SET` replaced by `UPTIME H:MM:SS` (CrowPanel `millis()`),
+  so it is never read as time of day. WiFi setup and network time are tracked
+  in #82 and are not part of this PR.
+- Stale data finding (NOT changed here): the STM32 loop publishes telemetry
+  every 5000 ms (`stm32-bluepill-bringup/src/main.cpp`, `now - lastMs >= 5000`)
+  while the display marks STALE after `kLinkStaleMs = 1500` ms, so the panel
+  shows STALE between every frame. The Detail caption in the user's photo
+  (`last 594 s, 120 samples`) is consistent with about 4.95 s per sample. The user
+  wants a 500-1000 ms exchange rate, to be settled together with the Graph
+  chart-speed work; that is an STM32/protocol change (out of scope for #81).
+  The display stale threshold must then be derived from the chosen cadence.
+
+**Panel review round 1 evidence (pending until re-flashed and photographed):**
+Main / CH1 detail / CH2 detail clipping and touch navigation, both traces,
+graph-tap navigation, ON confirmation (cancel, timeout, confirm), stale/demo/
+unknown/off appearance, confirmed-limit refresh. No upload has been done for
+this round. The host-side text-fit check above predates round 1 and was not
+re-run for the new names, dialog and compacted Detail layout.
+
 ### Issues, dependencies, and PR sequence
 
 These extend #65's D buckets rather than creating a competing roadmap.

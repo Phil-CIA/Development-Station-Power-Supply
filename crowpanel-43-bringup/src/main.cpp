@@ -41,6 +41,7 @@ constexpr uint32_t kLinkStaleMs = 1500;
 constexpr uint32_t kDashboardRefreshMs = 100;
 constexpr uint32_t kLimitGetRetryMs = 1200;
 constexpr uint32_t kOutputAckTimeoutMs = 1500;
+constexpr uint32_t kOutputConfirmMs = 10000;
 constexpr uint32_t kNoticeMs = 4000;
 constexpr uint16_t kDetailChartPoints = 120;
 constexpr int kTouchMinPx = 44;
@@ -73,8 +74,8 @@ struct UiTheme {
   static constexpr uint32_t kUnknown = 0x8A94A3;
   static constexpr uint32_t kInfoStrip = 0x171B20;
   static constexpr uint32_t kLimitTrace = 0x8FB4CC;
-  static constexpr uint32_t kCh1 = 0xFF79C6;
-  static constexpr uint32_t kCh1Tint = 0x35262F;
+  static constexpr uint32_t kCh1 = 0x84D82E;
+  static constexpr uint32_t kCh1Tint = 0x28361C;
   static constexpr uint32_t kCh2 = 0x2DD4BF;
   static constexpr uint32_t kCh2Tint = 0x1E3837;
 };
@@ -188,6 +189,7 @@ struct TopBar {
   lv_obj_t* out_btn = nullptr;
   lv_obj_t* out_main = nullptr;
   lv_obj_t* out_sub = nullptr;
+  lv_obj_t* clock = nullptr;
   lv_obj_t* temp = nullptr;
   lv_obj_t* notice = nullptr;
   uint8_t out_mode = 0xFF;
@@ -208,6 +210,8 @@ struct DashNotice {
 };
 
 static lv_obj_t* screen_detail = nullptr;
+static lv_obj_t* out_confirm_layer = nullptr;
+static uint32_t out_confirm_until_ms = 0;
 static RailCard main_card[2];
 static RailCard detail_card;
 static TopBar main_bar;
@@ -515,6 +519,7 @@ void lvgl_touch_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 
 void set_active_screen(UiScreen screen) {
   active_screen = screen;
+  if (out_confirm_layer) lv_obj_add_flag(out_confirm_layer, LV_OBJ_FLAG_HIDDEN);
   if (screen_splash) {
     if (screen == UiScreen::Splash) lv_obj_clear_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
@@ -1544,7 +1549,6 @@ void create_settings_screen(lv_obj_t* root) {
 // Only ASCII text and LV_SYMBOL_* glyphs are used (Montserrat has no U+00B7/U+00B0).
 struct RailSpec {
   const char* name;
-  const char* nominal_short;
   const char* nominal_full;
   uint32_t color;
   uint32_t tint;
@@ -1553,20 +1557,20 @@ struct RailSpec {
 };
 
 constexpr RailSpec kRails[2] = {
-  {"CH1", "+5 V", "+5.00 V", UiTheme::kCh1, UiTheme::kCh1Tint, 6000, 4000},
-  {"CH2", "+3.3 V", "+3.30 V", UiTheme::kCh2, UiTheme::kCh2Tint, 4000, 3000},
+  {"+5V Supply", "+5.00 V", UiTheme::kCh1, UiTheme::kCh1Tint, 6000, 4000},
+  {"+3.3V Supply", "+3.30 V", UiTheme::kCh2, UiTheme::kCh2Tint, 4000, 3000},
 };
 
-constexpr int kBackBtnW = 180;
+constexpr int kBackBtnW = 110;
 constexpr int kBackBtnH = 44;
-constexpr int kOutBtnW = 200;
+constexpr int kOutBtnW = 240;
 constexpr int kOutBtnH = 46;
 constexpr int kNavBtnW = 200;
 constexpr int kNavBtnH = 52;
 constexpr int kCardW = 388;
 constexpr int kCardH = 336;
 constexpr int kEditBtnW = 208;
-constexpr int kEditBtnH = 64;
+constexpr int kEditBtnH = 56;
 static_assert(kBackBtnW >= kTouchMinPx && kBackBtnH >= kTouchMinPx, "Back button below 44x44");
 static_assert(kOutBtnW >= kTouchMinPx && kOutBtnH >= kTouchMinPx, "OUTPUT button below 44x44");
 static_assert(kNavBtnW >= kTouchMinPx && kNavBtnH >= kTouchMinPx, "Nav button below 44x44");
@@ -1579,7 +1583,6 @@ constexpr uint8_t kTripOcp = 2u;
 constexpr uint8_t kTripOtp = 4u;
 
 static Chip detail_top_chip;
-static lv_obj_t* detail_fixed_lbl = nullptr;
 
 LinkState linkStateOf(const DisplayTelemetry& t, uint32_t now_ms, uint32_t* age_ms) {
   if (age_ms) *age_ms = 0;
@@ -1723,16 +1726,15 @@ void dash_edit_limit_cb(lv_event_t* /*e*/) {
   enterSetupScreen();
 }
 
-void main_output_toggle_event_cb(lv_event_t* /*e*/) {
-  if (out_cmd.pending) return;
-  const uint32_t now_ms = millis();
-  const DisplayTelemetry t = get_display_telemetry();
-  // The button is disabled in every other state; guard anyway.
-  if (linkStateOf(t, now_ms, nullptr) != LinkState::Live || !t.has_extended) return;
+// Tapping the detail graph panel opens the dedicated Graph screen.
+void dash_open_graph_cb(lv_event_t* /*e*/) {
+  set_active_screen(UiScreen::Graph);
+}
 
-  const bool output_on = (t.status & kStatusEnabledAny) != 0u;
+void sendOutputCommand(bool turn_on) {
+  const uint32_t now_ms = millis();
   const auto link = disp_link_slave::commandSnapshot();
-  if (!disp_link_slave::sendCommand(output_on ? "OUTPUT OFF" : "OUTPUT ON")) {
+  if (!disp_link_slave::sendCommand(turn_on ? "OUTPUT ON" : "OUTPUT OFF")) {
     postNotice("OUTPUT: link not ready - command not sent", UiTheme::kAccentWarn, now_ms);
     refreshDashboard(true);
     return;
@@ -1744,6 +1746,39 @@ void main_output_toggle_event_cb(lv_event_t* /*e*/) {
   refreshDashboard(true);
 }
 
+// OFF is one tap; ON must be confirmed in the dialog because it energizes both rails.
+void main_output_toggle_event_cb(lv_event_t* /*e*/) {
+  if (out_cmd.pending) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  // The button is disabled in every other state; guard anyway.
+  if (linkStateOf(t, now_ms, nullptr) != LinkState::Live || !t.has_extended) return;
+
+  if ((t.status & kStatusEnabledAny) != 0u) {
+    sendOutputCommand(false);
+    return;
+  }
+  out_confirm_until_ms = now_ms + kOutputConfirmMs;
+  setHidden(out_confirm_layer, false);
+}
+
+void output_confirm_cancel_cb(lv_event_t* /*e*/) {
+  setHidden(out_confirm_layer, true);
+}
+
+void output_confirm_ok_cb(lv_event_t* /*e*/) {
+  setHidden(out_confirm_layer, true);
+  if (out_cmd.pending) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  if (linkStateOf(t, now_ms, nullptr) != LinkState::Live || !t.has_extended) {
+    postNotice("OUTPUT ON cancelled - link not live", UiTheme::kAccentWarn, now_ms);
+    return;
+  }
+  if ((t.status & kStatusEnabledAny) != 0u) return;
+  sendOutputCommand(true);
+}
+
 void createTopBar(lv_obj_t* parent, bool detail, TopBar& bar) {
   makeBox(parent, 0, 0, kDisplayWidth, 52, UiTheme::kStatusBar, UiTheme::kBorder, 0, 0);
   if (detail) {
@@ -1751,29 +1786,29 @@ void createTopBar(lv_obj_t* parent, bool detail, TopBar& bar) {
                                 UiTheme::kTextMuted, 2, 8);
     lv_obj_add_event_cb(back, dash_back_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* bl = lv_label_create(back);
-    lv_label_set_text(bl, LV_SYMBOL_LEFT " Back to Main");
+    lv_label_set_text(bl, LV_SYMBOL_LEFT " Back");
     lv_obj_set_style_text_font(bl, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(bl, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
     lv_obj_center(bl);
-    makeChip(parent, 196, 8, 92, 36, &lv_font_montserrat_28, detail_top_chip);
-    makeChip(parent, 298, 10, 200, 32, &lv_font_montserrat_20, bar.link);
+    makeChip(parent, 126, 8, 200, 36, &lv_font_montserrat_28, detail_top_chip);
+    makeChip(parent, 334, 10, 160, 32, &lv_font_montserrat_20, bar.link);
   } else {
     makeLabel(parent, 12, 0, 210, 52, "WORKSTATION PSU", &lv_font_montserrat_20, UiTheme::kTextPrimary);
     makeChip(parent, 226, 10, 200, 32, &lv_font_montserrat_20, bar.link);
   }
 
-  // The one shared OUTPUT control; it affects CH1 and CH2 together on every screen.
-  bar.out_btn = makeButton(parent, 588, 3, kOutBtnW, kOutBtnH, UiTheme::kPanelSoft,
+  // The one shared OUTPUT control; it affects both channels together on every screen.
+  bar.out_btn = makeButton(parent, 552, 3, kOutBtnW, kOutBtnH, UiTheme::kPanelSoft,
                            UiTheme::kBorder, 2, 8);
   lv_obj_add_event_cb(bar.out_btn, main_output_toggle_event_cb, LV_EVENT_CLICKED, nullptr);
   bar.out_main = makeLabel(bar.out_btn, 0, 1, kOutBtnW - 4, 22, "OUTPUT ?",
                            &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
-  bar.out_sub = makeLabel(bar.out_btn, 0, 22, kOutBtnW - 4, 18, "CH1 + CH2 (shared)",
+  bar.out_sub = makeLabel(bar.out_btn, 0, 22, kOutBtnW - 4, 18, "BOTH CHANNELS",
                           &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
 
-  // Info strip: no clock source yet (WiFi time is a later PR), so it stays "CLOCK NOT SET".
+  // Info strip: CrowPanel uptime stands in until a time source exists (WiFi time is a later PR).
   makeBox(parent, 0, 52, kDisplayWidth, 28, UiTheme::kInfoStrip, UiTheme::kBorder, 0, 0);
-  makeLabel(parent, 12, 52, 250, 28, "CLOCK NOT SET", &lv_font_montserrat_20, UiTheme::kTextMuted);
+  bar.clock = makeLabel(parent, 12, 52, 250, 28, "UPTIME 0:00:00", &lv_font_montserrat_20, UiTheme::kTextMuted);
   bar.temp = makeLabel(parent, 290, 52, 230, 28, "UNIT TEMP -- C", &lv_font_montserrat_20,
                        UiTheme::kTextPrimary);
 }
@@ -1836,13 +1871,10 @@ void createMainCard(lv_obj_t* parent, int ch) {
   c.panel = card;
   c.accent = makeBox(card, 0, 0, kCardW - 4, 6, r.color, r.color, 0, 0);
 
-  makeChip(card, 12, 12, 92, 36, &lv_font_montserrat_28, c.ch_chip);
+  makeChip(card, 12, 12, 200, 36, &lv_font_montserrat_28, c.ch_chip);
   setLabel(c.ch_chip.lbl, r.name);
   fillChip(c.ch_chip, r.color);
-  char fixed[24];
-  snprintf(fixed, sizeof(fixed), "FIXED %s", r.nominal_short);
-  makeLabel(card, 112, 16, 148, 28, fixed, &lv_font_montserrat_20, UiTheme::kTextMuted);
-  makeChip(card, 262, 12, 76, 32, &lv_font_montserrat_16, c.demo_tag);
+  makeChip(card, 220, 12, 76, 32, &lv_font_montserrat_16, c.demo_tag);
   setChip(c.demo_tag, "DEMO", UiTheme::kDemo);
   lv_obj_add_flag(c.demo_tag.box, LV_OBJ_FLAG_HIDDEN);
   makeLabel(card, kCardW - 44, 12, 36, 36, LV_SYMBOL_RIGHT, &lv_font_montserrat_28,
@@ -1862,18 +1894,14 @@ void createMainCard(lv_obj_t* parent, int ch) {
   c.note = makeLabel(card, 12, 304, kCardW - 24, 24, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
 }
 
-void create_main_screen(lv_obj_t* root) {
-  screen_main = makeScreen(root);
-  createTopBar(screen_main, false, main_bar);
-  createMainCard(screen_main, 0);
-  createMainCard(screen_main, 1);
-
-  makeBox(screen_main, 0, 428, kDisplayWidth, 52, UiTheme::kStatusBar, UiTheme::kBorder, 0, 0);
+// Bottom navigation shared by Main and Detail; Detail counts as part of Main.
+void createBottomNav(lv_obj_t* parent) {
+  makeBox(parent, 0, 428, kDisplayWidth, 52, UiTheme::kStatusBar, UiTheme::kBorder, 0, 0);
   static constexpr const char* kNavNames[4] = {"Main", "Setup", "Graph", "Settings"};
   static constexpr UiScreen kNavTargets[4] = {UiScreen::Main, UiScreen::Setup, UiScreen::Graph, UiScreen::Settings};
   for (int k = 0; k < 4; ++k) {
     const bool on = (k == 0);
-    lv_obj_t* b = makeButton(screen_main, k * kNavBtnW, 428, kNavBtnW, kNavBtnH,
+    lv_obj_t* b = makeButton(parent, k * kNavBtnW, 428, kNavBtnW, kNavBtnH,
                              on ? UiTheme::kBadge : UiTheme::kPanelSoft,
                              on ? UiTheme::kAccentI : UiTheme::kBorder, on ? 2 : 1, 0);
     lv_obj_add_event_cb(b, nav_btn_event_cb, LV_EVENT_CLICKED,
@@ -1884,6 +1912,44 @@ void create_main_screen(lv_obj_t* root) {
     lv_obj_set_style_text_color(l, lv_color_hex(on ? UiTheme::kTextPrimary : UiTheme::kTextMuted), LV_PART_MAIN);
     lv_obj_center(l);
   }
+}
+
+// Full-screen scrim on the top layer so nothing underneath is touchable while confirming.
+void createOutputConfirm() {
+  lv_obj_t* scrim = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(scrim, kDisplayWidth, kDisplayHeight);
+  lv_obj_set_pos(scrim, 0, 0);
+  lv_obj_set_style_radius(scrim, 0, LV_PART_MAIN);
+  lv_obj_set_style_border_width(scrim, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(scrim, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(scrim, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_clear_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
+  out_confirm_layer = scrim;
+
+  lv_obj_t* dlg = makeBox(scrim, 140, 124, 520, 232, UiTheme::kPanel, UiTheme::kAccentWarn, 3, 12);
+  makeLabel(dlg, 0, 14, 514, 36, "TURN OUTPUT ON?", &lv_font_montserrat_28,
+            UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  makeLabel(dlg, 16, 62, 482, 60,
+            "Both channels will switch ON together:\n+5V Supply and +3.3V Supply",
+            &lv_font_montserrat_20, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+
+  lv_obj_t* cancel = makeButton(dlg, 16, 142, 236, 64, UiTheme::kPanelSoft, UiTheme::kTextMuted, 2, 8);
+  lv_obj_add_event_cb(cancel, output_confirm_cancel_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(cancel, 0, 0, 232, 60, "CANCEL", &lv_font_montserrat_28, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+
+  lv_obj_t* ok = makeButton(dlg, 268, 142, 236, 64, 0x1E4A33, UiTheme::kAccentOk, 2, 8);
+  lv_obj_add_event_cb(ok, output_confirm_ok_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(ok, 0, 0, 232, 60, "TURN ON", &lv_font_montserrat_28, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+}
+
+void create_main_screen(lv_obj_t* root) {
+  screen_main = makeScreen(root);
+  createTopBar(screen_main, false, main_bar);
+  createMainCard(screen_main, 0);
+  createMainCard(screen_main, 1);
+  createBottomNav(screen_main);
   createNotice(screen_main, main_bar);
 }
 
@@ -1895,17 +1961,21 @@ void create_detail_screen(lv_obj_t* root) {
   c.panel = makeBox(screen_detail, 8, 84, 320, 316, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
   lv_obj_set_style_clip_corner(c.panel, true, LV_PART_MAIN);
   c.accent = makeBox(c.panel, 0, 0, 316, 6, UiTheme::kBorder, UiTheme::kBorder, 0, 0);
-  makeChip(c.panel, 12, 12, 92, 36, &lv_font_montserrat_28, c.ch_chip);
-  detail_fixed_lbl = makeLabel(c.panel, 112, 16, 196, 28, "", &lv_font_montserrat_20, UiTheme::kTextMuted);
-  createReadoutRow(c.panel, c, 0, 12, 52, 292, 84, "V", "VOLTAGE", UiTheme::kAccentV, UiTheme::kAccentV);
-  createReadoutRow(c.panel, c, 1, 12, 112, 292, 84, "A", "CURRENT", UiTheme::kAccentI, UiTheme::kAccentI);
-  createReadoutRow(c.panel, c, 2, 12, 172, 292, 84, "W", "POWER", UiTheme::kPower, UiTheme::kTextMuted);
-  makeChip(c.panel, 12, 240, 292, 36, &lv_font_montserrat_20, c.status);
+  makeChip(c.panel, 12, 12, 200, 36, &lv_font_montserrat_28, c.ch_chip);
+  createReadoutRow(c.panel, c, 0, 12, 44, 292, 84, "V", "VOLTAGE", UiTheme::kAccentV, UiTheme::kAccentV);
+  createReadoutRow(c.panel, c, 1, 12, 96, 292, 84, "A", "CURRENT", UiTheme::kAccentI, UiTheme::kAccentI);
+  createReadoutRow(c.panel, c, 2, 12, 148, 292, 84, "W", "POWER", UiTheme::kPower, UiTheme::kTextMuted);
+  makeChip(c.panel, 12, 208, 292, 34, &lv_font_montserrat_20, c.status);
   setChip(c.status, "UNKNOWN", UiTheme::kUnknown);
-  c.note = makeLabel(c.panel, 12, 282, 292, 24, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  c.note = makeLabel(c.panel, 12, 244, 292, 24, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
 
-  detail_graph_panel = makeBox(screen_detail, 336, 84, 456, 316, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
+  detail_graph_panel = makeBox(screen_detail, 336, 84, 456, 276, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
   lv_obj_set_style_clip_corner(detail_graph_panel, true, LV_PART_MAIN);
+  lv_obj_add_flag(detail_graph_panel, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_bg_color(detail_graph_panel,
+                            lv_color_mix(lv_color_hex(0xFFFFFF), lv_color_hex(UiTheme::kPanel), 24),
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
+  lv_obj_add_event_cb(detail_graph_panel, dash_open_graph_cb, LV_EVENT_CLICKED, nullptr);
   detail_graph_accent = makeBox(detail_graph_panel, 0, 0, 452, 6, UiTheme::kBorder, UiTheme::kBorder, 0, 0);
   detail_graph_title = makeLabel(detail_graph_panel, 12, 10, 250, 24, "TREND", &lv_font_montserrat_16, UiTheme::kTextPrimary);
   lv_obj_t* legend = makeLabel(detail_graph_panel, 250, 10, 190, 24,
@@ -1913,10 +1983,10 @@ void create_detail_screen(lv_obj_t* root) {
                                &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
   lv_label_set_recolor(legend, true);
 
-  // Plot area 348x208 at (52,62); V axis (yellow) left, A axis (blue) right.
+  // Plot area 348x176 at (52,56); V axis (yellow) left, A axis (blue) right.
   detail_chart = lv_chart_create(detail_graph_panel);
-  lv_obj_set_pos(detail_chart, 52, 62);
-  lv_obj_set_size(detail_chart, 348, 208);
+  lv_obj_set_pos(detail_chart, 52, 56);
+  lv_obj_set_size(detail_chart, 348, 176);
   lv_obj_set_style_pad_all(detail_chart, 0, LV_PART_MAIN);
   lv_obj_set_style_radius(detail_chart, 0, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(detail_chart, LV_OPA_TRANSP, LV_PART_MAIN);
@@ -1938,14 +2008,14 @@ void create_detail_screen(lv_obj_t* root) {
   lv_chart_set_all_value(detail_chart, detail_ser_lim, LV_CHART_POINT_NONE);
 
   for (int j = 0; j < 5; ++j) {
-    const int y = 62 + j * 52 - 8;
+    const int y = 56 + j * 44 - 8;
     detail_axis_v[j] = makeLabel(detail_graph_panel, 0, y, 46, 16, "", &lv_font_montserrat_12,
                                  UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
     detail_axis_i[j] = makeLabel(detail_graph_panel, 406, y, 44, 16, "", &lv_font_montserrat_12,
                                  UiTheme::kAccentI, LV_TEXT_ALIGN_LEFT);
   }
-  makeLabel(detail_graph_panel, 0, 36, 46, 16, "V", &lv_font_montserrat_12, UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
-  makeLabel(detail_graph_panel, 406, 36, 44, 16, "A", &lv_font_montserrat_12, UiTheme::kAccentI, LV_TEXT_ALIGN_LEFT);
+  makeLabel(detail_graph_panel, 0, 32, 46, 16, "V", &lv_font_montserrat_12, UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
+  makeLabel(detail_graph_panel, 406, 32, 44, 16, "A", &lv_font_montserrat_12, UiTheme::kAccentI, LV_TEXT_ALIGN_LEFT);
 
   detail_graph_note = lv_label_create(detail_graph_panel);
   lv_label_set_text(detail_graph_note, "");
@@ -1955,29 +2025,32 @@ void create_detail_screen(lv_obj_t* root) {
   lv_obj_set_style_pad_hor(detail_graph_note, 8, LV_PART_MAIN);
   lv_obj_set_style_pad_ver(detail_graph_note, 3, LV_PART_MAIN);
   lv_obj_set_style_radius(detail_graph_note, 6, LV_PART_MAIN);
-  lv_obj_align(detail_graph_note, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_align(detail_graph_note, LV_ALIGN_TOP_MID, 0, 62);
   lv_obj_add_flag(detail_graph_note, LV_OBJ_FLAG_HIDDEN);
 
-  detail_window_lbl = makeLabel(detail_graph_panel, 12, 284, 340, 22, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
-  makeLabel(detail_graph_panel, 360, 284, 84, 22, "now", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+  detail_window_lbl = makeLabel(detail_graph_panel, 12, 242, 230, 22, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  makeLabel(detail_graph_panel, 240, 242, 150, 22, "Tap for Graphs " LV_SYMBOL_RIGHT, &lv_font_montserrat_16,
+            UiTheme::kTextPrimary, LV_TEXT_ALIGN_RIGHT);
+  makeLabel(detail_graph_panel, 392, 242, 52, 22, "now", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
 
   // Footer: read-only nominal voltage, confirmed Iset (read-only here), and the existing Setup editor.
-  lv_obj_t* fixed = makeBox(screen_detail, 8, 408, 230, 64, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
-  makeLabel(fixed, 10, 4, 210, 24, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
-  detail_fixed_val = makeLabel(fixed, 10, 28, 210, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
+  lv_obj_t* fixed = makeBox(screen_detail, 8, 366, 230, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  makeLabel(fixed, 10, 2, 210, 20, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_fixed_val = makeLabel(fixed, 10, 20, 210, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
 
-  lv_obj_t* iset = makeBox(screen_detail, 246, 408, 330, 64, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
-  makeLabel(iset, 10, 4, 150, 24, "Iset LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
-  detail_iset_val = makeLabel(iset, 10, 28, 150, 34, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
-  makeChip(iset, 166, 16, 156, 32, &lv_font_montserrat_16, detail_iset_chip);
+  lv_obj_t* iset = makeBox(screen_detail, 246, 366, 330, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  makeLabel(iset, 10, 2, 150, 20, "Iset LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_iset_val = makeLabel(iset, 10, 20, 150, 32, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
+  makeChip(iset, 166, 12, 156, 32, &lv_font_montserrat_16, detail_iset_chip);
   setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
 
-  lv_obj_t* edit = makeButton(screen_detail, 584, 408, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
+  lv_obj_t* edit = makeButton(screen_detail, 584, 366, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
                               UiTheme::kAccentI, 2, 8);
   lv_obj_add_event_cb(edit, dash_edit_limit_cb, LV_EVENT_CLICKED, nullptr);
-  makeLabel(edit, 0, 4, kEditBtnW - 4, 28, "EDIT LIMIT", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
-  makeLabel(edit, 0, 32, kEditBtnW - 4, 24, "in Setup", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+  makeLabel(edit, 0, 2, kEditBtnW - 4, 26, "EDIT LIMIT", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  makeLabel(edit, 0, 28, kEditBtnW - 4, 22, "in Setup", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
 
+  createBottomNav(screen_detail);
   createNotice(screen_detail, detail_bar);
 }
 
@@ -2116,7 +2189,7 @@ void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_
   const bool have_state = t.has_extended && link != LinkState::Unknown;
   const bool on = have_state && (t.status & kStatusEnabledAny) != 0u;
   const char* main_txt = "OUTPUT ?";
-  const char* sub_txt = "CH1 + CH2 (shared)";
+  const char* sub_txt = "BOTH CHANNELS";
   uint8_t style = 0;  // 0 disabled, 1 pending, 2 on, 3 off
   bool clickable = false;
   if (out_cmd.pending) {
@@ -2135,6 +2208,7 @@ void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_
     sub_txt = "state unknown";
   } else {
     main_txt = on ? "OUTPUT ON" : "OUTPUT OFF";
+    sub_txt = on ? "BOTH - tap to turn OFF" : "BOTH - tap to turn ON";
     style = on ? 2 : 3;
     clickable = true;
   }
@@ -2162,6 +2236,11 @@ void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_
   }
 
   char tb[32];
+  const uint32_t up_s = millis() / 1000UL;
+  snprintf(tb, sizeof(tb), "UPTIME %lu:%02lu:%02lu", static_cast<unsigned long>(up_s / 3600UL),
+           static_cast<unsigned long>((up_s / 60UL) % 60UL), static_cast<unsigned long>(up_s % 60UL));
+  setLabel(b.clock, tb);
+
   if (have_state) snprintf(tb, sizeof(tb), "UNIT TEMP %u C", static_cast<unsigned>(t.last_temp_C));
   else strcpy(tb, "UNIT TEMP -- C");
   setLabel(b.temp, tb);
@@ -2214,10 +2293,8 @@ void applyDetailChannelStyle(int ch) {
   setLabel(detail_top_chip.lbl, r.name);
   fillChip(detail_top_chip, r.color);
 
-  char buf[24];
-  snprintf(buf, sizeof(buf), "FIXED %s", r.nominal_short);
-  setLabel(detail_fixed_lbl, buf);
   setLabel(detail_fixed_val, r.nominal_full);
+  char buf[24];
   for (int j = 0; j < 5; ++j) {
     snprintf(buf, sizeof(buf), "%.1f", (r.v_axis_mV / 1000.0f) * (4 - j) / 4.0f);
     setLabel(detail_axis_v[j], buf);
@@ -2340,6 +2417,19 @@ void refreshDashboard(bool force) {
   requestMissingLimits(link, now_ms);
   if (dash_notice.active && now_ms > dash_notice.until_ms) dash_notice.active = false;
 
+  // The ON confirmation must not outlive the conditions it was opened under.
+  if (out_confirm_layer && !lv_obj_has_flag(out_confirm_layer, LV_OBJ_FLAG_HIDDEN)) {
+    const bool already_on = t.has_extended && (t.status & kStatusEnabledAny) != 0u;
+    if (link != LinkState::Live || !t.has_extended) {
+      setHidden(out_confirm_layer, true);
+      postNotice("OUTPUT ON cancelled - link not live", UiTheme::kAccentWarn, now_ms);
+    } else if (already_on || out_cmd.pending) {
+      setHidden(out_confirm_layer, true);
+    } else if (now_ms > out_confirm_until_ms) {
+      setHidden(out_confirm_layer, true);
+      postNotice("OUTPUT ON cancelled - confirmation timed out", UiTheme::kAccentWarn, now_ms);
+    }
+  }
   const RailData d[2] = {railData(0, t, link), railData(1, t, link)};
   if (active_screen == UiScreen::Main) {
     refreshTopBar(main_bar, t, link, age_ms);
@@ -2384,7 +2474,7 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_set_style_border_color(card, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_graph_voltage = lv_label_create(card);
-  lv_label_set_text(lbl_graph_voltage, "CH1 --.--V / --.---A");
+  lv_label_set_text_fmt(lbl_graph_voltage, "%s --.--V / --.---A", kRails[0].name);
   lv_obj_set_style_text_color(lbl_graph_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_graph_voltage, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_set_width(lbl_graph_voltage, 280);
@@ -2392,7 +2482,7 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_align(lbl_graph_voltage, LV_ALIGN_LEFT_MID, 18, -14);
 
   lbl_graph_current = lv_label_create(card);
-  lv_label_set_text(lbl_graph_current, "CH2 --.--V / --.---A");
+  lv_label_set_text_fmt(lbl_graph_current, "%s --.--V / --.---A", kRails[1].name);
   lv_obj_set_style_text_color(lbl_graph_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_graph_current, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_set_width(lbl_graph_current, 280);
@@ -2506,6 +2596,7 @@ void create_dashboard() {
   create_detail_screen(scr);
   create_graph_screen(scr);
   create_settings_screen(scr);
+  createOutputConfirm();
   set_active_screen(UiScreen::Splash);
 }
 
@@ -2526,15 +2617,15 @@ void update_telemetry_labels() {
 
   // Main and channel-detail screens are driven by refreshDashboard(); this updates the Graph screen only.
   if (lbl_graph_voltage) {
-    char v_graph[32];
-    snprintf(v_graph, sizeof(v_graph), "CH1 %05.2fV / %05.3fA",
+    char v_graph[48];
+    snprintf(v_graph, sizeof(v_graph), "%s %05.2fV / %05.3fA", kRails[0].name,
              t.last_v12_mV / 1000.0f,
              t.last_i12_mA / 1000.0f);
     setLabel(lbl_graph_voltage, v_graph);
   }
   if (lbl_graph_current) {
-    char i_graph[40];
-    snprintf(i_graph, sizeof(i_graph), "CH2 %05.2fV / %05.3fA",
+    char i_graph[48];
+    snprintf(i_graph, sizeof(i_graph), "%s %05.2fV / %05.3fA", kRails[1].name,
              t.last_v3v3_mV / 1000.0f,
              t.last_i3v3_mA / 1000.0f);
     setLabel(lbl_graph_current, i_graph);
