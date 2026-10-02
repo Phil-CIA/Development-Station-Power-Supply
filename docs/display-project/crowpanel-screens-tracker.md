@@ -250,13 +250,17 @@ colors (green, orange, red, violet, gray).
 info strip on every screen. Unit temperature is one integer value in degrees C
 from the existing telemetry field `last_temp_C` (already parsed by the
 CrowPanel firmware); it shows `--` when no telemetry exists and is dimmed when
-stale. No temperature warning thresholds are invented. Date/time is shown as
-`YYYY-MM-DD HH:MM:SS` and as `CLOCK NOT SET` when unset. **The clock source is
-not decided:** the current firmware and UDI have no wall-clock source (no RTC
-readout, no time message), so the mockup clock is simulated. Choosing a source
-(for example host-sent time via a new UDI command, or an RTC if the CrowPanel
-hardware provides one) is a separate decision and protocol change, and is not
-part of this design-only PR.
+stale. No temperature warning thresholds are invented. This revision has only
+one temperature sensor, which is effectively the enclosure temperature (user
+confirmation, 2026-10-02), so the value is not per-channel or regulator
+temperature. Date/time is shown as
+`YYYY-MM-DD HH:MM:SS` and as `CLOCK NOT SET` when unset. **Clock source
+(user direction, 2026-10-02):** a later step will connect the CrowPanel to
+WiFi and take the time from the router (network time). Until then, and until a
+sync succeeds, the display shows `CLOCK NOT SET`. The current firmware has no
+WiFi/time code and the UDI has no time message, so the mockup clock is
+simulated and no protocol change is implied. WiFi/time-sync firmware is a
+separate future PR, not part of this design-only PR.
 
 **Proposed numeric precision and slider:** voltage 2 decimals (V), current
 3 decimals (A), power 2 decimals (W), I LIMIT 3 decimals (A). Canonical draft
@@ -296,10 +300,11 @@ while a modal is open.
 5. Setup/Graph/Settings tabs are placeholders here; their layouts are D4-D6.
 6. The original reference photos were not available to this session; the
    look follows the written reference notes above.
-7. Date/time source: decide host-sent time, RTC if present, or omit. This
-   needs a protocol or hardware decision before firmware work.
-8. Is the single unit temperature enough, or should per-channel or
-   regulator temperatures be shown? Only `last_temp_C` exists today.
+7. Date/time source: RESOLVED by user direction (WiFi network time, later).
+   Open detail: time zone and daylight-saving handling, and wording when WiFi
+   is connected but the sync has failed.
+8. Temperature: RESOLVED. One sensor this revision (enclosure temperature);
+   the label stays `UNIT TEMP` unless you prefer `ENCL TEMP`.
 
 ### Issues, dependencies, and PR sequence
 
