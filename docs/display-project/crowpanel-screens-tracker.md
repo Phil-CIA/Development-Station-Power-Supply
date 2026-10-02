@@ -682,6 +682,25 @@ When returning to this session for a status sync:
   `display/fnirsi-dual-rail-dashboard` from updated `main`; PR #71 reviewed
   (draft, unmerged, touches Setup and Main ILIM in the same `main.cpp`) and not
   reused. First LVGL dashboard (Main overview + channel detail) implemented
-  and `crowpanel43` build verified; not uploaded, not bench-tested. The
+  and `crowpanel43` build verified (PR #81). Flashed to the panel with the
+  user's permission; see the first-flash findings in the #78 section. The
   Iset slider/keypad editor is intentionally not started; it waits for the
   user's physical-panel review and #71 reconciliation.
+- 2026-10-02 RESUME POINT (#78, PR #81, branch
+  `display/fnirsi-dual-rail-dashboard`, head `4807589`, open, mergeable, not
+  merged): firmware on the panel boots with no panic (serial only). NOT yet
+  done: the user's visual review of the panel, and bench evidence (photos of
+  Main/Detail in live/off/stale/demo/unknown states, touch navigation,
+  per-rail traces, limit-only update after a Setup change, OUTPUT
+  success/ERR/no-ACK). Next steps in order: (1) get the user's panel
+  notes/photos and fix any clipping or layout bugs; (2) fill the PR's bench
+  section from real evidence only; (3) user merges #81; (4) reconcile #71
+  (draft; conflicts expected in Main and `update_telemetry_labels()`); (5)
+  only then start the Iset slider/keypad editor (#74/#75), which must also
+  settle the open questions on zero limit, slider step and output-on
+  confirmation. Flash rules: guarded script only
+  (`scripts/guarded-flash.ps1 -Target crowpanel -Action upload`, expects COM12
+  / ESP32-S3 / MAC 80:B5:4E:E2:E4:08), set `PYTHONUTF8=1` and log to a file;
+  ask before every upload. In UART0 mode the console is the host link, so do
+  not add non-`CMD:` prints. Useful serial aids: `SCREEN DETAIL1|DETAIL2`,
+  `DEMO ON|OFF` (console commands only work when the transport is not UART0).
