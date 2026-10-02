@@ -26,11 +26,8 @@ constexpr uint32_t kSettingsUiUpdateMinMs = 300;
 constexpr bool    kLiveChartsEnabled = true;
 constexpr bool    kMinimalUiLabelsOnly = false;
 constexpr uint8_t kChartDecimation = 2;
-constexpr uint16_t kVoltageUpdateDeadband_mV = 0;
-constexpr int16_t  kCurrentUpdateDeadband_mA = 0;
-constexpr int16_t  kOutputOnThreshold_mA = 50;
-constexpr uint32_t kValueKeepaliveMs = 0;
 constexpr uint32_t kSplashDurationMs = 1800;
+constexpr int16_t  kOutputOnThreshold_mA = 50;  // legacy Graph-screen RUN chip only (D5)
 constexpr uint32_t kDemoFrameMs = 50;
 constexpr uint32_t kDemoTourSwitchMs = 8000;
 constexpr size_t   kTrendCapacity = 1800;  // 7.5 minutes at 4 Hz
@@ -38,10 +35,15 @@ constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimat
 constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
 constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
 constexpr uint16_t kSetupStep_mA = 50;
-constexpr float    kCh1SetVoltage_V = 5.00f;
-constexpr float    kCh2SetVoltage_V = 3.30f;
-constexpr float    kCh1SetCurrent_A = 3.00f;
-constexpr float    kCh2SetCurrent_A = 2.00f;
+
+// Dashboard (Main overview + channel detail)
+constexpr uint32_t kLinkStaleMs = 1500;
+constexpr uint32_t kDashboardRefreshMs = 100;
+constexpr uint32_t kLimitGetRetryMs = 1200;
+constexpr uint32_t kOutputAckTimeoutMs = 1500;
+constexpr uint32_t kNoticeMs = 4000;
+constexpr uint16_t kDetailChartPoints = 120;
+constexpr int kTouchMinPx = 44;
 
 enum class UiScreen : uint8_t {
   Splash = 0,
@@ -49,6 +51,7 @@ enum class UiScreen : uint8_t {
   Main = 2,
   Graph = 3,
   Settings = 4,
+  Detail = 5,
 };
 
 struct UiTheme {
@@ -64,6 +67,16 @@ struct UiTheme {
   static constexpr uint32_t kAccentWarn = 0xFF8C3A;
   static constexpr uint32_t kAccentOk = 0x30C95E;
   static constexpr uint32_t kBorder = 0x3B434D;
+  static constexpr uint32_t kPower = 0xD5DAE0;
+  static constexpr uint32_t kError = 0xFF5A5F;
+  static constexpr uint32_t kDemo = 0xB48CFF;
+  static constexpr uint32_t kUnknown = 0x8A94A3;
+  static constexpr uint32_t kInfoStrip = 0x171B20;
+  static constexpr uint32_t kLimitTrace = 0x8FB4CC;
+  static constexpr uint32_t kCh1 = 0xFF79C6;
+  static constexpr uint32_t kCh1Tint = 0x35262F;
+  static constexpr uint32_t kCh2 = 0x2DD4BF;
+  static constexpr uint32_t kCh2Tint = 0x1E3837;
 };
 
 // ── hardware ───────────────────────────────────────────────────────────────
@@ -148,18 +161,81 @@ struct SettingsState {
 
 static SettingsState settings_state = {};
 
-// Main screen (dual-channel layout)
-static lv_obj_t* lbl_main_ch1_voltage = nullptr;
-static lv_obj_t* lbl_main_ch1_current = nullptr;
-static lv_obj_t* lbl_main_ch1_power = nullptr;
-static lv_obj_t* lbl_main_ch2_voltage = nullptr;
-static lv_obj_t* lbl_main_ch2_current = nullptr;
-static lv_obj_t* lbl_main_ch2_power = nullptr;
-static lv_obj_t* lbl_main_stats = nullptr;
-static lv_obj_t* bar_main_ch1_voltage = nullptr;
-static lv_obj_t* bar_main_ch1_current = nullptr;
-static lv_obj_t* bar_main_ch2_voltage = nullptr;
-static lv_obj_t* bar_main_ch2_current = nullptr;
+// Dashboard (Main overview + single-channel detail, #78)
+enum class LinkState : uint8_t { Live, Stale, Demo, Unknown };
+
+struct Chip {
+  lv_obj_t* box = nullptr;
+  lv_obj_t* lbl = nullptr;
+  uint32_t color = 0xFFFFFFFFu;
+};
+
+struct RailCard {
+  lv_obj_t* panel = nullptr;
+  lv_obj_t* accent = nullptr;
+  lv_obj_t* row[3] = {};
+  lv_obj_t* num[3] = {};
+  Chip ch_chip;
+  Chip status;
+  lv_obj_t* note = nullptr;
+  lv_obj_t* limit_val = nullptr;
+  Chip limit_chip;
+  Chip demo_tag;
+};
+
+struct TopBar {
+  Chip link;
+  lv_obj_t* out_btn = nullptr;
+  lv_obj_t* out_main = nullptr;
+  lv_obj_t* out_sub = nullptr;
+  lv_obj_t* temp = nullptr;
+  lv_obj_t* notice = nullptr;
+  uint8_t out_mode = 0xFF;
+};
+
+struct OutputCommand {
+  bool pending;
+  uint32_t sent_ms;
+  uint32_t ack_at_send;
+  uint32_t err_at_send;
+};
+
+struct DashNotice {
+  bool active;
+  char text[80];
+  uint32_t color;
+  uint32_t until_ms;
+};
+
+static lv_obj_t* screen_detail = nullptr;
+static RailCard main_card[2];
+static RailCard detail_card;
+static TopBar main_bar;
+static TopBar detail_bar;
+static uint8_t detail_channel = 0;
+static int8_t detail_styled_channel = -1;
+static bool detail_chart_dirty = true;
+static OutputCommand out_cmd = {};
+static DashNotice dash_notice = {};
+
+static lv_obj_t* detail_graph_panel = nullptr;
+static lv_obj_t* detail_graph_accent = nullptr;
+static lv_obj_t* detail_graph_title = nullptr;
+static lv_obj_t* detail_graph_note = nullptr;
+static lv_obj_t* detail_window_lbl = nullptr;
+static lv_obj_t* detail_fixed_val = nullptr;
+static lv_obj_t* detail_iset_val = nullptr;
+static Chip detail_iset_chip;
+static lv_obj_t* detail_axis_v[5] = {};
+static lv_obj_t* detail_axis_i[5] = {};
+static lv_obj_t* detail_chart = nullptr;
+static lv_chart_series_t* detail_ser_v = nullptr;
+static lv_chart_series_t* detail_ser_i = nullptr;
+static lv_chart_series_t* detail_ser_lim = nullptr;
+static size_t detail_last_trend_head = static_cast<size_t>(-1);
+static size_t detail_last_trend_count = static_cast<size_t>(-1);
+static uint32_t detail_last_chart_ms = 0;
+static size_t detail_plotted = 0;
 
 static lv_obj_t* lbl_graph_voltage = nullptr;
 static lv_obj_t* lbl_graph_current = nullptr;
@@ -168,19 +244,8 @@ static lv_obj_t* lbl_window = nullptr;
 static lv_obj_t* lbl_graph_window_v = nullptr;
 static lv_obj_t* lbl_graph_window_i = nullptr;
 
-static lv_obj_t* lbl_status_link = nullptr;
-static lv_obj_t* lbl_status_seq = nullptr;
-static lv_obj_t* lbl_status_mode = nullptr;
-static lv_obj_t* lbl_status_uptime = nullptr;
-static lv_obj_t* lbl_status_output = nullptr;
 static lv_obj_t* lbl_splash_hint = nullptr;
-static lv_obj_t* lbl_fault_main = nullptr;
 static lv_obj_t* lbl_fault_graph = nullptr;
-
-static lv_obj_t* chip_main_ok = nullptr;
-static lv_obj_t* chip_main_mode = nullptr;
-static lv_obj_t* chip_main_limit = nullptr;
-static lv_obj_t* chip_main_run = nullptr;
 
 static lv_obj_t* chip_graph_ok = nullptr;
 static lv_obj_t* chip_graph_mode = nullptr;
@@ -208,14 +273,6 @@ static uint32_t splash_start_ms = 0;
 static uint32_t last_drawn_seq   = 0xFFFFFFFFu;
 static uint32_t last_drawn_count = 0;
 static uint32_t last_ui_update_ms = 0;
-static uint16_t last_v12_drawn_mV = 0;
-static int16_t  last_i12_drawn_mA = 0;
-static bool     have_drawn_values = false;
-static uint32_t last_value_draw_ms = 0;
-static char     last_voltage_text[32] = "";
-static char     last_current_text[32] = "";
-static char     last_ch2_voltage_text[32] = "";
-static char     last_ch2_current_text[32] = "";
 static size_t   last_drawn_samples = static_cast<size_t>(-1);
 static uint16_t chart_write_idx = 0;
 static uint32_t last_detail_ui_update_ms = 0;
@@ -248,13 +305,6 @@ int32_t clamp_i32(int32_t v, int32_t lo, int32_t hi) {
   return v;
 }
 
-int32_t map_i32(int32_t value, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max) {
-  if (in_max <= in_min) return out_min;
-  const int32_t clamped = clamp_i32(value, in_min, in_max);
-  const int32_t num = (clamped - in_min) * (out_max - out_min);
-  return out_min + (num / (in_max - in_min));
-}
-
 struct TrendSample {
   uint32_t t_ms;
   uint32_t rx_count;
@@ -263,6 +313,10 @@ struct TrendSample {
   uint8_t seq;
   uint16_t v12_mV;
   int16_t i12_mA;
+  uint16_t v3v3_mV;
+  int16_t i3v3_mA;
+  bool has_ch2;
+  bool demo;
 };
 
 static TrendSample trend_buf[kTrendCapacity] = {};
@@ -289,6 +343,8 @@ void settings_action_secondary_event_cb(lv_event_t* e);
 void settings_action_refresh_event_cb(lv_event_t* e);
 bool i2cAddressResponds(uint8_t address);
 void printLogStatus();
+void refreshDashboard(bool force);
+void main_output_toggle_event_cb(lv_event_t* e);
 
 void setup_prev_btn_event_cb(lv_event_t* e);
 void setup_next_btn_event_cb(lv_event_t* e);
@@ -372,7 +428,10 @@ void trendPushSample(const disp_link_slave::Telemetry& t, uint32_t now_ms) {
   s.seq = t.last_seq;
   s.v12_mV = t.last_v12_mV;
   s.i12_mA = t.last_i12_mA;
-
+  s.v3v3_mV = t.last_v3v3_mV;
+  s.i3v3_mA = t.last_i3v3_mA;
+  s.has_ch2 = t.has_extended;
+  s.demo = demo_mode;
   trend_buf[trend_head] = s;
   trend_head = (trend_head + 1) % kTrendCapacity;
   if (trend_count < kTrendCapacity) trend_count++;
@@ -408,16 +467,17 @@ DisplayTelemetry get_display_telemetry() {
 
   const uint32_t now_ms = millis();
   const float t = (now_ms - demo_start_ms) * 0.001f;
-  const float v = 12100.0f + 850.0f * sinf(t * 1.12f) + 180.0f * sinf(t * 0.31f);
-  const float i = 830.0f + 620.0f * sinf(t * 0.87f + 1.35f) + 140.0f * sinf(t * 2.2f);
+  // Demo values sit on the fixed-rail nominals (+5 V / +3.3 V); the UI labels them DEMO.
+  const float v = 5000.0f + 35.0f * sinf(t * 1.12f) + 12.0f * sinf(t * 0.31f);
+  const float i = 900.0f + 620.0f * sinf(t * 0.87f + 1.35f) + 140.0f * sinf(t * 2.2f);
 
   out.rx_count = out.rx_count + static_cast<uint32_t>((now_ms - demo_start_ms) / 200);
   out.i2c_rx_count = out.i2c_rx_count + static_cast<uint32_t>((now_ms - demo_start_ms) / 200);
   out.last_seq = static_cast<uint8_t>((now_ms - demo_start_ms) / 200);
-  out.last_v12_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(v), 9000, 15000));
-  out.last_i12_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(i), -500, 3000));
-  out.last_v3v3_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(3300.0f + 90.0f * sinf(t * 1.7f)), 3000, 3600));
-  out.last_i3v3_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(420.0f + 130.0f * sinf(t * 1.9f + 0.6f)), -100, 2000));
+  out.last_v12_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(v), 4800, 5200));
+  out.last_i12_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(i), 0, 3000));
+  out.last_v3v3_mV = static_cast<uint16_t>(clamp_i32(static_cast<int32_t>(3300.0f + 25.0f * sinf(t * 1.7f)), 3200, 3400));
+  out.last_i3v3_mA = static_cast<int16_t>(clamp_i32(static_cast<int32_t>(420.0f + 130.0f * sinf(t * 1.9f + 0.6f)), 0, 2000));
   out.last_temp_C = static_cast<uint8_t>(clamp_i32(static_cast<int32_t>(31.0f + 5.0f * sinf(t * 0.22f)), 20, 95));
   out.status = 0xF0;  // CH1/CH2 enabled + CH1/CH2 in CV mode
   out.protection_flags = 0x00;
@@ -475,6 +535,12 @@ void set_active_screen(UiScreen screen) {
     if (screen == UiScreen::Settings) lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(screen_settings, LV_OBJ_FLAG_HIDDEN);
   }
+  if (screen_detail) {
+    if (screen == UiScreen::Detail) lv_obj_clear_flag(screen_detail, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(screen_detail, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (screen == UiScreen::Detail) detail_chart_dirty = true;
+  refreshDashboard(true);
 }
 
 const char* setupFieldLabel(SetupField field) {
@@ -1093,12 +1159,6 @@ void nav_btn_event_cb(lv_event_t* e) {
   }
 }
 
-void main_output_toggle_event_cb(lv_event_t* /*e*/) {
-  const DisplayTelemetry t = get_display_telemetry();
-  const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
-  disp_link_slave::sendCommand(ch1_enabled ? "OUTPUT OFF" : "OUTPUT ON");
-}
-
 lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, int x_ofs) {  lv_obj_t* btn = lv_btn_create(parent);
   lv_obj_set_size(btn, 102, 32);
   lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, 6);
@@ -1477,256 +1537,815 @@ void create_settings_screen(lv_obj_t* root) {
   selectSettingsMenu(SettingsMenu::System);
 }
 
+// ── Dashboard: Main overview + single-channel detail (#78) ─────────────────
+// Geometry follows docs/display-project/mockups/crowpanel-fixed-rail-mockup.html.
+// Only ASCII text and LV_SYMBOL_* glyphs are used (Montserrat has no U+00B7/U+00B0).
+struct RailSpec {
+  const char* name;
+  const char* nominal_short;
+  const char* nominal_full;
+  uint32_t color;
+  uint32_t tint;
+  int32_t v_axis_mV;
+  int32_t i_axis_mA;
+};
+
+constexpr RailSpec kRails[2] = {
+  {"CH1", "+5 V", "+5.00 V", UiTheme::kCh1, UiTheme::kCh1Tint, 6000, 4000},
+  {"CH2", "+3.3 V", "+3.30 V", UiTheme::kCh2, UiTheme::kCh2Tint, 4000, 3000},
+};
+
+constexpr int kBackBtnW = 180;
+constexpr int kBackBtnH = 44;
+constexpr int kOutBtnW = 200;
+constexpr int kOutBtnH = 46;
+constexpr int kNavBtnW = 200;
+constexpr int kNavBtnH = 52;
+constexpr int kCardW = 388;
+constexpr int kCardH = 336;
+constexpr int kEditBtnW = 208;
+constexpr int kEditBtnH = 64;
+static_assert(kBackBtnW >= kTouchMinPx && kBackBtnH >= kTouchMinPx, "Back button below 44x44");
+static_assert(kOutBtnW >= kTouchMinPx && kOutBtnH >= kTouchMinPx, "OUTPUT button below 44x44");
+static_assert(kNavBtnW >= kTouchMinPx && kNavBtnH >= kTouchMinPx, "Nav button below 44x44");
+static_assert(kCardW >= kTouchMinPx && kCardH >= kTouchMinPx, "Channel card below 44x44");
+static_assert(kEditBtnW >= kTouchMinPx && kEditBtnH >= kTouchMinPx, "Edit button below 44x44");
+
+constexpr uint8_t kStatusEnabledAny = 0xC0u;  // CH1 | CH2 enabled bits
+constexpr uint8_t kTripOvp = 1u;
+constexpr uint8_t kTripOcp = 2u;
+constexpr uint8_t kTripOtp = 4u;
+
+static Chip detail_top_chip;
+static lv_obj_t* detail_fixed_lbl = nullptr;
+
+LinkState linkStateOf(const DisplayTelemetry& t, uint32_t now_ms, uint32_t* age_ms) {
+  if (age_ms) *age_ms = 0;
+  if (demo_mode) return LinkState::Demo;
+  if (t.last_rx_ms == 0) return LinkState::Unknown;
+  const uint32_t age = (now_ms >= t.last_rx_ms) ? (now_ms - t.last_rx_ms) : 0;
+  if (age_ms) *age_ms = age;
+  return age > kLinkStaleMs ? LinkState::Stale : LinkState::Live;
+}
+
+void setLabel(lv_obj_t* lbl, const char* text) {
+  if (!lbl || !text) return;
+  const char* cur = lv_label_get_text(lbl);
+  if (cur && strcmp(cur, text) == 0) return;
+  lv_label_set_text(lbl, text);
+}
+
+void setHidden(lv_obj_t* obj, bool hidden) {
+  if (!obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN) == hidden) return;
+  if (hidden) lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+void setTextOpa(lv_obj_t* obj, lv_opa_t opa) {
+  if (!obj || lv_obj_get_style_text_opa(obj, LV_PART_MAIN) == opa) return;
+  lv_obj_set_style_text_opa(obj, opa, LV_PART_MAIN);
+}
+
+lv_obj_t* makeBox(lv_obj_t* parent, int x, int y, int w, int h, uint32_t bg, uint32_t border,
+                  int border_w, int radius) {
+  lv_obj_t* o = lv_obj_create(parent);
+  lv_obj_set_pos(o, x, y);
+  lv_obj_set_size(o, w, h);
+  lv_obj_set_style_pad_all(o, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(o, radius, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(o, lv_color_hex(bg), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(o, border_w, LV_PART_MAIN);
+  lv_obj_set_style_border_color(o, lv_color_hex(border), LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(o, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_CLICKABLE);
+  return o;
+}
+
+lv_obj_t* makeLabel(lv_obj_t* parent, int x, int y, int w, int h, const char* text,
+                    const lv_font_t* font, uint32_t color,
+                    lv_text_align_t align = LV_TEXT_ALIGN_LEFT) {
+  lv_obj_t* l = lv_label_create(parent);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(l, w);
+  lv_label_set_text(l, text);
+  lv_obj_set_style_text_font(l, font, LV_PART_MAIN);
+  lv_obj_set_style_text_color(l, lv_color_hex(color), LV_PART_MAIN);
+  lv_obj_set_style_text_align(l, align, LV_PART_MAIN);
+  lv_obj_set_pos(l, x, y + (h - static_cast<int>(lv_font_get_line_height(font))) / 2);
+  return l;
+}
+
+void makeChip(lv_obj_t* parent, int x, int y, int w, int h, const lv_font_t* font, Chip& chip) {
+  chip.box = makeBox(parent, x, y, w, h, UiTheme::kBg, UiTheme::kBorder, 2, 6);
+  chip.lbl = lv_label_create(chip.box);
+  lv_label_set_long_mode(chip.lbl, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(chip.lbl, w - 12);
+  lv_label_set_text(chip.lbl, "");
+  lv_obj_set_style_text_font(chip.lbl, font, LV_PART_MAIN);
+  lv_obj_set_style_text_align(chip.lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_align(chip.lbl, LV_ALIGN_CENTER, 0, 0);
+}
+
+void setChip(Chip& chip, const char* text, uint32_t color) {
+  if (!chip.box || !chip.lbl) return;
+  setLabel(chip.lbl, text);
+  if (chip.color == color) return;
+  chip.color = color;
+  lv_obj_set_style_text_color(chip.lbl, lv_color_hex(color), LV_PART_MAIN);
+  lv_obj_set_style_border_color(chip.box, lv_color_hex(color), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(chip.box,
+                            lv_color_mix(lv_color_hex(color), lv_color_hex(UiTheme::kBg), 36),
+                            LV_PART_MAIN);
+}
+
+void fillChip(Chip& chip, uint32_t color) {
+  if (!chip.box || !chip.lbl) return;
+  chip.color = color;
+  lv_obj_set_style_text_color(chip.lbl, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_border_color(chip.box, lv_color_hex(color), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(chip.box, lv_color_hex(color), LV_PART_MAIN);
+}
+
+lv_obj_t* makeButton(lv_obj_t* parent, int x, int y, int w, int h, uint32_t bg, uint32_t border,
+                     int border_w, int radius) {
+  lv_obj_t* b = lv_btn_create(parent);
+  lv_obj_set_pos(b, x, y);
+  lv_obj_set_size(b, w, h);
+  lv_obj_set_style_pad_all(b, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(b, radius, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(b, lv_color_hex(bg), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(b, border_w, LV_PART_MAIN);
+  lv_obj_set_style_border_color(b, lv_color_hex(border), LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(b, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+  return b;
+}
+
+lv_obj_t* makeScreen(lv_obj_t* root) {
+  lv_obj_t* s = lv_obj_create(root);
+  lv_obj_set_pos(s, 0, 0);
+  lv_obj_set_size(s, kDisplayWidth, kDisplayHeight);
+  lv_obj_set_style_pad_all(s, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(s, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(s, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
+  lv_obj_set_style_border_width(s, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+  return s;
+}
+
+void postNotice(const char* text, uint32_t color, uint32_t now_ms) {
+  strncpy(dash_notice.text, text, sizeof(dash_notice.text) - 1);
+  dash_notice.text[sizeof(dash_notice.text) - 1] = '\0';
+  dash_notice.color = color;
+  dash_notice.until_ms = now_ms + kNoticeMs;
+  dash_notice.active = true;
+}
+
+void dash_open_detail_cb(lv_event_t* e) {
+  const uintptr_t ch = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
+  detail_channel = (ch == 1u) ? 1u : 0u;
+  set_active_screen(UiScreen::Detail);
+}
+
+void dash_back_cb(lv_event_t* /*e*/) {
+  set_active_screen(UiScreen::Main);
+}
+
+// Opens the existing Setup editor on this channel's ILIM field; no new write path.
+void dash_edit_limit_cb(lv_event_t* /*e*/) {
+  setup_binding.selected = (detail_channel == 0u) ? SetupField::Ch1CurrentLimit
+                                                  : SetupField::Ch2CurrentLimit;
+  enterSetupScreen();
+}
+
+void main_output_toggle_event_cb(lv_event_t* /*e*/) {
+  if (out_cmd.pending) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  // The button is disabled in every other state; guard anyway.
+  if (linkStateOf(t, now_ms, nullptr) != LinkState::Live || !t.has_extended) return;
+
+  const bool output_on = (t.status & kStatusEnabledAny) != 0u;
+  const auto link = disp_link_slave::commandSnapshot();
+  if (!disp_link_slave::sendCommand(output_on ? "OUTPUT OFF" : "OUTPUT ON")) {
+    postNotice("OUTPUT: link not ready - command not sent", UiTheme::kAccentWarn, now_ms);
+    refreshDashboard(true);
+    return;
+  }
+  out_cmd.pending = true;
+  out_cmd.sent_ms = now_ms;
+  out_cmd.ack_at_send = link.ack_count;
+  out_cmd.err_at_send = link.err_count;
+  refreshDashboard(true);
+}
+
+void createTopBar(lv_obj_t* parent, bool detail, TopBar& bar) {
+  makeBox(parent, 0, 0, kDisplayWidth, 52, UiTheme::kStatusBar, UiTheme::kBorder, 0, 0);
+  if (detail) {
+    lv_obj_t* back = makeButton(parent, 8, 4, kBackBtnW, kBackBtnH, UiTheme::kPanelSoft,
+                                UiTheme::kTextMuted, 2, 8);
+    lv_obj_add_event_cb(back, dash_back_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* bl = lv_label_create(back);
+    lv_label_set_text(bl, LV_SYMBOL_LEFT " Back to Main");
+    lv_obj_set_style_text_font(bl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(bl, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+    lv_obj_center(bl);
+    makeChip(parent, 196, 8, 92, 36, &lv_font_montserrat_28, detail_top_chip);
+    makeChip(parent, 298, 10, 200, 32, &lv_font_montserrat_20, bar.link);
+  } else {
+    makeLabel(parent, 12, 0, 210, 52, "WORKSTATION PSU", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+    makeChip(parent, 226, 10, 200, 32, &lv_font_montserrat_20, bar.link);
+  }
+
+  // The one shared OUTPUT control; it affects CH1 and CH2 together on every screen.
+  bar.out_btn = makeButton(parent, 588, 3, kOutBtnW, kOutBtnH, UiTheme::kPanelSoft,
+                           UiTheme::kBorder, 2, 8);
+  lv_obj_add_event_cb(bar.out_btn, main_output_toggle_event_cb, LV_EVENT_CLICKED, nullptr);
+  bar.out_main = makeLabel(bar.out_btn, 0, 1, kOutBtnW - 4, 22, "OUTPUT ?",
+                           &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  bar.out_sub = makeLabel(bar.out_btn, 0, 22, kOutBtnW - 4, 18, "CH1 + CH2 (shared)",
+                          &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+
+  // Info strip: no clock source yet (WiFi time is a later PR), so it stays "CLOCK NOT SET".
+  makeBox(parent, 0, 52, kDisplayWidth, 28, UiTheme::kInfoStrip, UiTheme::kBorder, 0, 0);
+  makeLabel(parent, 12, 52, 250, 28, "CLOCK NOT SET", &lv_font_montserrat_20, UiTheme::kTextMuted);
+  bar.temp = makeLabel(parent, 290, 52, 230, 28, "UNIT TEMP -- C", &lv_font_montserrat_20,
+                       UiTheme::kTextPrimary);
+}
+
+// Command-result notice sits in the empty right side of the info strip and scrolls long text.
+void createNotice(lv_obj_t* parent, TopBar& bar) {
+  lv_obj_t* n = lv_label_create(parent);
+  lv_label_set_long_mode(n, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(n, 264);
+  lv_label_set_text(n, "");
+  lv_obj_set_style_text_font(n, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_set_style_text_color(n, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(n, lv_color_hex(UiTheme::kInfoStrip), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(n, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(n, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(n, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
+  lv_obj_set_style_radius(n, 6, LV_PART_MAIN);
+  lv_obj_set_style_pad_hor(n, 6, LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(n, 2, LV_PART_MAIN);
+  lv_obj_set_pos(n, 524, 53);
+  lv_obj_add_flag(n, LV_OBJ_FLAG_HIDDEN);
+  bar.notice = n;
+}
+
+void createReadoutRow(lv_obj_t* parent, RailCard& c, int idx, int x, int y, int w, int label_w,
+                      const char* unit, const char* caption, uint32_t color, uint32_t caption_color) {
+  lv_obj_t* row = makeBox(parent, x, y, w - label_w, 56, UiTheme::kBg, UiTheme::kBg, 0, 0);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  c.row[idx] = row;
+
+  lv_obj_t* num = lv_label_create(row);
+  lv_label_set_text(num, "---");
+  lv_obj_set_style_text_font(num, &lv_font_montserrat_48, LV_PART_MAIN);
+  lv_obj_set_style_text_color(num, lv_color_hex(color), LV_PART_MAIN);
+  c.num[idx] = num;
+
+  lv_obj_t* u = lv_label_create(row);
+  lv_label_set_text(u, unit);
+  lv_obj_set_style_text_font(u, &lv_font_montserrat_28, LV_PART_MAIN);
+  lv_obj_set_style_text_color(u, lv_color_hex(color), LV_PART_MAIN);
+  lv_obj_set_style_pad_left(u, 8, LV_PART_MAIN);
+
+  makeLabel(parent, x + w - label_w, y, label_w, 56, caption, &lv_font_montserrat_16,
+            caption_color, LV_TEXT_ALIGN_RIGHT);
+}
+
+void createMainCard(lv_obj_t* parent, int ch) {
+  RailCard& c = main_card[ch];
+  const RailSpec& r = kRails[ch];
+  const int x = (ch == 0) ? 8 : 404;
+  lv_obj_t* card = makeBox(parent, x, 84, kCardW, kCardH, r.tint, r.color, 2, 10);
+  lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_clip_corner(card, true, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(card, lv_color_mix(lv_color_hex(0xFFFFFF), lv_color_hex(r.tint), 32),
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
+  lv_obj_add_event_cb(card, dash_open_detail_cb, LV_EVENT_CLICKED,
+                      reinterpret_cast<void*>(static_cast<uintptr_t>(ch)));
+  c.panel = card;
+  c.accent = makeBox(card, 0, 0, kCardW - 4, 6, r.color, r.color, 0, 0);
+
+  makeChip(card, 12, 12, 92, 36, &lv_font_montserrat_28, c.ch_chip);
+  setLabel(c.ch_chip.lbl, r.name);
+  fillChip(c.ch_chip, r.color);
+  char fixed[24];
+  snprintf(fixed, sizeof(fixed), "FIXED %s", r.nominal_short);
+  makeLabel(card, 112, 16, 148, 28, fixed, &lv_font_montserrat_20, UiTheme::kTextMuted);
+  makeChip(card, 262, 12, 76, 32, &lv_font_montserrat_16, c.demo_tag);
+  setChip(c.demo_tag, "DEMO", UiTheme::kDemo);
+  lv_obj_add_flag(c.demo_tag.box, LV_OBJ_FLAG_HIDDEN);
+  makeLabel(card, kCardW - 44, 12, 36, 36, LV_SYMBOL_RIGHT, &lv_font_montserrat_28,
+            UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+
+  createReadoutRow(card, c, 0, 12, 52, kCardW - 24, 104, "V", "VOLTAGE", UiTheme::kAccentV, UiTheme::kAccentV);
+  createReadoutRow(card, c, 1, 12, 106, kCardW - 24, 104, "A", "CURRENT", UiTheme::kAccentI, UiTheme::kAccentI);
+  createReadoutRow(card, c, 2, 12, 160, kCardW - 24, 104, "W", "POWER", UiTheme::kPower, UiTheme::kTextMuted);
+
+  makeLabel(card, 12, 222, 72, 36, "I LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  c.limit_val = makeLabel(card, 88, 222, 124, 36, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
+  makeChip(card, 216, 224, kCardW - 24 - 204, 32, &lv_font_montserrat_16, c.limit_chip);
+  setChip(c.limit_chip, "NO VALUE", UiTheme::kUnknown);
+
+  makeChip(card, 12, 264, kCardW - 24, 36, &lv_font_montserrat_20, c.status);
+  setChip(c.status, "UNKNOWN", UiTheme::kUnknown);
+  c.note = makeLabel(card, 12, 304, kCardW - 24, 24, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
+}
+
 void create_main_screen(lv_obj_t* root) {
-  screen_main = lv_obj_create(root);
-  lv_obj_set_size(screen_main, kDisplayWidth, kDisplayHeight);
-  lv_obj_clear_flag(screen_main, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(screen_main, 0, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(screen_main, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_set_style_border_width(screen_main, 0, LV_PART_MAIN);
+  screen_main = makeScreen(root);
+  createTopBar(screen_main, false, main_bar);
+  createMainCard(screen_main, 0);
+  createMainCard(screen_main, 1);
 
-  lv_obj_t* status = lv_obj_create(screen_main);
-  lv_obj_set_size(status, kDisplayWidth - 20, 50);
-  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 8);
-  lv_obj_set_style_bg_color(status, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
-  lv_obj_set_style_radius(status, 12, LV_PART_MAIN);
-  lv_obj_set_style_border_width(status, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(status, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  makeBox(screen_main, 0, 428, kDisplayWidth, 52, UiTheme::kStatusBar, UiTheme::kBorder, 0, 0);
+  static constexpr const char* kNavNames[4] = {"Main", "Setup", "Graph", "Settings"};
+  static constexpr UiScreen kNavTargets[4] = {UiScreen::Main, UiScreen::Setup, UiScreen::Graph, UiScreen::Settings};
+  for (int k = 0; k < 4; ++k) {
+    const bool on = (k == 0);
+    lv_obj_t* b = makeButton(screen_main, k * kNavBtnW, 428, kNavBtnW, kNavBtnH,
+                             on ? UiTheme::kBadge : UiTheme::kPanelSoft,
+                             on ? UiTheme::kAccentI : UiTheme::kBorder, on ? 2 : 1, 0);
+    lv_obj_add_event_cb(b, nav_btn_event_cb, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(static_cast<uintptr_t>(kNavTargets[k])));
+    lv_obj_t* l = lv_label_create(b);
+    lv_label_set_text(l, kNavNames[k]);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(l, lv_color_hex(on ? UiTheme::kTextPrimary : UiTheme::kTextMuted), LV_PART_MAIN);
+    lv_obj_center(l);
+  }
+  createNotice(screen_main, main_bar);
+}
 
-  lv_obj_t* mode = lv_label_create(status);
-  lv_label_set_text(mode, "WORKSTATION PSU");
-  lv_obj_set_style_text_color(mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(mode, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(mode, LV_ALIGN_LEFT_MID, 14, 0);
+void create_detail_screen(lv_obj_t* root) {
+  screen_detail = makeScreen(root);
+  createTopBar(screen_detail, true, detail_bar);
 
-  lbl_status_link = lv_label_create(status);
-  lv_label_set_text(lbl_status_link, "LINK --");
-  lv_obj_set_style_text_color(lbl_status_link, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_status_link, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_link, LV_ALIGN_LEFT_MID, 210, 0);
+  RailCard& c = detail_card;
+  c.panel = makeBox(screen_detail, 8, 84, 320, 316, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
+  lv_obj_set_style_clip_corner(c.panel, true, LV_PART_MAIN);
+  c.accent = makeBox(c.panel, 0, 0, 316, 6, UiTheme::kBorder, UiTheme::kBorder, 0, 0);
+  makeChip(c.panel, 12, 12, 92, 36, &lv_font_montserrat_28, c.ch_chip);
+  detail_fixed_lbl = makeLabel(c.panel, 112, 16, 196, 28, "", &lv_font_montserrat_20, UiTheme::kTextMuted);
+  createReadoutRow(c.panel, c, 0, 12, 52, 292, 84, "V", "VOLTAGE", UiTheme::kAccentV, UiTheme::kAccentV);
+  createReadoutRow(c.panel, c, 1, 12, 112, 292, 84, "A", "CURRENT", UiTheme::kAccentI, UiTheme::kAccentI);
+  createReadoutRow(c.panel, c, 2, 12, 172, 292, 84, "W", "POWER", UiTheme::kPower, UiTheme::kTextMuted);
+  makeChip(c.panel, 12, 240, 292, 36, &lv_font_montserrat_20, c.status);
+  setChip(c.status, "UNKNOWN", UiTheme::kUnknown);
+  c.note = makeLabel(c.panel, 12, 282, 292, 24, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
 
-  lbl_status_seq = lv_label_create(status);
-  lv_label_set_text(lbl_status_seq, "SEQ --");
-  lv_obj_set_style_text_color(lbl_status_seq, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_status_seq, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_seq, LV_ALIGN_LEFT_MID, 330, 0);
+  detail_graph_panel = makeBox(screen_detail, 336, 84, 456, 316, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
+  lv_obj_set_style_clip_corner(detail_graph_panel, true, LV_PART_MAIN);
+  detail_graph_accent = makeBox(detail_graph_panel, 0, 0, 452, 6, UiTheme::kBorder, UiTheme::kBorder, 0, 0);
+  detail_graph_title = makeLabel(detail_graph_panel, 12, 10, 250, 24, "TREND", &lv_font_montserrat_16, UiTheme::kTextPrimary);
+  lv_obj_t* legend = makeLabel(detail_graph_panel, 250, 10, 190, 24,
+                               "#F5C316 V#   #2EA5F9 I#   #8FB4CC LIMIT#",
+                               &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+  lv_label_set_recolor(legend, true);
 
-  lbl_status_mode = lv_label_create(status);
-  lv_label_set_text(lbl_status_mode, "CV");
-  lv_obj_set_style_text_color(lbl_status_mode, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_status_mode, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_mode, LV_ALIGN_LEFT_MID, 415, 0);
+  // Plot area 348x208 at (52,62); V axis (yellow) left, A axis (blue) right.
+  detail_chart = lv_chart_create(detail_graph_panel);
+  lv_obj_set_pos(detail_chart, 52, 62);
+  lv_obj_set_size(detail_chart, 348, 208);
+  lv_obj_set_style_pad_all(detail_chart, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(detail_chart, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(detail_chart, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(detail_chart, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(detail_chart, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_line_color(detail_chart, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_line_width(detail_chart, 1, LV_PART_MAIN);
+  lv_obj_set_style_line_width(detail_chart, 3, LV_PART_ITEMS);
+  lv_obj_set_style_size(detail_chart, 0, LV_PART_INDICATOR);
+  lv_obj_clear_flag(detail_chart, LV_OBJ_FLAG_CLICKABLE);
+  lv_chart_set_type(detail_chart, LV_CHART_TYPE_LINE);
+  lv_chart_set_point_count(detail_chart, kDetailChartPoints);
+  lv_chart_set_div_line_count(detail_chart, 3, 0);
+  detail_ser_v = lv_chart_add_series(detail_chart, lv_color_hex(UiTheme::kAccentV), LV_CHART_AXIS_PRIMARY_Y);
+  detail_ser_i = lv_chart_add_series(detail_chart, lv_color_hex(UiTheme::kAccentI), LV_CHART_AXIS_SECONDARY_Y);
+  detail_ser_lim = lv_chart_add_series(detail_chart, lv_color_hex(UiTheme::kLimitTrace), LV_CHART_AXIS_SECONDARY_Y);
+  lv_chart_set_all_value(detail_chart, detail_ser_v, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(detail_chart, detail_ser_i, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(detail_chart, detail_ser_lim, LV_CHART_POINT_NONE);
 
-  lbl_status_uptime = lv_label_create(status);
-  lv_label_set_text(lbl_status_uptime, "UP 0s");
-  lv_obj_set_style_text_color(lbl_status_uptime, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_status_uptime, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_status_uptime, LV_ALIGN_LEFT_MID, 474, 0);
+  for (int j = 0; j < 5; ++j) {
+    const int y = 62 + j * 52 - 8;
+    detail_axis_v[j] = makeLabel(detail_graph_panel, 0, y, 46, 16, "", &lv_font_montserrat_12,
+                                 UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
+    detail_axis_i[j] = makeLabel(detail_graph_panel, 406, y, 44, 16, "", &lv_font_montserrat_12,
+                                 UiTheme::kAccentI, LV_TEXT_ALIGN_LEFT);
+  }
+  makeLabel(detail_graph_panel, 0, 36, 46, 16, "V", &lv_font_montserrat_12, UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
+  makeLabel(detail_graph_panel, 406, 36, 44, 16, "A", &lv_font_montserrat_12, UiTheme::kAccentI, LV_TEXT_ALIGN_LEFT);
 
-  lv_obj_t* badge = lv_obj_create(status);
-  lv_obj_set_size(badge, 118, 32);
-  lv_obj_align(badge, LV_ALIGN_RIGHT_MID, -118, 0);
-  lv_obj_set_style_bg_color(badge, lv_color_hex(UiTheme::kBadge), LV_PART_MAIN);
-  lv_obj_set_style_radius(badge, 9, LV_PART_MAIN);
-  lv_obj_set_style_border_width(badge, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(badge, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-  lv_obj_add_flag(badge, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(badge, nav_btn_event_cb, LV_EVENT_CLICKED,
-                      reinterpret_cast<void*>(static_cast<uintptr_t>(UiScreen::Setup)));
+  detail_graph_note = lv_label_create(detail_graph_panel);
+  lv_label_set_text(detail_graph_note, "");
+  lv_obj_set_style_text_font(detail_graph_note, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(detail_graph_note, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(detail_graph_note, LV_OPA_80, LV_PART_MAIN);
+  lv_obj_set_style_pad_hor(detail_graph_note, 8, LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(detail_graph_note, 3, LV_PART_MAIN);
+  lv_obj_set_style_radius(detail_graph_note, 6, LV_PART_MAIN);
+  lv_obj_align(detail_graph_note, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_add_flag(detail_graph_note, LV_OBJ_FLAG_HIDDEN);
 
-  lbl_status_output = lv_label_create(badge);
-  lv_label_set_text(lbl_status_output, "OUTPUT --");
-  lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_status_output, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_center(lbl_status_output);
+  detail_window_lbl = makeLabel(detail_graph_panel, 12, 284, 340, 22, "", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  makeLabel(detail_graph_panel, 360, 284, 84, 22, "now", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
 
-  create_nav_btn(status, "Graphs", UiScreen::Graph, -10);
+  // Footer: read-only nominal voltage, confirmed Iset (read-only here), and the existing Setup editor.
+  lv_obj_t* fixed = makeBox(screen_detail, 8, 408, 230, 64, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  makeLabel(fixed, 10, 4, 210, 24, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_fixed_val = makeLabel(fixed, 10, 28, 210, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
 
-  lv_obj_t* panel_v = lv_obj_create(screen_main);
-  lv_obj_set_size(panel_v, 368, 182);
-  lv_obj_align(panel_v, LV_ALIGN_TOP_LEFT, 18, 68);
-  lv_obj_set_style_bg_color(panel_v, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(panel_v, 16, LV_PART_MAIN);
-  lv_obj_set_style_border_width(panel_v, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(panel_v, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_t* iset = makeBox(screen_detail, 246, 408, 330, 64, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  makeLabel(iset, 10, 4, 150, 24, "Iset LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_iset_val = makeLabel(iset, 10, 28, 150, 34, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
+  makeChip(iset, 166, 16, 156, 32, &lv_font_montserrat_16, detail_iset_chip);
+  setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
 
-  lv_obj_t* hdr_v = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v, "CH1  +5V MAIN");
-  lv_obj_set_style_text_color(hdr_v, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_v, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(hdr_v, LV_ALIGN_TOP_LEFT, 18, 16);
+  lv_obj_t* edit = makeButton(screen_detail, 584, 408, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
+                              UiTheme::kAccentI, 2, 8);
+  lv_obj_add_event_cb(edit, dash_edit_limit_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(edit, 0, 4, kEditBtnW - 4, 28, "EDIT LIMIT", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  makeLabel(edit, 0, 32, kEditBtnW - 4, 24, "in Setup", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
 
-  lv_obj_t* hdr_v_set = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v_set, "SET 5.00V / 3.00A");
-  lv_obj_set_style_text_color(hdr_v_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_v_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_v_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  createNotice(screen_detail, detail_bar);
+}
 
-  lv_obj_t* hdr_v_meas = lv_label_create(panel_v);
-  lv_label_set_text(hdr_v_meas, "V OUT");
-  lv_obj_set_style_text_color(hdr_v_meas, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_v_meas, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_v_meas, LV_ALIGN_TOP_LEFT, 22, 44);
+// ── Dashboard refresh: runs every loop, independent of telemetry frame changes,
+// so stale links and host-confirmed limit changes redraw even when V/I are unchanged.
+struct RailData {
+  bool have_reading;
+  bool state_known;
+  bool enabled;
+  uint8_t trip_flags;
+  bool have_limit;
+  int32_t v_mV;
+  int32_t i_mA;
+  uint16_t limit_mA;
+};
 
-  lbl_main_ch1_voltage = lv_label_create(panel_v);
-  lv_label_set_text(lbl_main_ch1_voltage, "-.--- V");
-  lv_obj_set_style_text_color(lbl_main_ch1_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch1_voltage, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_ch1_voltage, 330);
-  lv_obj_set_style_text_align(lbl_main_ch1_voltage, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_voltage, LV_ALIGN_TOP_LEFT, 22, 56);
+struct RailStatus {
+  const char* text;
+  const char* note;
+  uint32_t color;
+};
 
-  lbl_main_ch1_current = lv_label_create(panel_v);
-  lv_label_set_text(lbl_main_ch1_current, "A -.---");
-  lv_obj_set_style_text_color(lbl_main_ch1_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch1_current, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_current, LV_ALIGN_TOP_LEFT, 22, 110);
+// CH1 = fixed +5 V (legacy "v12" fields alias the 5 V rail); CH2 = fixed +3.3 V (extended frames only).
+RailData railData(int ch, const DisplayTelemetry& t, LinkState link) {
+  RailData d = {};
+  const bool frame = (link != LinkState::Unknown);
+  d.state_known = frame && t.has_extended;
+  if (ch == 0) {
+    d.have_reading = frame;
+    d.v_mV = t.last_v12_mV;
+    d.i_mA = t.last_i12_mA;
+    if (d.state_known) {
+      d.enabled = (t.status & 0x80u) != 0u;
+      if (t.protection_flags & 0x80u) d.trip_flags |= kTripOvp;
+      if (t.protection_flags & 0x40u) d.trip_flags |= kTripOcp;
+      if (t.protection_flags & 0x08u) d.trip_flags |= kTripOtp;
+    }
+    d.have_limit = setup_binding.have_ch1_limit;
+    d.limit_mA = setup_binding.ch1_limit_mA;
+  } else {
+    d.have_reading = frame && t.has_extended;
+    d.v_mV = t.last_v3v3_mV;
+    d.i_mA = t.last_i3v3_mA;
+    if (d.state_known) {
+      d.enabled = (t.status & 0x40u) != 0u;
+      if (t.protection_flags & 0x20u) d.trip_flags |= kTripOvp;
+      if (t.protection_flags & 0x10u) d.trip_flags |= kTripOcp;
+      if (t.protection_flags & 0x04u) d.trip_flags |= kTripOtp;
+    }
+    d.have_limit = setup_binding.have_ch2_limit;
+    d.limit_mA = setup_binding.ch2_limit_mA;
+  }
+  return d;
+}
 
-  lbl_main_ch1_power = lv_label_create(panel_v);
-  lv_label_set_text(lbl_main_ch1_power, "P --.--W   T --C   --");
-  lv_obj_set_style_text_color(lbl_main_ch1_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch1_power, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch1_power, LV_ALIGN_TOP_LEFT, 22, 136);
+// CC is never asserted: "AT LIMIT" only compares measured current with the host-confirmed limit.
+RailStatus railStatus(const RailData& d, LinkState link, char* note_buf, size_t note_len) {
+  if (link == LinkState::Unknown) return {"UNKNOWN", "No telemetry yet", UiTheme::kUnknown};
+  if (link == LinkState::Demo) return {"DEMO DATA", "Simulated - not hardware", UiTheme::kDemo};
+  if (link == LinkState::Stale) return {"NO DATA - STALE", "Last values shown dimmed", UiTheme::kAccentWarn};
+  if (!d.have_reading) return {"NO DATA", "Host frame has no data for this rail", UiTheme::kUnknown};
+  if (!d.state_known) return {"STATE UNKNOWN", "Legacy frame: no status byte", UiTheme::kUnknown};
+  if (d.trip_flags != 0u) {
+    snprintf(note_buf, note_len, "STM32 flags:%s%s%s",
+             (d.trip_flags & kTripOvp) ? " OVP" : "",
+             (d.trip_flags & kTripOcp) ? " OCP" : "",
+             (d.trip_flags & kTripOtp) ? " OTP" : "");
+    return {"TRIP", note_buf, UiTheme::kError};
+  }
+  if (!d.enabled) return {"OUTPUT OFF", "Output off or rail below min V", UiTheme::kUnknown};
+  if (!d.have_limit) return {"ON - LIMIT UNKNOWN", "No confirmed Iset yet", UiTheme::kUnknown};
+  if (d.limit_mA == 0u) return {"LIMIT 0.000 A", "Zero-limit meaning unverified", UiTheme::kAccentWarn};
+  if (d.i_mA >= static_cast<int32_t>(d.limit_mA)) {
+    return {"AT LIMIT", "I >= limit - CC not verified", UiTheme::kAccentWarn};
+  }
+  return {"ON - BELOW LIMIT", "CV/CC not verified (#77)", UiTheme::kAccentOk};
+}
 
-  bar_main_ch1_voltage = lv_bar_create(panel_v);
-  lv_obj_set_size(bar_main_ch1_voltage, 330, 20);
-  lv_obj_align(bar_main_ch1_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -8);
-  lv_bar_set_range(bar_main_ch1_voltage, 0, 1000);
-  lv_bar_set_value(bar_main_ch1_voltage, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar_main_ch1_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar_main_ch1_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(bar_main_ch1_voltage, lv_color_hex(0xFFD95A), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(bar_main_ch1_voltage, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar_main_ch1_voltage, 4, LV_PART_INDICATOR);
+void refreshRailCard(RailCard& c, const RailData& d, LinkState link, bool main_layout) {
+  char note_buf[48];
+  const RailStatus st = railStatus(d, link, note_buf, sizeof(note_buf));
 
-  lv_obj_t* panel_i = lv_obj_create(screen_main);
-  lv_obj_set_size(panel_i, 368, 182);
-  lv_obj_align(panel_i, LV_ALIGN_TOP_LEFT, 18, 254);
-  lv_obj_set_style_bg_color(panel_i, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(panel_i, 16, LV_PART_MAIN);
-  lv_obj_set_style_border_width(panel_i, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(panel_i, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  char v[16], i[16], p[16];
+  if (d.have_reading) {
+    const float volts = d.v_mV / 1000.0f;
+    const float amps = d.i_mA / 1000.0f;
+    snprintf(v, sizeof(v), "%.2f", volts);
+    snprintf(i, sizeof(i), "%.3f", amps);
+    snprintf(p, sizeof(p), "%.2f", volts * amps);
+  } else {
+    strcpy(v, "---");
+    strcpy(i, "---");
+    strcpy(p, "---");
+  }
+  setLabel(c.num[0], v);
+  setLabel(c.num[1], i);
+  setLabel(c.num[2], p);
 
-  lv_obj_t* hdr_i = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i, "CH2  +3.3V AUX");
-  lv_obj_set_style_text_color(hdr_i, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_i, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(hdr_i, LV_ALIGN_TOP_LEFT, 18, 16);
+  lv_opa_t opa = LV_OPA_COVER;
+  if (link == LinkState::Stale) opa = LV_OPA_50;
+  else if (!d.have_reading || (link == LinkState::Live && d.state_known && !d.enabled)) opa = LV_OPA_60;
+  for (int k = 0; k < 3; ++k) setTextOpa(c.row[k], opa);
 
-  lv_obj_t* hdr_i_set = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i_set, "SET 3.30V / 2.00A");
-  lv_obj_set_style_text_color(hdr_i_set, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_i_set, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_i_set, LV_ALIGN_TOP_RIGHT, -16, 18);
+  setChip(c.status, st.text, st.color);
+  setLabel(c.note, st.note);
 
-  lv_obj_t* hdr_i_meas = lv_label_create(panel_i);
-  lv_label_set_text(hdr_i_meas, "V OUT");
-  lv_obj_set_style_text_color(hdr_i_meas, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(hdr_i_meas, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(hdr_i_meas, LV_ALIGN_TOP_LEFT, 22, 44);
+  if (!main_layout) return;
+  setHidden(c.demo_tag.box, link != LinkState::Demo);
+  char lim[16];
+  if (d.have_limit) snprintf(lim, sizeof(lim), "%.3f A", d.limit_mA / 1000.0f);
+  else strcpy(lim, "-.--- A");
+  setLabel(c.limit_val, lim);
+  setTextOpa(c.limit_val, (link == LinkState::Stale || !d.have_limit) ? LV_OPA_50 : LV_OPA_COVER);
+  setHidden(c.limit_chip.box, d.have_limit);
+}
 
-  lbl_main_ch2_voltage = lv_label_create(panel_i);
-  lv_label_set_text(lbl_main_ch2_voltage, "-.--- V");
-  lv_obj_set_style_text_color(lbl_main_ch2_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch2_voltage, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_ch2_voltage, 330);
-  lv_obj_set_style_text_align(lbl_main_ch2_voltage, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch2_voltage, LV_ALIGN_TOP_LEFT, 22, 56);
+void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_t age_ms) {
+  char buf[32];
+  switch (link) {
+    case LinkState::Live:
+      setChip(b.link, "LIVE", UiTheme::kAccentOk);
+      break;
+    case LinkState::Stale:
+      snprintf(buf, sizeof(buf), "STALE %lu s", static_cast<unsigned long>(age_ms / 1000UL));
+      setChip(b.link, buf, UiTheme::kAccentWarn);
+      break;
+    case LinkState::Demo:
+      setChip(b.link, "DEMO DATA", UiTheme::kDemo);
+      break;
+    default:
+      setChip(b.link, "UNKNOWN", UiTheme::kUnknown);
+      break;
+  }
 
-  lbl_main_ch2_current = lv_label_create(panel_i);
-  lv_label_set_text(lbl_main_ch2_current, "A -.---");
-  lv_obj_set_style_text_color(lbl_main_ch2_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch2_current, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch2_current, LV_ALIGN_TOP_LEFT, 22, 110);
+  // Output state comes from the extended telemetry status byte; it is never inferred from current.
+  const bool have_state = t.has_extended && link != LinkState::Unknown;
+  const bool on = have_state && (t.status & kStatusEnabledAny) != 0u;
+  const char* main_txt = "OUTPUT ?";
+  const char* sub_txt = "CH1 + CH2 (shared)";
+  uint8_t style = 0;  // 0 disabled, 1 pending, 2 on, 3 off
+  bool clickable = false;
+  if (out_cmd.pending) {
+    main_txt = on ? "OUTPUT ON" : "OUTPUT OFF";
+    sub_txt = "sent - waiting";
+    style = 1;
+  } else if (link == LinkState::Demo) {
+    main_txt = "OUTPUT (DEMO)";
+    sub_txt = "demo - no control";
+  } else if (link == LinkState::Unknown) {
+    sub_txt = "no link - no control";
+  } else if (link == LinkState::Stale) {
+    main_txt = have_state ? (on ? "OUTPUT ON ?" : "OUTPUT OFF ?") : "OUTPUT ?";
+    sub_txt = "stale - no control";
+  } else if (!have_state) {
+    sub_txt = "state unknown";
+  } else {
+    main_txt = on ? "OUTPUT ON" : "OUTPUT OFF";
+    style = on ? 2 : 3;
+    clickable = true;
+  }
+  setLabel(b.out_main, main_txt);
+  setLabel(b.out_sub, sub_txt);
+  if (b.out_mode != style) {
+    b.out_mode = style;
+    uint32_t bg = UiTheme::kPanelSoft;
+    uint32_t border = UiTheme::kBorder;
+    uint32_t text = UiTheme::kTextPrimary;
+    if (style == 0) text = UiTheme::kUnknown;
+    if (style == 1) border = UiTheme::kAccentWarn;
+    if (style == 2) {
+      border = UiTheme::kAccentOk;
+      bg = 0x1E4A33;
+    }
+    if (style == 3) border = UiTheme::kTextMuted;
+    lv_obj_set_style_bg_color(b.out_btn, lv_color_hex(bg), LV_PART_MAIN);
+    lv_obj_set_style_border_color(b.out_btn, lv_color_hex(border), LV_PART_MAIN);
+    lv_obj_set_style_text_color(b.out_main, lv_color_hex(text), LV_PART_MAIN);
+  }
+  if (clickable == lv_obj_has_state(b.out_btn, LV_STATE_DISABLED)) {
+    if (clickable) lv_obj_clear_state(b.out_btn, LV_STATE_DISABLED);
+    else lv_obj_add_state(b.out_btn, LV_STATE_DISABLED);
+  }
 
-  lbl_main_ch2_power = lv_label_create(panel_i);
-  lv_label_set_text(lbl_main_ch2_power, "P --.--W   LINK --");
-  lv_obj_set_style_text_color(lbl_main_ch2_power, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_ch2_power, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_align(lbl_main_ch2_power, LV_ALIGN_TOP_LEFT, 22, 136);
+  char tb[32];
+  if (have_state) snprintf(tb, sizeof(tb), "UNIT TEMP %u C", static_cast<unsigned>(t.last_temp_C));
+  else strcpy(tb, "UNIT TEMP -- C");
+  setLabel(b.temp, tb);
+  setTextOpa(b.temp, link == LinkState::Stale ? LV_OPA_50 : LV_OPA_COVER);
 
-  bar_main_ch2_voltage = lv_bar_create(panel_i);
-  lv_obj_set_size(bar_main_ch2_voltage, 330, 20);
-  lv_obj_align(bar_main_ch2_voltage, LV_ALIGN_BOTTOM_LEFT, 18, -8);
-  lv_bar_set_range(bar_main_ch2_voltage, 0, 1000);
-  lv_bar_set_value(bar_main_ch2_voltage, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar_main_ch2_voltage, lv_color_hex(0x1A2735), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar_main_ch2_voltage, lv_color_hex(UiTheme::kAccentI), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(bar_main_ch2_voltage, lv_color_hex(0x73C8FF), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(bar_main_ch2_voltage, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar_main_ch2_voltage, 4, LV_PART_INDICATOR);
+  if (dash_notice.active) {
+    setLabel(b.notice, dash_notice.text);
+    lv_obj_set_style_border_color(b.notice, lv_color_hex(dash_notice.color), LV_PART_MAIN);
+    lv_obj_set_style_text_color(b.notice, lv_color_hex(dash_notice.color), LV_PART_MAIN);
+  }
+  setHidden(b.notice, !dash_notice.active);
+}
 
-  lv_obj_t* panel_meta = lv_obj_create(screen_main);
-  lv_obj_set_size(panel_meta, 390, 366);
-  lv_obj_align(panel_meta, LV_ALIGN_TOP_RIGHT, -18, 68);
-  lv_obj_set_style_bg_color(panel_meta, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
-  lv_obj_set_style_radius(panel_meta, 16, LV_PART_MAIN);
-  lv_obj_set_style_border_width(panel_meta, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(panel_meta, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+// Shared OUTPUT command bookkeeping: a failure or missing ACK is shown; success is only claimed by telemetry.
+void serviceOutputCommand(uint32_t now_ms) {
+  if (!out_cmd.pending) return;
+  const auto c = disp_link_slave::commandSnapshot();
+  if (c.err_count != out_cmd.err_at_send) {
+    out_cmd.pending = false;
+    char msg[80];
+    snprintf(msg, sizeof(msg), "OUTPUT ERR: %.60s", c.last_err[0] ? c.last_err : "(no text)");
+    postNotice(msg, UiTheme::kError, now_ms);
+  } else if (c.ack_count != out_cmd.ack_at_send && strncmp(c.last_ack, "OUTPUT", 6) == 0) {
+    out_cmd.pending = false;
+  } else if ((now_ms - out_cmd.sent_ms) > kOutputAckTimeoutMs) {
+    out_cmd.pending = false;
+    postNotice("OUTPUT: no ACK from host - state unconfirmed", UiTheme::kAccentWarn, now_ms);
+  }
+}
 
-  lv_obj_t* panel_meta_hdr = lv_label_create(panel_meta);
-  lv_label_set_text(panel_meta_hdr, "SET / STATUS");
-  lv_obj_set_style_text_color(panel_meta_hdr, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(panel_meta_hdr, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(panel_meta_hdr, LV_ALIGN_TOP_LEFT, 16, 16);
+// Host-confirmed limits come only from GET ILIM / ILIM ACK+EVT; ask for any that are still missing.
+void requestMissingLimits(LinkState link, uint32_t now_ms) {
+  static uint32_t last_req_ms = 0;
+  if (link != LinkState::Live) return;
+  if (setup_binding.have_ch1_limit && setup_binding.have_ch2_limit) return;
+  if ((now_ms - last_req_ms) < kLimitGetRetryMs) return;
+  last_req_ms = now_ms;
+  disp_link_slave::sendCommand(!setup_binding.have_ch1_limit ? "GET ILIM CH1" : "GET ILIM CH2");
+}
 
-  lbl_main_stats = lv_label_create(panel_meta);
-  lv_label_set_text(lbl_main_stats,
-                    "CH1 SET   5.00V / 3.00A\n"
-                    "CH2 SET   3.30V / 2.00A\n"
-                    "TEMP      --C   UBYTES 0\n"
-                    "LINK      WAIT   SEQ 0\n"
-                    "FRAMES    0 RX / 0 SRC\n"
-                    "ERRORS    0\n"
-                    "UPTIME    00:00:00");
-  lv_obj_set_style_text_color(lbl_main_stats, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_main_stats, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_set_width(lbl_main_stats, 250);
-  lv_obj_align(lbl_main_stats, LV_ALIGN_TOP_LEFT, 16, 56);
+void applyDetailChannelStyle(int ch) {
+  const RailSpec& r = kRails[ch];
+  lv_obj_set_style_border_color(detail_card.panel, lv_color_hex(r.color), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(detail_card.panel, lv_color_hex(r.tint), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(detail_card.accent, lv_color_hex(r.color), LV_PART_MAIN);
+  lv_obj_set_style_border_color(detail_graph_panel, lv_color_hex(r.color), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(detail_graph_accent, lv_color_hex(r.color), LV_PART_MAIN);
+  setLabel(detail_card.ch_chip.lbl, r.name);
+  fillChip(detail_card.ch_chip, r.color);
+  setLabel(detail_top_chip.lbl, r.name);
+  fillChip(detail_top_chip, r.color);
 
-  lv_obj_t* panel_meta_sub = lv_label_create(panel_meta);
-  lv_label_set_text(panel_meta_sub, "COMMERCIAL-LAYOUT TRANSITION");
-  lv_obj_set_style_text_color(panel_meta_sub, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-  lv_obj_set_style_text_font(panel_meta_sub, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(panel_meta_sub, LV_ALIGN_TOP_LEFT, 16, 34);
+  char buf[24];
+  snprintf(buf, sizeof(buf), "FIXED %s", r.nominal_short);
+  setLabel(detail_fixed_lbl, buf);
+  setLabel(detail_fixed_val, r.nominal_full);
+  for (int j = 0; j < 5; ++j) {
+    snprintf(buf, sizeof(buf), "%.1f", (r.v_axis_mV / 1000.0f) * (4 - j) / 4.0f);
+    setLabel(detail_axis_v[j], buf);
+    snprintf(buf, sizeof(buf), "%.2f", (r.i_axis_mA / 1000.0f) * (4 - j) / 4.0f);
+    setLabel(detail_axis_i[j], buf);
+  }
+  lv_chart_set_range(detail_chart, LV_CHART_AXIS_PRIMARY_Y, 0, r.v_axis_mV);
+  lv_chart_set_range(detail_chart, LV_CHART_AXIS_SECONDARY_Y, 0, r.i_axis_mA);
+}
 
-  lv_obj_t* chip_col = lv_obj_create(panel_meta);
-  lv_obj_set_size(chip_col, 92, 250);
-  lv_obj_align(chip_col, LV_ALIGN_TOP_RIGHT, -12, 50);
-  lv_obj_set_style_bg_opa(chip_col, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(chip_col, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(chip_col, 0, LV_PART_MAIN);
-  lv_obj_clear_flag(chip_col, LV_OBJ_FLAG_SCROLLABLE);
+// Both traces come from the selected rail's samples; live and demo samples are never mixed.
+void rebuildDetailChart(int ch, const RailData& d) {
+  lv_chart_set_all_value(detail_chart, detail_ser_v, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(detail_chart, detail_ser_i, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(detail_chart, detail_ser_lim, d.have_limit ? static_cast<lv_coord_t>(d.limit_mA) : LV_CHART_POINT_NONE);
 
-  chip_main_ok = create_state_chip(chip_col, "OK", 0x193425, UiTheme::kAccentOk, 0);
-  chip_main_mode = create_state_chip(chip_col, "M1", 0x24364A, UiTheme::kAccentI, 52);
-  chip_main_limit = create_state_chip(chip_col, "CV", 0x1F3A27, UiTheme::kAccentOk, 104);
-  chip_main_run = create_state_chip(chip_col, "RUN", 0x1F3A27, UiTheme::kAccentOk, 156);
-  lv_obj_t* chip_main_run_container = lv_obj_get_parent(chip_main_run);
-  lv_obj_add_flag(chip_main_run_container, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(chip_main_run_container, main_output_toggle_event_cb, LV_EVENT_CLICKED, nullptr);
+  detail_plotted = 0;
+  uint32_t newest_ms = 0;
+  uint32_t oldest_ms = 0;
+  for (size_t k = 0; k < trend_count && k < kDetailChartPoints; ++k) {
+    const TrendSample& s = trendAt(trend_count - 1 - k);
+    if (s.demo != demo_mode) break;
+    if (ch == 1 && !s.has_ch2) continue;
+    const uint16_t idx = static_cast<uint16_t>(kDetailChartPoints - 1 - k);
+    lv_chart_set_value_by_id(detail_chart, detail_ser_v, idx,
+                             static_cast<lv_coord_t>(ch == 0 ? s.v12_mV : s.v3v3_mV));
+    lv_chart_set_value_by_id(detail_chart, detail_ser_i, idx,
+                             static_cast<lv_coord_t>(ch == 0 ? s.i12_mA : s.i3v3_mA));
+    if (detail_plotted == 0) newest_ms = s.t_ms;
+    oldest_ms = s.t_ms;
+    ++detail_plotted;
+  }
+  lv_chart_refresh(detail_chart);
 
-  lv_obj_t* footer = lv_label_create(panel_meta);
-  lv_label_set_text(footer, "Fixed-rail live summary");
-  lv_obj_set_style_text_color(footer, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-  lv_obj_set_style_text_font(footer, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 16, -16);
+  char wbuf[48];
+  if (detail_plotted == 0) {
+    strcpy(wbuf, "no samples for this rail yet");
+  } else {
+    snprintf(wbuf, sizeof(wbuf), "last %lu s, %u samples",
+             static_cast<unsigned long>((newest_ms - oldest_ms) / 1000UL),
+             static_cast<unsigned>(detail_plotted));
+  }
+  setLabel(detail_window_lbl, wbuf);
+}
 
-  lv_obj_t* fault_row = lv_obj_create(screen_main);
-  lv_obj_set_size(fault_row, kDisplayWidth - 36, 34);
-  lv_obj_align(fault_row, LV_ALIGN_BOTTOM_MID, 0, -8);
-  lv_obj_set_style_bg_color(fault_row, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
-  lv_obj_set_style_radius(fault_row, 9, LV_PART_MAIN);
-  lv_obj_set_style_border_width(fault_row, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(fault_row, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+void refreshDetail(const DisplayTelemetry& t, LinkState link, uint32_t age_ms,
+                   const RailData* d, uint32_t now_ms) {
+  const int ch = detail_channel;
+  if (detail_styled_channel != static_cast<int8_t>(ch)) {
+    applyDetailChannelStyle(ch);
+    detail_styled_channel = static_cast<int8_t>(ch);
+    detail_chart_dirty = true;
+  }
+  refreshTopBar(detail_bar, t, link, age_ms);
+  refreshRailCard(detail_card, d[ch], link, false);
 
-  lbl_fault_main = lv_label_create(fault_row);
-  lv_label_set_text(lbl_fault_main, "OVP OK   OCP OK   OTP OK   SCP OK   LIM CV");
-  lv_obj_set_style_text_color(lbl_fault_main, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_fault_main, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_center(lbl_fault_main);
+  char lim[16];
+  if (d[ch].have_limit) snprintf(lim, sizeof(lim), "%.3f A", d[ch].limit_mA / 1000.0f);
+  else strcpy(lim, "-.--- A");
+  setLabel(detail_iset_val, lim);
+  setTextOpa(detail_iset_val, (link == LinkState::Stale || !d[ch].have_limit) ? LV_OPA_50 : LV_OPA_COVER);
+  if (d[ch].have_limit) setChip(detail_iset_chip, "CONFIRMED", UiTheme::kAccentOk);
+  else setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
+
+  static int32_t last_limit_key = -2;
+  static bool last_demo = false;
+  const int32_t limit_key = d[ch].have_limit ? static_cast<int32_t>(d[ch].limit_mA) : -1;
+  const bool changed = detail_chart_dirty || trend_head != detail_last_trend_head ||
+                       trend_count != detail_last_trend_count || limit_key != last_limit_key ||
+                       demo_mode != last_demo;
+  if (changed && (detail_chart_dirty || (now_ms - detail_last_chart_ms) >= kDetailUiUpdateMinMs)) {
+    rebuildDetailChart(ch, d[ch]);
+    detail_chart_dirty = false;
+    detail_last_chart_ms = now_ms;
+    detail_last_trend_head = trend_head;
+    detail_last_trend_count = trend_count;
+    last_limit_key = limit_key;
+    last_demo = demo_mode;
+  }
+
+  char title[40];
+  snprintf(title, sizeof(title), "%s TREND%s", kRails[ch].name, link == LinkState::Demo ? "  DEMO DATA" : "");
+  setLabel(detail_graph_title, title);
+
+  const char* note = nullptr;
+  uint32_t note_color = UiTheme::kUnknown;
+  if (link == LinkState::Unknown) {
+    note = "NO DATA";
+  } else if (link == LinkState::Demo) {
+    note = "DEMO DATA - SIMULATED";
+    note_color = UiTheme::kDemo;
+  } else if (!d[ch].have_reading) {
+    note = "NO CH2 DATA (legacy frame)";
+  } else if (link == LinkState::Stale) {
+    note = "STALE - no new samples";
+    note_color = UiTheme::kAccentWarn;
+  } else if (detail_plotted == 0) {
+    note = "NO SAMPLES YET";
+  }
+  if (note) {
+    setLabel(detail_graph_note, note);
+    lv_obj_set_style_text_color(detail_graph_note, lv_color_hex(note_color), LV_PART_MAIN);
+  }
+  setHidden(detail_graph_note, note == nullptr);
+}
+
+void refreshDashboard(bool force) {
+  if (active_screen != UiScreen::Main && active_screen != UiScreen::Detail) return;
+  if (!screen_main || !screen_detail) return;
+
+  static uint32_t last_refresh_ms = 0;
+  const uint32_t now_ms = millis();
+  if (!force && (now_ms - last_refresh_ms) < kDashboardRefreshMs) return;
+  last_refresh_ms = now_ms;
+
+  const DisplayTelemetry t = get_display_telemetry();
+  uint32_t age_ms = 0;
+  const LinkState link = linkStateOf(t, now_ms, &age_ms);
+  serviceOutputCommand(now_ms);
+  requestMissingLimits(link, now_ms);
+  if (dash_notice.active && now_ms > dash_notice.until_ms) dash_notice.active = false;
+
+  const RailData d[2] = {railData(0, t, link), railData(1, t, link)};
+  if (active_screen == UiScreen::Main) {
+    refreshTopBar(main_bar, t, link, age_ms);
+    refreshRailCard(main_card[0], d[0], link, true);
+    refreshRailCard(main_card[1], d[1], link, true);
+  } else {
+    refreshDetail(t, link, age_ms, d, now_ms);
+  }
 }
 
 void create_graph_screen(lv_obj_t* root) {
@@ -1882,6 +2501,7 @@ void create_dashboard() {
   create_splash_screen(scr);
   create_setup_screen(scr);
   create_main_screen(scr);
+  create_detail_screen(scr);
   create_graph_screen(scr);
   create_settings_screen(scr);
   set_active_screen(UiScreen::Splash);
@@ -1902,131 +2522,27 @@ void update_telemetry_labels() {
   last_drawn_count = t.rx_count;
   last_drawn_seq   = t.last_seq;
 
-    const uint16_t dv_mV = have_drawn_values
-      ? static_cast<uint16_t>(abs(static_cast<int>(t.last_v12_mV) - static_cast<int>(last_v12_drawn_mV)))
-      : 0;
-    const int16_t di_mA = have_drawn_values
-      ? static_cast<int16_t>(abs(static_cast<int>(t.last_i12_mA) - static_cast<int>(last_i12_drawn_mA)))
-      : 0;
-    const bool value_keepalive_due =
-        (kValueKeepaliveMs > 0) && ((now_ms - last_value_draw_ms) >= kValueKeepaliveMs);
-    const bool should_redraw_values = !have_drawn_values ||
-                    dv_mV >= kVoltageUpdateDeadband_mV ||
-                    di_mA >= kCurrentUpdateDeadband_mA ||
-                    value_keepalive_due;
-    if (should_redraw_values) {
-      char vbuf[32];
-      snprintf(vbuf, sizeof(vbuf), "%0.3f V", t.last_v12_mV / 1000.0f);
-      if (strcmp(vbuf, last_voltage_text) != 0) {
-        if (lbl_main_ch1_voltage) lv_label_set_text(lbl_main_ch1_voltage, vbuf);
-        if (lbl_graph_voltage) {
-          char v_graph[32];
-          snprintf(v_graph, sizeof(v_graph), "CH1 %05.2fV / %05.3fA",
-                   t.last_v12_mV / 1000.0f,
-                   t.last_i12_mA / 1000.0f);
-          lv_label_set_text(lbl_graph_voltage, v_graph);
-        }
-        strncpy(last_voltage_text, vbuf, sizeof(last_voltage_text) - 1);
-        last_voltage_text[sizeof(last_voltage_text) - 1] = '\0';
-      }
-
-      char ibuf[32];
-      snprintf(ibuf, sizeof(ibuf), "%0.3f", t.last_i12_mA / 1000.0f);
-      if (strcmp(ibuf, last_current_text) != 0) {
-        if (lbl_main_ch1_current) {
-          char i_main[40];
-          snprintf(i_main, sizeof(i_main), "A %s  SET %.3f", ibuf, kCh1SetCurrent_A);
-          lv_label_set_text(lbl_main_ch1_current, i_main);
-        }
-        if (lbl_graph_current) {
-          char i_graph[40];
-          snprintf(i_graph, sizeof(i_graph), "CH2 %05.2fV / %05.3fA",
-                   t.last_v3v3_mV / 1000.0f,
-                   t.last_i3v3_mA / 1000.0f);
-          lv_label_set_text(lbl_graph_current, i_graph);
-        }
-        strncpy(last_current_text, ibuf, sizeof(last_current_text) - 1);
-        last_current_text[sizeof(last_current_text) - 1] = '\0';
-      }
-
-      char v3buf[32];
-      snprintf(v3buf, sizeof(v3buf), "%0.3f V", t.last_v3v3_mV / 1000.0f);
-      if (strcmp(v3buf, last_ch2_voltage_text) != 0) {
-        if (lbl_main_ch2_voltage) lv_label_set_text(lbl_main_ch2_voltage, v3buf);
-        strncpy(last_ch2_voltage_text, v3buf, sizeof(last_ch2_voltage_text) - 1);
-        last_ch2_voltage_text[sizeof(last_ch2_voltage_text) - 1] = '\0';
-      }
-
-      char i3buf[32];
-      snprintf(i3buf, sizeof(i3buf), "%0.3f", t.last_i3v3_mA / 1000.0f);
-      if (strcmp(i3buf, last_ch2_current_text) != 0) {
-        if (lbl_main_ch2_current) {
-          char i3_main[40];
-          snprintf(i3_main, sizeof(i3_main), "A %s  SET %.3f", i3buf, kCh2SetCurrent_A);
-          lv_label_set_text(lbl_main_ch2_current, i3_main);
-        }
-        strncpy(last_ch2_current_text, i3buf, sizeof(last_ch2_current_text) - 1);
-        last_ch2_current_text[sizeof(last_ch2_current_text) - 1] = '\0';
-      }
-
-      const bool local_link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-      const bool ch1_cv = t.has_extended ? ((t.status & 0x20u) != 0u) : (t.last_i12_mA < 1500);
-
-      if (lbl_main_ch1_power) {
-        char p1buf[64];
-        snprintf(p1buf, sizeof(p1buf), "P %0.2f W   TEMP %uC   MODE %s",
-                 (t.last_v12_mV / 1000.0f) * (t.last_i12_mA / 1000.0f),
-                 static_cast<unsigned>(t.last_temp_C),
-                 ch1_cv ? "CV" : "CC");
-        lv_label_set_text(lbl_main_ch1_power, p1buf);
-      }
-      if (lbl_main_ch2_power) {
-        char p2buf[64];
-        snprintf(p2buf, sizeof(p2buf), "P %0.2f W   LINK %s",
-                 (t.last_v3v3_mV / 1000.0f) * (t.last_i3v3_mA / 1000.0f),
-                 demo_mode ? "DEMO" : (local_link_stale ? "STALE" : "LIVE"));
-        lv_label_set_text(lbl_main_ch2_power, p2buf);
-      }
-      last_v12_drawn_mV = t.last_v12_mV;
-      last_i12_drawn_mA = t.last_i12_mA;
-      last_value_draw_ms = now_ms;
-      have_drawn_values = true;
-    }
+  // Main and channel-detail screens are driven by refreshDashboard(); this updates the Graph screen only.
+  if (lbl_graph_voltage) {
+    char v_graph[32];
+    snprintf(v_graph, sizeof(v_graph), "CH1 %05.2fV / %05.3fA",
+             t.last_v12_mV / 1000.0f,
+             t.last_i12_mA / 1000.0f);
+    setLabel(lbl_graph_voltage, v_graph);
+  }
+  if (lbl_graph_current) {
+    char i_graph[40];
+    snprintf(i_graph, sizeof(i_graph), "CH2 %05.2fV / %05.3fA",
+             t.last_v3v3_mV / 1000.0f,
+             t.last_i3v3_mA / 1000.0f);
+    setLabel(lbl_graph_current, i_graph);
+  }
 
   if (kMinimalUiLabelsOnly) return;
 
   if (now_ms - last_detail_ui_update_ms < kDetailUiUpdateMinMs) return;
   last_detail_ui_update_ms = now_ms;
 
-  const unsigned long uptime_s = static_cast<unsigned long>(millis() / 1000UL);
-  const unsigned long uptime_h = uptime_s / 3600UL;
-  const unsigned long uptime_m = (uptime_s % 3600UL) / 60UL;
-  const unsigned long uptime_rem_s = uptime_s % 60UL;
-  char sbuf[192];
-  snprintf(sbuf, sizeof(sbuf),
-           "CH1 SET   %.2fV / %.2fA\n"
-           "CH2 SET   %.2fV / %.2fA\n"
-           "TEMP      %uC   UBYTES %lu\n"
-           "LINK      %s   SEQ %u\n"
-           "FRAMES    %lu RX / %lu SRC\n"
-           "ERRORS    %lu\n"
-           "UPTIME    %02lu:%02lu:%02lu",
-           kCh1SetVoltage_V,
-           kCh1SetCurrent_A,
-           kCh2SetVoltage_V,
-           kCh2SetCurrent_A,
-           static_cast<unsigned>(t.last_temp_C),
-           static_cast<unsigned long>(t.uart_bytes),
-           demo_mode ? "DEMO" : ((t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500) ? "STALE" : "LIVE"),
-           static_cast<unsigned>(t.last_seq),
-           static_cast<unsigned long>(t.rx_count),
-           static_cast<unsigned long>(t.i2c_rx_count),
-           static_cast<unsigned long>(t.err_count),
-           uptime_h,
-           uptime_m,
-           uptime_rem_s);
-  if (lbl_main_stats) lv_label_set_text(lbl_main_stats, sbuf);
-  
   if (lbl_graph_stats) {
     char gbuf[112];
     snprintf(gbuf, sizeof(gbuf), "samples=%lu rx=%lu src=%lu err=%lu uartB=%lu T=%uC",
@@ -2039,54 +2555,7 @@ void update_telemetry_labels() {
     lv_label_set_text(lbl_graph_stats, gbuf);
   }
 
-  if (lbl_status_link) {
-    if (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500)) {
-      lv_label_set_text(lbl_status_link, "LINK STALE");
-      lv_obj_set_style_text_color(lbl_status_link, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-    } else if (demo_mode) {
-      lv_label_set_text(lbl_status_link, "DEMO");
-      lv_obj_set_style_text_color(lbl_status_link, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-    } else {
-      lv_label_set_text(lbl_status_link, "LINK OK");
-      lv_obj_set_style_text_color(lbl_status_link, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-    }
-  }
-
-  if (lbl_status_seq) {
-    char qbuf[32];
-    snprintf(qbuf, sizeof(qbuf), "SEQ %u", static_cast<unsigned>(t.last_seq));
-    lv_label_set_text(lbl_status_seq, qbuf);
-  }
-
-  if (lbl_status_mode) {
-    const bool ch1_cv = t.has_extended ? ((t.status & 0x20u) != 0u) : (t.last_i12_mA < 1500);
-    if (!ch1_cv) {
-      lv_label_set_text(lbl_status_mode, "CC");
-      lv_obj_set_style_text_color(lbl_status_mode, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-    } else {
-      lv_label_set_text(lbl_status_mode, "CV");
-      lv_obj_set_style_text_color(lbl_status_mode, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-    }
-  }
-
-  if (lbl_status_output) {
-    const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-    const bool output_on = t.has_extended
-        ? ((t.status & 0x80u) != 0u)
-        : (t.last_i12_mA >= kOutputOnThreshold_mA);
-    if (link_stale) {
-      lv_label_set_text(lbl_status_output, "OUTPUT ??");
-      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kAccentWarn), LV_PART_MAIN);
-    } else if (output_on) {
-      lv_label_set_text(lbl_status_output, "OUTPUT ON");
-      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
-    } else {
-      lv_label_set_text(lbl_status_output, "OUTPUT OFF");
-      lv_obj_set_style_text_color(lbl_status_output, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-    }
-  }
-
-  if (lbl_fault_main || lbl_fault_graph) {
+  if (lbl_fault_graph) {
     const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
     const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
     const bool ch1_ovp = t.has_extended ? ((t.protection_flags & 0x80u) != 0u) : false;
@@ -2107,40 +2576,19 @@ void update_telemetry_labels() {
              cc_mode ? "CC" : "CV",
              thermal_warn ? "   THERM WARN" : "",
              link_stale ? "   COMM WARN" : "");
-    if (lbl_fault_main) {
-      lv_label_set_text(lbl_fault_main, fbuf);
-      lv_obj_set_style_text_color(lbl_fault_main,
-                                  link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                  LV_PART_MAIN);
-    }
-    if (lbl_fault_graph) {
-      lv_label_set_text(lbl_fault_graph, fbuf);
-      lv_obj_set_style_text_color(lbl_fault_graph,
-                                  link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                  LV_PART_MAIN);
-    }
+    lv_label_set_text(lbl_fault_graph, fbuf);
+    lv_obj_set_style_text_color(lbl_fault_graph,
+                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
+                                LV_PART_MAIN);
   }
 
   const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
   const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
 
-  if (chip_main_ok) {
-    lv_label_set_text(chip_main_ok, link_stale ? "WARN" : "OK");
-    lv_obj_set_style_text_color(chip_main_ok,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
   if (chip_graph_ok) {
     lv_label_set_text(chip_graph_ok, link_stale ? "WARN" : "OK");
     lv_obj_set_style_text_color(chip_graph_ok,
                                 link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-
-  if (chip_main_mode) {
-    lv_label_set_text(chip_main_mode, demo_mode ? "DEMO" : (t.has_extended ? "EXT" : "LEG"));
-    lv_obj_set_style_text_color(chip_main_mode,
-                                demo_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentI),
                                 LV_PART_MAIN);
   }
   if (chip_graph_mode) {
@@ -2149,25 +2597,10 @@ void update_telemetry_labels() {
                                 demo_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentI),
                                 LV_PART_MAIN);
   }
-
-  if (chip_main_limit) {
-    lv_label_set_text(chip_main_limit, cc_mode ? "CC" : "CV");
-    lv_obj_set_style_text_color(chip_main_limit,
-                                cc_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
   if (chip_graph_limit) {
     lv_label_set_text(chip_graph_limit, cc_mode ? "CC" : "CV");
     lv_obj_set_style_text_color(chip_graph_limit,
                                 cc_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-
-  if (chip_main_run) {
-    const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
-    lv_label_set_text(chip_main_run, (link_stale || !ch1_enabled) ? "WAIT" : "RUN");
-    lv_obj_set_style_text_color(chip_main_run,
-                                (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
                                 LV_PART_MAIN);
   }
   if (chip_graph_run) {
@@ -2176,21 +2609,6 @@ void update_telemetry_labels() {
     lv_obj_set_style_text_color(chip_graph_run,
                                 (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
                                 LV_PART_MAIN);
-  }
-
-  if (lbl_status_uptime) {
-    char ubuf[32];
-    snprintf(ubuf, sizeof(ubuf), "UP %lus", static_cast<unsigned long>(millis() / 1000UL));
-    lv_label_set_text(lbl_status_uptime, ubuf);
-  }
-
-  if (bar_main_ch1_voltage) {
-    const int32_t v_scaled = map_i32(static_cast<int32_t>(t.last_v12_mV), 4500, 5500, 0, 1000);
-    lv_bar_set_value(bar_main_ch1_voltage, static_cast<lv_coord_t>(v_scaled), LV_ANIM_OFF);
-  }
-  if (bar_main_ch2_voltage) {
-    const int32_t v3_scaled = map_i32(static_cast<int32_t>(t.last_v3v3_mV), 3000, 3600, 0, 1000);
-    lv_bar_set_value(bar_main_ch2_voltage, static_cast<lv_coord_t>(v3_scaled), LV_ANIM_OFF);
   }
 
   if (trend_count != last_drawn_samples) {
@@ -2397,7 +2815,7 @@ void handleCommand(const String& rawLine) {
   line.trim();
   if (line.isEmpty()) return;
   if (line.equalsIgnoreCase("HELP")) {
-    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, SETUP_ENC <ROT <n>|PRESS|LONG>, SETTINGS_ENC <ROT <n>|PRESS|LONG>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
+    Serial.println("Commands: HELP, PING, STATUS, RX, UDI_STATUS, UDI_OUTPUT <ON|OFF>, UDI_ILIM <CH1|CH2> <mA>, OTA, SCREEN <SPLASH|SETUP|MAIN|DETAIL1|DETAIL2|GRAPH|SETTINGS>, SPLASH <ON|OFF>, DEMO <ON|OFF>, TOUR <ON|OFF>, SETUP_ENC <ROT <n>|PRESS|LONG>, SETTINGS_ENC <ROT <n>|PRESS|LONG>, PROBE <pin> [ms], LOG_START, LOG_STOP, LOG_STATUS, LOG_CLEAR, LOG_DUMP_CSV [N]");
     return;
   }
   if (line.equalsIgnoreCase("PING"))         { Serial.println("PONG"); return; }
@@ -2440,7 +2858,13 @@ void handleCommand(const String& rawLine) {
       Serial.println("ACK SCREEN SETTINGS");
       return;
     }
-    Serial.println("ERR SCREEN: use SPLASH|SETUP|MAIN|GRAPH|SETTINGS");
+    if (arg.equalsIgnoreCase("DETAIL1") || arg.equalsIgnoreCase("DETAIL2")) {
+      detail_channel = arg.endsWith("2") ? 1u : 0u;
+      set_active_screen(UiScreen::Detail);
+      Serial.printf("ACK SCREEN DETAIL%u\n", static_cast<unsigned>(detail_channel + 1u));
+      return;
+    }
+    Serial.println("ERR SCREEN: use SPLASH|SETUP|MAIN|DETAIL1|DETAIL2|GRAPH|SETTINGS");
     return;
   }
   if (line.startsWith("SPLASH") || line.startsWith("splash")) {
@@ -2742,6 +3166,9 @@ void loop() {
         sampled.last_seq = t.last_seq;
         sampled.last_v12_mV = t.last_v12_mV;
         sampled.last_i12_mA = t.last_i12_mA;
+        sampled.last_v3v3_mV = t.last_v3v3_mV;
+        sampled.last_i3v3_mA = t.last_i3v3_mA;
+        sampled.has_extended = t.has_extended;
         sampled.last_rx_ms = t.last_rx_ms;
         sampled.uart_bytes = t.uart_bytes;
         last_trend_rx_count = t.rx_count;
@@ -2750,7 +3177,8 @@ void loop() {
     }
   }
 
-  update_telemetry_labels();  // updates LVGL labels if telemetry changed
+  update_telemetry_labels();  // Graph-screen labels; only changes when a new frame arrives
+  refreshDashboard(false);    // Main/Detail: link state, limits, and readings every cycle
 
   // Boot sequence: Splash → Setup (30s timeout) → Main
   if (!splash_done && (now - splash_start_ms) >= kSplashDurationMs) {
