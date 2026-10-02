@@ -1,0 +1,41 @@
+# Capture start 2026-09-27T03:46:14 COM7
+>>> HELP
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+>>> FTEST
+flash: manual test run #2
+flash: begin bring-up test
+flash: JEDEC ID mfg=0xEF type=0x40 cap=0x18
+flash: SR1 before=0x00
+flash: erase/program/readback PASS
+>>> FTEST ON
+cmd: unknown 'FTEST ON'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+>>> FTEST OFF
+cmd: unknown 'FTEST OFF'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+>>> AWPROBE
+aw95xx: candidate ACK at 0x58
+>>> AWMODE
+aw95xx: forced GPIO + push-pull mode
+awmode gcr=0x10(pp) c0=0xC0 c1=0xFE m0=0xFF m1=0xFF
+>>> AW?
+cmd: unknown 'AW?'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+>>> SIMFAIL
+cmd: unknown 'SIMFAIL'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+st f=PASS aw=PASS aht=PASS Vin=11.400 Iin=106.67 T=26.30 RH=49.99 n=2
+>>> SIMFAIL ALL ON
+cmd: unknown 'SIMFAIL ALL ON'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+>>> SIMFAIL ALL OFF
+cmd: unknown 'SIMFAIL ALL OFF'
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+# Capture end 2026-09-27T03:46:34
