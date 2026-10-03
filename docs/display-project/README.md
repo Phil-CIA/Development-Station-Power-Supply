@@ -27,6 +27,11 @@ vertical voltage/current/power readouts and no Energy or Input panels.
 Tapping a card opens that channel's detail view: readings on the left,
 its V/I graph on the right, and a touch action back to Main.
 
+The Graph screen is being rebuilt as a Yokogawa GX-style strip recorder; see
+[strip-recorder-graph-spec.md](strip-recorder-graph-spec.md) for the plan,
+hardware-feasibility tradeoffs, and the D5a–D5d bucket breakdown (supersedes
+the prior single D5 scope line).
+
 The [screen tracker](crowpanel-screens-tracker.md) contains the issue/PR
 sequence, reference-photo approval gate, and copy-paste VS Code Copilot
 session instructions. The [IPS3608 reference](../IPS3608_REFERENCE_MANUAL_KEY_SPECS.md)
