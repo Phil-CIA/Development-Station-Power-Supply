@@ -251,7 +251,7 @@ static lv_obj_t* lbl_graph_window_v = nullptr;
 static lv_obj_t* lbl_graph_window_i = nullptr;
 static lv_obj_t* lbl_graph_axis_v[5] = {};
 static lv_obj_t* lbl_graph_axis_i[5] = {};
-static lv_obj_t* lbl_graph_time[3] = {};
+static lv_obj_t* lbl_graph_time[7] = {};
 
 static lv_obj_t* lbl_splash_hint = nullptr;
 static lv_obj_t* lbl_fault_graph = nullptr;
@@ -2482,7 +2482,8 @@ lv_obj_t* createGraphChart(int y, int32_t y_min, int32_t y_max) {
   lv_chart_set_type(c, LV_CHART_TYPE_LINE);
   lv_chart_set_update_mode(c, LV_CHART_UPDATE_MODE_SHIFT);
   lv_chart_set_point_count(c, kChartPoints);
-  lv_chart_set_div_line_count(c, 3, 3);
+  // lv_chart skips the two border positions, so N divs draw N-2 interior lines: 3 horizontal, 5 vertical.
+  lv_chart_set_div_line_count(c, 5, 7);
   lv_chart_set_range(c, LV_CHART_AXIS_PRIMARY_Y, y_min, y_max);
   return c;
 }
@@ -2539,11 +2540,14 @@ void create_graph_screen(lv_obj_t* root) {
               &lv_font_montserrat_12, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
   }
 
-  lbl_graph_time[0] = makeLabel(screen_graph, kGraphChartX, 394, 120, 16, "--", &lv_font_montserrat_12, UiTheme::kTextMuted);
-  lbl_graph_time[1] = makeLabel(screen_graph, kGraphChartX + kGraphChartW / 2 - 60, 394, 120, 16, "--",
-                                &lv_font_montserrat_12, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
-  lbl_graph_time[2] = makeLabel(screen_graph, kGraphChartX + kGraphChartW - 120, 394, 120, 16, "now",
-                                &lv_font_montserrat_12, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+  // One label per major vertical grid line (6 columns); times are CrowPanel uptime until a real clock exists (#82).
+  for (int k = 0; k < 7; ++k) {
+    const int cx = kGraphChartX + k * kGraphChartW / 6;
+    const int x = (k == 0) ? kGraphChartX : (k == 6) ? kGraphChartX + kGraphChartW - 70 : cx - 35;
+    const lv_text_align_t al = (k == 0) ? LV_TEXT_ALIGN_LEFT : (k == 6) ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_CENTER;
+    lbl_graph_time[k] = makeLabel(screen_graph, x, 394, 70, 16, "--:--:--", &lv_font_montserrat_12, UiTheme::kTextMuted, al);
+  }
+  makeLabel(screen_graph, kGraphChartX + kGraphChartW + 12, 394, 74, 16, "UPTIME", &lv_font_montserrat_12, UiTheme::kTextMuted);
 
   lbl_window = lv_label_create(screen_graph);
   lv_label_set_text(lbl_window, "win: waiting for samples");
@@ -2717,12 +2721,13 @@ void update_telemetry_labels() {
 
     // Plotted window = measured sample spacing x decimation x (points - 1).
     const size_t span = trend_count < 100 ? trend_count : 100;
-    uint32_t window_s = 0;
+    uint32_t window_ms = 0;
     if (span >= 2) {
       const uint32_t dt_ms = trendAt(trend_count - 1).t_ms - trendAt(trend_count - span).t_ms;
-      window_s = static_cast<uint32_t>(
-          (static_cast<uint64_t>(dt_ms) * kChartDecimation * (kChartPoints - 1) / (span - 1) + 500) / 1000);
+      window_ms = static_cast<uint32_t>(
+          static_cast<uint64_t>(dt_ms) * kChartDecimation * (kChartPoints - 1) / (span - 1));
     }
+    const uint32_t window_s = (window_ms + 500) / 1000;
 
     char wbuf[128];
     if (!stats.has_data) {
@@ -2750,12 +2755,21 @@ void update_telemetry_labels() {
     }
     if (lbl_window) lv_label_set_text(lbl_window, wbuf);
 
-    if (span >= 2 && lbl_graph_time[0] && lbl_graph_time[1]) {
-      char tbuf[16];
-      snprintf(tbuf, sizeof(tbuf), "-%lus", static_cast<unsigned long>(window_s));
-      setLabel(lbl_graph_time[0], tbuf);
-      snprintf(tbuf, sizeof(tbuf), "-%lus", static_cast<unsigned long>(window_s / 2));
-      setLabel(lbl_graph_time[1], tbuf);
+    if (span >= 2) {
+      // Grid line k sits k/6 of the way across the plotted window; blank where it predates boot.
+      const uint32_t newest_ms = trendAt(trend_count - 1).t_ms;
+      for (int k = 0; k < 7; ++k) {
+        const uint32_t back_ms = static_cast<uint32_t>(static_cast<uint64_t>(window_ms) * (6 - k) / 6);
+        char tbuf[16];
+        if (back_ms > newest_ms) {
+          strcpy(tbuf, "--:--:--");
+        } else {
+          const uint32_t s = (newest_ms - back_ms) / 1000UL;
+          snprintf(tbuf, sizeof(tbuf), "%lu:%02lu:%02lu", static_cast<unsigned long>(s / 3600UL),
+                   static_cast<unsigned long>((s / 60UL) % 60UL), static_cast<unsigned long>(s % 60UL));
+        }
+        setLabel(lbl_graph_time[k], tbuf);
+      }
     }
   }
 }
