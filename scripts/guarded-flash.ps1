@@ -151,18 +151,19 @@ function Get-PortMac {
     Write-PrecheckFailure "esptool executable not found at $($script:EsptoolExe)"
   }
 
-  $probe = Invoke-Esptool -Port $Port -CommandName "read-mac"
-  $probeText = $probe.Text
-  if ($probe.ExitCode -ne 0) {
-    return ""
+  # The preceding chip-id probe resets the board; the first read-mac can fail while it re-enumerates.
+  $macPattern = 'MAC:\s+([0-9A-Fa-f:]{17,23})'
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Start-Sleep -Seconds 2
+    $probe = Invoke-Esptool -Port $Port -CommandName "read-mac"
+    if ($probe.ExitCode -ne 0) { continue }
+    $macMatch = [regex]::Match($probe.Text, $macPattern)
+    if ($macMatch.Success) {
+      return $macMatch.Groups[1].Value.Trim().ToUpperInvariant()
+    }
   }
 
-  $macMatch = [regex]::Match($probeText, 'MAC:\s+([0-9A-Fa-f:]{17,23})')
-  if (!$macMatch.Success) {
-    return ""
-  }
-
-  return $macMatch.Groups[1].Value.Trim().ToUpperInvariant()
+  return ""
 }
 
 function Invoke-ChipProbe {

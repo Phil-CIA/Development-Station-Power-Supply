@@ -778,3 +778,19 @@ When returning to this session for a status sync:
   viewed in this session, so they stay PENDING. Still PENDING: touch navigation,
   graph tap, ON dialog, stale/demo/unknown, limit-refresh, OUTPUT success/ERR/no-ACK.
   No upload this session. Stopped at the panel-review checkpoint, before Iset editor work.
+- 2026-10-04 END-OF-SESSION RESUME POINT / HANDOFF (#78, PR #81, branch
+  `display/fnirsi-dual-rail-dashboard`; open, not merged): the guard `read-mac`
+  retry (`scripts/guarded-flash.ps1`) and `upload_speed = 460800`
+  (`crowpanel-43-bringup/platformio.ini`) are now committed with this note. No firmware
+  change this session. State: user reports no layout/touch defects; wants
+  operating time on the panel before further changes. Next agent: (1) wait for
+  the user's operating notes/photos (Main and CH1 detail photos still unreviewed;
+  they are in the user's OneDrive exchange folder) and fix only reported defects;
+  optional minor overlap of the Detail readings panel behind the FIXED/Iset cards
+  if the user approves; (2) next effort: STM32 telemetry cadence 500-1000 ms vs the
+  1500 ms stale threshold (needs STM32/protocol scope approval); (3) fill the PR
+  bench section from real evidence only; (4) user decides on merging #81; (5)
+  reconcile draft #71 only after that; (6) Iset editor (#74/#75) last. Rules: ask
+  before every upload and use `.\scripts\guarded-flash.ps1 -Target crowpanel -Action upload`
+  (expects COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08, `PYTHONUTF8=1`, log to file); never
+  write non-`CMD:` text to UART0; do not toggle real outputs without permission.
