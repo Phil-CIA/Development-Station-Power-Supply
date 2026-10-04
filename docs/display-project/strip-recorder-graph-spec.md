@@ -104,9 +104,11 @@ rather than synthetic history. This is documented in the UI (see section 6).
 |----|---|---|
 | D5a | `phil-cia-crowpanel-strip-recorder-core` | Recorder-bezel re-skin of the Graph screen (header bar, group label, grid/time-axis styling). Extend `TrendSample` to carry CH2 (`v2_mV`/`i2_mA`), move the ring buffer to a PSRAM allocation sized for ~10–15 min at current sample rate. Two stacked chart areas (V pair, I pair — see rationale below), each with both channels' traces, pen legend with live value + color swatch per channel. No feed-rate control yet — this bucket is the re-skin + CH2 data-model fix. |
 | D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s/30 s/1 min/5 min/15 min/1 hr per div per Option B), pause/resume, return-to-live, simple per-channel show/hide toggle. Resamples the PSRAM ring buffer into the chart on every feed-rate change. |
+| D5c (proposed) | `phil-cia-crowpanel-strip-recorder-microview` | Two per-channel micro-view screens (CH1, CH2), each with one taller auto-scaled V+I graph and a trace-positioning algorithm so the V and I traces stay separated and readable. Time-of-day axis replaces uptime labels once #82 lands. Starts after D5b. |
 
-D5c (history pan) and D5d (alarm markers) from Rev 1 are **removed**, not
-deferred — they are out of scope per section 4.
+The Rev 1 D5c (history pan) and D5d (alarm markers) are **removed**, not
+deferred — they are out of scope per section 4. The D5c above is a new,
+unrelated proposal.
 
 Each bucket is its own branch + PR per `SYSTEM_DEVELOPMENT_WORKFLOW.md` /
 tracker rules of engagement, bench-tested on the physical CrowPanel before
