@@ -27,7 +27,6 @@ constexpr bool    kLiveChartsEnabled = true;
 constexpr bool    kMinimalUiLabelsOnly = false;
 constexpr uint8_t kChartDecimation = 2;
 constexpr uint32_t kSplashDurationMs = 1800;
-constexpr int16_t  kOutputOnThreshold_mA = 50;  // legacy Graph-screen RUN chip only (D5)
 constexpr uint32_t kDemoFrameMs = 50;
 constexpr uint32_t kDemoTourSwitchMs = 8000;
 // 15 min at the 5 Hz cap (kTrendSampleMs). sizeof(TrendSample)=28 B -> 4500 * 28 = 126,000 B in PSRAM.
@@ -255,11 +254,6 @@ static lv_obj_t* lbl_graph_time[7] = {};
 
 static lv_obj_t* lbl_splash_hint = nullptr;
 static lv_obj_t* lbl_fault_graph = nullptr;
-
-static lv_obj_t* chip_graph_ok = nullptr;
-static lv_obj_t* chip_graph_mode = nullptr;
-static lv_obj_t* chip_graph_limit = nullptr;
-static lv_obj_t* chip_graph_run = nullptr;
 
 static lv_obj_t* chart_v     = nullptr;
 static lv_obj_t* chart_i     = nullptr;
@@ -1199,24 +1193,6 @@ lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, in
   lv_obj_set_style_text_font(label, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_center(label);
   return btn;
-}
-
-lv_obj_t* create_state_chip(lv_obj_t* parent, const char* text, uint32_t bg_hex, uint32_t text_hex, int y_ofs) {
-  lv_obj_t* chip = lv_obj_create(parent);
-  lv_obj_set_size(chip, 74, 34);
-  lv_obj_align(chip, LV_ALIGN_TOP_MID, 0, y_ofs);
-  lv_obj_set_style_bg_color(chip, lv_color_hex(bg_hex), LV_PART_MAIN);
-  lv_obj_set_style_border_width(chip, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(chip, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-  lv_obj_set_style_radius(chip, 8, LV_PART_MAIN);
-  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t* lbl = lv_label_create(chip);
-  lv_label_set_text(lbl, text);
-  lv_obj_set_style_text_color(lbl, lv_color_hex(text_hex), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_center(lbl);
-  return lbl;
 }
 
 // ── LVGL init ──────────────────────────────────────────────────────────────
@@ -2567,30 +2543,18 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_set_style_text_font(lbl_graph_window_i, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(lbl_graph_window_i, LV_ALIGN_BOTTOM_RIGHT, -22, -8);
 
-  lv_obj_t* chip_col = lv_obj_create(screen_graph);
-  lv_obj_set_size(chip_col, 74, 190);
-  lv_obj_set_pos(chip_col, kGraphChartX + kGraphChartW + 12, kGraphVChartY);
-  lv_obj_set_style_bg_opa(chip_col, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(chip_col, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(chip_col, 0, LV_PART_MAIN);
-  lv_obj_clear_flag(chip_col, LV_OBJ_FLAG_SCROLLABLE);
-
-  chip_graph_ok = create_state_chip(chip_col, "OK", 0x193425, UiTheme::kAccentOk, 0);
-  chip_graph_mode = create_state_chip(chip_col, "M1", 0x24364A, UiTheme::kAccentI, 52);
-  chip_graph_limit = create_state_chip(chip_col, "CV", 0x1F3A27, UiTheme::kAccentOk, 104);
-  chip_graph_run = create_state_chip(chip_col, "RUN", 0x1F3A27, UiTheme::kAccentOk, 156);
-
   lv_obj_t* fault_row = lv_obj_create(screen_graph);
   lv_obj_set_size(fault_row, kDisplayWidth - 36, 30);
   lv_obj_align(fault_row, LV_ALIGN_BOTTOM_MID, 0, -26);
+  lv_obj_clear_flag(fault_row, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(fault_row, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
   lv_obj_set_style_radius(fault_row, 9, LV_PART_MAIN);
   lv_obj_set_style_border_width(fault_row, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(fault_row, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_fault_graph = lv_label_create(fault_row);
-  lv_label_set_text(lbl_fault_graph, "OVP OK   OCP OK   OTP OK   SCP OK   LIM CV");
-  lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  lv_label_set_text(lbl_fault_graph, "NO TELEMETRY");
+  lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(UiTheme::kUnknown), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_fault_graph, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_center(lbl_fault_graph);
 }
@@ -2611,6 +2575,62 @@ void create_dashboard() {
 }
 
 // ── Telemetry label updates ────────────────────────────────────────────────
+// Lists only active trips; no CC/CV claim (#77). Runs every loop so STALE shows without a new frame.
+void refreshGraphFaultRow(const DisplayTelemetry& t, uint32_t now_ms) {
+  if (!lbl_fault_graph || active_screen != UiScreen::Graph) return;
+
+  uint32_t age_ms = 0;
+  const LinkState link = linkStateOf(t, now_ms, &age_ms);
+  char buf[96] = "";
+  uint32_t color = UiTheme::kAccentOk;
+  if (link == LinkState::Unknown) {
+    strcpy(buf, "NO TELEMETRY");
+    color = UiTheme::kUnknown;
+  } else if (link == LinkState::Demo) {
+    strcpy(buf, "DEMO DATA - NO FAULT INFO");
+    color = UiTheme::kDemo;
+  } else if (link == LinkState::Stale) {
+    strcpy(buf, "LINK STALE - FAULT STATE UNKNOWN");
+    color = UiTheme::kAccentWarn;
+  } else if (!t.has_extended) {
+    strcpy(buf, "FAULT FLAGS NOT REPORTED (LEGACY FRAME)");
+    color = UiTheme::kUnknown;
+  } else {
+    static const char* const kTripNames[3] = {"OVP", "OCP", "OTP"};
+    static const uint8_t kTripBits[3] = {kTripOvp, kTripOcp, kTripOtp};
+    for (int ch = 0; ch < 2; ++ch) {
+      const RailData d = railData(ch, t, link);
+      char part[40] = "";
+      for (int k = 0; k < 3; ++k) {
+        if (d.trip_flags & kTripBits[k]) {
+          strncat(part, part[0] ? " " : "", sizeof(part) - strlen(part) - 1);
+          strncat(part, kTripNames[k], sizeof(part) - strlen(part) - 1);
+        }
+      }
+      if (part[0]) {
+        char entry[56];
+        snprintf(entry, sizeof(entry), "%sCH%d %s", buf[0] ? "   " : "", ch + 1, part);
+        strncat(buf, entry, sizeof(buf) - strlen(buf) - 1);
+      }
+    }
+    if (t.status & 0x08u) strncat(buf, buf[0] ? "   THERM WARN" : "THERM WARN", sizeof(buf) - strlen(buf) - 1);
+    if (buf[0]) {
+      color = UiTheme::kError;
+    } else {
+      strcpy(buf, "NO FAULTS");
+    }
+  }
+  static uint32_t last_color = 0xFFFFFFFFu;
+  if (strcmp(lv_label_get_text(lbl_fault_graph), buf) != 0) {
+    lv_label_set_text(lbl_fault_graph, buf);
+    lv_obj_center(lbl_fault_graph);
+  }
+  if (color != last_color) {
+    last_color = color;
+    lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(color), LV_PART_MAIN);
+  }
+}
+
 void update_telemetry_labels() {
   if (!kLiveTelemetryUiEnabled) return;
 
@@ -2618,6 +2638,7 @@ void update_telemetry_labels() {
   if (now_ms - last_ui_update_ms < kUiUpdateMinMs) return;
 
   const DisplayTelemetry t = get_display_telemetry();
+  refreshGraphFaultRow(t, now_ms);
   if (t.rx_count == last_drawn_count &&
       t.last_seq == last_drawn_seq) return;
 
@@ -2657,62 +2678,6 @@ void update_telemetry_labels() {
              static_cast<unsigned>(t.last_temp_C),
              static_cast<unsigned long>(t.err_count));
     setLabel(lbl_graph_stats, gbuf);
-  }
-
-  if (lbl_fault_graph) {
-    const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-    const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
-    const bool ch1_ovp = t.has_extended ? ((t.protection_flags & 0x80u) != 0u) : false;
-    const bool ch1_ocp = t.has_extended ? ((t.protection_flags & 0x40u) != 0u) : false;
-    const bool ch1_otp = t.has_extended ? ((t.protection_flags & 0x08u) != 0u) : false;
-    const bool ch2_ovp = t.has_extended ? ((t.protection_flags & 0x20u) != 0u) : false;
-    const bool ch2_ocp = t.has_extended ? ((t.protection_flags & 0x10u) != 0u) : false;
-    const bool ch2_otp = t.has_extended ? ((t.protection_flags & 0x04u) != 0u) : false;
-    const bool thermal_warn = t.has_extended ? ((t.status & 0x08u) != 0u) : false;
-    char fbuf[128];
-    snprintf(fbuf, sizeof(fbuf), "CH1 %s/%s/%s  CH2 %s/%s/%s  LIM %s%s%s",
-             ch1_ovp ? "OVP!" : "OVP",
-             ch1_ocp ? "OCP!" : "OCP",
-             ch1_otp ? "OTP!" : "OTP",
-             ch2_ovp ? "OVP!" : "OVP",
-             ch2_ocp ? "OCP!" : "OCP",
-             ch2_otp ? "OTP!" : "OTP",
-             cc_mode ? "CC" : "CV",
-             thermal_warn ? "   THERM WARN" : "",
-             link_stale ? "   COMM WARN" : "");
-    lv_label_set_text(lbl_fault_graph, fbuf);
-    lv_obj_set_style_text_color(lbl_fault_graph,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-
-  const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-  const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
-
-  if (chip_graph_ok) {
-    lv_label_set_text(chip_graph_ok, link_stale ? "WARN" : "OK");
-    lv_obj_set_style_text_color(chip_graph_ok,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_mode) {
-    lv_label_set_text(chip_graph_mode, demo_mode ? "DEMO" : (t.has_extended ? "EXT" : "LEG"));
-    lv_obj_set_style_text_color(chip_graph_mode,
-                                demo_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentI),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_limit) {
-    lv_label_set_text(chip_graph_limit, cc_mode ? "CC" : "CV");
-    lv_obj_set_style_text_color(chip_graph_limit,
-                                cc_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_run) {
-    const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
-    lv_label_set_text(chip_graph_run, (link_stale || !ch1_enabled) ? "WAIT" : "RUN");
-    lv_obj_set_style_text_color(chip_graph_run,
-                                (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
   }
 
   if (trend_total != last_drawn_samples) {
