@@ -1958,7 +1958,8 @@ void create_detail_screen(lv_obj_t* root) {
   createTopBar(screen_detail, true, detail_bar);
 
   RailCard& c = detail_card;
-  c.panel = makeBox(screen_detail, 8, 84, 320, 316, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
+  // Reduce panel height slightly to avoid overlapping the FIXED/Iset footer boxes.
+  c.panel = makeBox(screen_detail, 8, 84, 320, 280, UiTheme::kPanel, UiTheme::kBorder, 2, 10);
   lv_obj_set_style_clip_corner(c.panel, true, LV_PART_MAIN);
   c.accent = makeBox(c.panel, 0, 0, 316, 6, UiTheme::kBorder, UiTheme::kBorder, 0, 0);
   makeChip(c.panel, 12, 12, 200, 36, &lv_font_montserrat_28, c.ch_chip);
