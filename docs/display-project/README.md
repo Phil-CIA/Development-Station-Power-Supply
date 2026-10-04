@@ -28,9 +28,11 @@ Tapping a card opens that channel's detail view: readings on the left,
 its V/I graph on the right, and a touch action back to Main.
 
 The Graph screen is being rebuilt as a Yokogawa GX-style strip recorder; see
-[strip-recorder-graph-spec.md](strip-recorder-graph-spec.md) for the plan,
-hardware-feasibility tradeoffs, and the D5a–D5d bucket breakdown (supersedes
-the prior single D5 scope line).
+[strip-recorder-graph-spec.md](strip-recorder-graph-spec.md) (Rev 2) for the
+plan, hardware-feasibility analysis, and the D5a/D5b bucket breakdown
+(supersedes the prior single D5 scope line). History scroll-back and alarm
+markers are cut from scope; CSV/PC export is tracked separately in
+[#84](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/84).
 
 The [screen tracker](crowpanel-screens-tracker.md) contains the issue/PR
 sequence, reference-photo approval gate, and copy-paste VS Code Copilot
