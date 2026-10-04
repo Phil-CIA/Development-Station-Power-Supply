@@ -795,8 +795,8 @@ When returning to this session for a status sync:
   (expects COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08, `PYTHONUTF8=1`, log to file); never
   write non-`CMD:` text to UART0; do not toggle real outputs without permission.
 - 2026-10-04 RESUME POINT (D5a strip-recorder Graph, branch
-  `phil-cia-crowpanel-strip-recorder-core`, off `main`, 3 local commits, NOT pushed, no PR yet;
-  plan doc is open PR #83 on `phil-cia-strip-recorder-graph-plan`, still unmerged):
+  `phil-cia-crowpanel-strip-recorder-core`, off `main`; PR #89 open (refs #26, #83); plan doc is
+  open PR #83 on `phil-cia-strip-recorder-graph-plan`, now including proposed D5c):
   - Done in `crowpanel-43-bringup/src/main.cpp`: trend ring buffer moved to PSRAM,
     capacity 4500 samples (28 B each = 126,000 B; sized for 15 min at the 5 Hz cap, but the
     STM32 really sends every 5 s so it holds about 6 h). `TrendSample` already carried CH2
@@ -813,10 +813,16 @@ When returning to this session for a status sync:
   - Observed: window spans about 20 min per screen at the 5 s STM32 cadence (axis showed
     `-1190s`); `OCP` flags were reported set on both channels in the photo (STM32 data, not
     investigated). User wants the 500-1000 ms cadence settled before D5b so feed rates match data.
-  - Next, in order: (1) user OKs flash of latest build and reviews grid/axis/fault row; (2) user
-    OKs push + D5a PR (refs #26, #83); (3) add proposed D5c to the plan: two per-channel micro-view
-    screens, one auto-scaled V+I graph each with a trace-positioning algorithm (taller than the
-    Graph screen's charts), plus time-of-day axis when #82 lands; (4) D5b only after D5a merges.
+  - Next, in order: (1) STM32 branch `phil-cia-stm32-telemetry-cadence` (local only, NOT pushed,
+    2 commits: 500 ms telemetry timer decoupled from the 5 s heartbeat; `Uart` -> `HardwareSerial`
+    build fix for core 2.12, #3) is already flashed to the Blue Pill via ST-Link; user to confirm on
+    the panel that the link stays LIVE and the axis spans about 4 min, then OK push + PR;
+    (2) user merges #89 and #83; (3) D5b only after D5a merges; (4) D5c after D5b.
+  - Late 2026-10-04: CrowPanel upload at 460800 baud failed (bad data checksum), recovered by
+    replugging USB and BOOT+RESET; `upload_speed` is now 115200 permanently. The latest D5a build
+    IS flashed and was reviewed OK (grid, axis, fault row). STM32 flash is 98.1% of 64 KB.
+  - Open: `OCP` flags on both channels come from the shared FAULT_CRITICAL_SUM path, which the
+    STM32 code says is unrouted on Rev-C; not investigated.
   - Rules: ask before every upload and push; guarded script only (`PYTHONUTF8=1`, log to file);
     local PlatformIO at `%USERPROFILE%\.platformio\penv\Scripts\platformio.exe`; read user
     feedback .docx from the OneDrive exchange folder only after the user closes it in Word.
