@@ -748,3 +748,22 @@ When returning to this session for a status sync:
   ask before every upload. In UART0 mode the console is the host link, so do
   not add non-`CMD:` prints. Useful serial aids: `SCREEN DETAIL1|DETAIL2`,
   `DEMO ON|OFF` (console commands only work when the transport is not UART0).
+- 2026-10-04 RESUME POINT (#78, PR #81, branch `display/fnirsi-dual-rail-dashboard`,
+  head `5404611` plus this note; open, mergeable, not merged): panel review round 1
+  (see above) was flashed by the user and reported verbally as "the screens look
+  great". No photos, touch, graph-tap, ON-dialog, stale/demo/unknown, limit-refresh
+  or OUTPUT command evidence was captured, so all of it stays PENDING. The user
+  wants operational experience with the panel before continuing. Not started, by
+  decision: Iset slider/keypad editor, STM32 telemetry cadence (user target
+  500-1000 ms, to be settled with the Graph chart-speed work; the 5000 ms vs
+  1500 ms stale mismatch is still in place), WiFi/network time (#82), bottom nav
+  on Setup/Graph/Settings, #71 reconciliation. Flash notes: the guard's
+  `read-mac` right after its `chip-id` probe failed intermittently; a 2 s wait
+  with up to 3 retries in `scripts/guarded-flash.ps1` fixed it (local, uncommitted).
+  One guarded upload then failed loading the esptool stub (`Checksum error`, no
+  flash written); the user's successful flash used `upload_speed = 460800` in
+  `crowpanel-43-bringup/platformio.ini` (local, uncommitted, not made by Copilot).
+  Next steps: (1) collect operating notes/photos and fix any defects; (2) fill the
+  PR's bench section from real evidence only; (3) user decides on committing the
+  guard and `upload_speed` changes and on merging #81; (4) reconcile #71; (5) Iset
+  editor (#74/#75).
