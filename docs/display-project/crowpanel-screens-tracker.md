@@ -319,6 +319,158 @@ these; items 1-4 stay UNRESOLVED until their implementation phase):
 8. Temperature: RESOLVED. One sensor this revision (enclosure temperature);
    the label stays `UNIT TEMP` unless you prefer `ENCL TEMP`.
 
+### First LVGL dashboard (#78) - build-verified, NOT bench-tested
+
+Branch `display/fnirsi-dual-rail-dashboard`, Bucket 4, `crowpanel-43-bringup/src/main.cpp`
+only. No STM32, protocol, hardware, WiFi/NTP, persistence, or recovery-policy
+change. The Iset slider/keypad write flow is **not** in this PR (next phase,
+after #71 reconciliation). Build: `pio run -d crowpanel-43-bringup -e crowpanel43`
+(success). Not uploaded; no bench evidence yet.
+
+**Implemented (LVGL 8.3, existing fonts 12/16/20/28/48, no new dependency):**
+
+- Main: CH1 fixed +5 V left, CH2 fixed +3.3 V right; V/A/W stacks (yellow,
+  cyan-blue, neutral) with persistent units; per-channel confirmed `I LIMIT`;
+  per-channel status chip; whole card taps to that channel's detail; bottom
+  nav Main/Setup/Graph/Settings (closes D3's missing Main-to-Settings hop). No
+  Energy or Input panel.
+- Detail: Back to Main, channel chip, readings left, selected-rail V/I chart
+  right (V on the left axis, I and the confirmed limit on the right axis),
+  read-only `FIXED` nominal voltage, read-only confirmed `Iset`, and an
+  `EDIT LIMIT in Setup` button that opens the **existing** Setup editor on that
+  channel's ILIM field (no dead Iset control, no new write path).
+- One shared OUTPUT button in the top bar of both screens, labelled
+  `CH1 + CH2 (shared)`. Existing `OUTPUT ON/OFF` command, no per-channel
+  toggle. A send failure, host `ERR`, or a missing `ACK` within 1.5 s now shows
+  a notice in the info strip; success is only shown by telemetry. The button is
+  disabled (with a reason) for stale, unknown, demo, and legacy-frame states.
+- Link state is LIVE / STALE n s / DEMO DATA / UNKNOWN, text plus color.
+- The dashboard refreshes every loop (not only when a telemetry frame
+  arrives), so STALE appears and host-confirmed limits redraw even if V/I are
+  unchanged. Missing limits are requested one at a time with `GET ILIM CHn`
+  while the link is live and the Main/Detail screen is shown.
+- Status never asserts CC: `OUTPUT OFF`, `TRIP` (STM32 OVP/OCP/OTP flags),
+  `ON - LIMIT UNKNOWN`, `LIMIT 0.000 A` (zero-limit meaning unverified),
+  `AT LIMIT` (measured I >= confirmed limit, "CC not verified"), and
+  `ON - BELOW LIMIT` ("CV/CC not verified (#77)"). The STM32 CV status bit is
+  not displayed on Main/Detail.
+- Trend history now stores CH2 as well as CH1 (and a demo flag). The detail
+  chart plots only the selected rail's samples and never mixes demo with live
+  samples. Missing data is explicit: `NO DATA`, `NO SAMPLES YET`, `NO CH2 DATA
+  (legacy frame)`, `STALE - no new samples`, `DEMO DATA - SIMULATED`. The
+  x axis is per received sample; the caption shows the real span (`last N s,
+  M samples`). Timebase/window selection/pause/clear/autoscale remain D5.
+- Demo mode values now sit on the fixed-rail nominals (+5 V / +3.3 V) instead
+  of ~12 V, and are always labelled DEMO.
+- Serial test aids: `SCREEN DETAIL1` / `SCREEN DETAIL2` (plus the existing
+  `DEMO ON|OFF`, `UDI_STATUS`, `RX`).
+
+**Deliberate differences from the approved mockup (LVGL/font limits):**
+
+- Built-in Montserrat has no `U+00B7` middle dot, degree sign, `>=` glyph, or
+  `U+203A`: separators are ` - `, temperature is `31 C`, the card chevron is
+  `LV_SYMBOL_RIGHT`, the Back arrow is `LV_SYMBOL_LEFT`.
+- LVGL 8.3 has no dashed borders or dashed chart lines: the unknown status chip
+  uses a solid gray outline (text still says UNKNOWN) and the limit trace is a
+  solid light-blue line instead of dashed.
+- Back button is 180 px wide (mockup 150) so `Back to Main` fits at font 20;
+  the CH chip and link chip shift right accordingly. Digits are Montserrat, not
+  the browser font.
+- Demo status text is `DEMO DATA` (violet) instead of the simulated `ON - BELOW
+  LIMIT`, so demo values are never read as hardware state.
+- The mockup-only `SIMULATED` tag is absent; the info strip right side shows
+  command notices instead. The date/time field stays `CLOCK NOT SET` (WiFi time
+  is later scope). Unit temperature is `last_temp_C`, `--` when unavailable.
+- Detail footer: the mockup's `LAST ILIM RESULT` box is replaced by `EDIT LIMIT
+  in Setup` until the dedicated editor (which owns ILIM results) exists. The
+  Iset box is read-only here (`CONFIRMED` / `NO VALUE`), not a tap target.
+
+**First flash findings (2026-10-02, panel on COM12; serial only, panel visuals
+not yet reviewed):**
+
+- The first build boot-looped (`LoadProhibited` in `lv_label_create`): the
+  default 48 KB LVGL heap ran out while creating the last screen. Fixed by
+  `-DLV_MEM_SIZE=131072` in `crowpanel-43-bringup/platformio.ini`; at boot the
+  firmware now logs `lvgl heap: total=131072 free=76060 used=42%`. `crowpanel43`
+  RAM use rose from about 116 KB to 198 KB.
+- With the HAT attached, the console shares UART0 with the host link, so the
+  display's own `udi ack/err/evt:` echo lines drew `ERR:FORMAT need CMD:` replies
+  from the STM32 and re-triggered themselves (about 90 lines/s) and polluted
+  Setup's host-error text. The echo is now skipped while the console is the
+  host link (`telemetryOnConsoleSerial()`); after the fix the boot log is quiet
+  and shows only the expected `CMD:GET OUTPUT` / `GET ILIM CH1` / `GET ILIM CH2`.
+  Consequence: in UART0 mode, ACK/ERR evidence must come from the STM32 side or
+  the UART1 transport, not the display console.
+
+**Known limitations (not fixed here, by scope):**
+
+- The STM32 telemetry frame cannot flag a failed INA3221/AHT20 read: on a
+  failed read it substitutes 5.000 V / 0.500 A (CH1), 3.300 V / 0.320 A (CH2),
+  and 31 C, which the display cannot distinguish from real values. This needs
+  a protocol/STM32 change and belongs with #77.
+- The display keeps only the last ACK/ERR/EVT line, so back-to-back replies
+  can overwrite each other; the dashboard therefore requests one missing limit
+  at a time. Setup's three-command burst on entry has the same exposure.
+- Output "on" means CH1 or CH2 enabled bit set in the extended status byte
+  (previously CH1 only). The STM32 sets that bit only when the output is on and
+  the rail voltage is above its minimum, so `OUTPUT OFF` can also mean "rail
+  below enable voltage".
+- The Graph screen (D5) is unchanged: its axes are still 9-15 V and its
+  CV/CC chips still use the STM32 CV bit.
+- Output-on confirmation, zero-limit semantics, and slider step remain
+  UNRESOLVED (see open questions); nothing in this PR decides them.
+
+**Layout/text-fit check (host-side, not a photo):** every string and worst-case
+reading used on Main/Detail was measured against the Montserrat 12/16/20/28/48
+glyph advances in LVGL 8.3.11 and fits its box (the only overflow is the
+scrolling notice, by design). All touch targets are >= 44 x 44 (`static_assert`
+in the firmware). Geometry is the mockup's 800 x 480 layout. Actual clipping and
+touch behavior still need the physical-panel photos.
+
+**Panel review round 1 (2026-10-02, from the user's Main and Detail photos;
+build-verified, NOT yet re-flashed or re-photographed):**
+
+- Naming: `CH1` / `FIXED +5 V` merged into `+5V Supply` and `+3.3V Supply`
+  on Main cards, the Detail chip and trend title, the top-bar Detail chip and
+  the Graph screen value labels. Not renamed (by scope): Setup labels (#71 owns
+  Setup; draft, conflicting) and the Graph fault row (D5).
+- CH1 color: pink/purple `0xFF79C6` replaced by yellow-green `0x84D82E` (tint
+  `0x28361C`). Chosen to stay apart from CH2 teal `0x2DD4BF`, the yellow
+  voltage text and the LIVE/OK green. Easy to change in `UiTheme::kCh1`.
+- OUTPUT widget: wider (240 px), sub-line `BOTH CHANNELS` /
+  `BOTH - tap to turn ON|OFF`. OFF is one tap. ON now opens a confirmation
+  dialog (`TURN OUTPUT ON?`, CANCEL / TURN ON, 10 s timeout) over a touch-blocking
+  scrim; it closes with a notice if the link stops being live, closes silently
+  if the output is already on or a command is pending, and re-checks the link
+  before sending. This answers open question 3 for the dashboard (modal, per user).
+  The protocol only has the shared `OUTPUT ON|OFF`; per-channel control is a
+  protocol change and is NOT part of this PR.
+- Bottom nav (Main / Setup / Graph / Settings) is now a shared builder used on
+  Main and Detail (Detail highlights Main; Back stays). To fit it, Detail panels
+  were compacted (276 px high, chart plot 348 x 176, footer 56 px, Back button
+  110 px). Setup / Graph / Settings keep their top-right nav buttons for now:
+  Setup waits for #71, Graph/Settings for D5/D6.
+- Detail trend panel is tappable and opens the Graph screen (hint
+  `Tap for Graphs >`). The Graph screen has no per-channel selection yet.
+- Clock: `CLOCK NOT SET` replaced by `UPTIME H:MM:SS` (CrowPanel `millis()`),
+  so it is never read as time of day. WiFi setup and network time are tracked
+  in #82 and are not part of this PR.
+- Stale data finding (NOT changed here): the STM32 loop publishes telemetry
+  every 5000 ms (`stm32-bluepill-bringup/src/main.cpp`, `now - lastMs >= 5000`)
+  while the display marks STALE after `kLinkStaleMs = 1500` ms, so the panel
+  shows STALE between every frame. The Detail caption in the user's photo
+  (`last 594 s, 120 samples`) is consistent with about 4.95 s per sample. The user
+  wants a 500-1000 ms exchange rate, to be settled together with the Graph
+  chart-speed work; that is an STM32/protocol change (out of scope for #81).
+  The display stale threshold must then be derived from the chosen cadence.
+
+**Panel review round 1 evidence (pending until re-flashed and photographed):**
+Main / CH1 detail / CH2 detail clipping and touch navigation, both traces,
+graph-tap navigation, ON confirmation (cancel, timeout, confirm), stale/demo/
+unknown/off appearance, confirmed-limit refresh. No upload has been done for
+this round. The host-side text-fit check above predates round 1 and was not
+re-run for the new names, dialog and compacted Detail layout.
+
 ### Issues, dependencies, and PR sequence
 
 These extend #65's D buckets rather than creating a competing roadmap.
@@ -330,7 +482,7 @@ evidence. Do not open empty implementation PRs ahead of work.
 | P0 | This documentation PR | None | Fixed-rail decisions, issue links, VS Code prompts; no firmware changes |
 | P1 | [#76](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/76), `display/fnirsi-visual-spec` | P0 merged; user reference photos and wireframe approval | Documentation PR with approved 800x480 visual/interaction specification |
 | P2 | [#77](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/77), `firmware/fixed-rail-regulation-status` | P0 merged; hardware-safe bench conditions | Regulation/status evidence and truth table; behavior PR only if justified. Can run independently of P1 |
-| P3 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `display/fnirsi-dual-rail-dashboard` | P1 merged; reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit |
+| P3 | [#78](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/78), `display/fnirsi-dual-rail-dashboard` | P1 merged (#80); reconcile overlapping #71 work | Side-by-side V/A/W overview and channel-detail navigation/readout shell PR. P2 evidence required for definitive CV/CC labels; unresolved states must remain explicit. **Status: implemented and build-verified; not bench-tested** (see the #78 notes above) |
 | P4 | [#74](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/74) / [#75](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/75), `display/touch-current-limit-editor` | #71 disposition resolved; P1 approved; P3 merged where shared layout is used | Touch-only current editor and UX polish PR, reusing D4 command/ACK/error flow |
 | P5 | Existing D5-D8 | Accepted common UI patterns; relevant data contracts | Separate Graph, Settings, fault, and self-test PRs; no new duplicate issues |
 
@@ -477,8 +629,10 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
   navigation selected by the user. Mockup geometry/fonts are the approved
   baseline; LVGL clipping must still be re-checked on the panel (#78).
 - [ ] Main has two large V/A/W stacks, with no Energy or Input panels.
+  (Implemented, `crowpanel43` build passes; physical-panel photo pending.)
 - [ ] Each card opens its own detail view; both V/I traces use that channel,
-  and Back to Main works by touch.
+  and Back to Main works by touch. (Implemented and build-verified; touch and
+  per-rail traces not yet exercised on hardware.)
 - [ ] Iset opens the slider popup; tapping its numeric field opens the
   keypad, with one synchronized draft and no command before Apply.
 - [ ] Cancel preserves the confirmed value; pending/error/timeout handling
@@ -486,7 +640,10 @@ and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
 - [ ] Hardware CC/limit/trip behavior and status validity documented (#77).
 - [ ] Main and current editor usable by touch without prior LVGL knowledge.
 - [ ] Both confirmed limits refresh independently of measured V/I changes.
+  (Implemented via a per-loop refresh; limit-only update not yet seen on
+  hardware.)
 - [ ] No misleading live/demo, healthy/fault, off/CV, or unknown/CC states.
+  (Status wording implemented without asserting CC; photo matrix pending.)
 - [ ] Physical photos show no clipping across the required state matrix.
 - [ ] Serial evidence covers a successful command and ERR/timeout recovery.
 - [ ] Each PR states bench-tested status, updates this tracker, and preserves
@@ -565,3 +722,75 @@ When returning to this session for a status sync:
   semantics, slider step, output-on confirmation, status validity) are NOT
   approved or resolved. Iset editing stays a separate phase after #71
   reconciliation; WiFi/NTP remains later scope.
+- 2026-10-02: #80 merged by user authorization. Started
+  `display/fnirsi-dual-rail-dashboard` from updated `main`; PR #71 reviewed
+  (draft, unmerged, touches Setup and Main ILIM in the same `main.cpp`) and not
+  reused. First LVGL dashboard (Main overview + channel detail) implemented
+  and `crowpanel43` build verified (PR #81). Flashed to the panel with the
+  user's permission; see the first-flash findings in the #78 section. The
+  Iset slider/keypad editor is intentionally not started; it waits for the
+  user's physical-panel review and #71 reconciliation.
+- 2026-10-02 RESUME POINT (#78, PR #81, branch
+  `display/fnirsi-dual-rail-dashboard`, head `4807589`, open, mergeable, not
+  merged): firmware on the panel boots with no panic (serial only). NOT yet
+  done: the user's visual review of the panel, and bench evidence (photos of
+  Main/Detail in live/off/stale/demo/unknown states, touch navigation,
+  per-rail traces, limit-only update after a Setup change, OUTPUT
+  success/ERR/no-ACK). Next steps in order: (1) get the user's panel
+  notes/photos and fix any clipping or layout bugs; (2) fill the PR's bench
+  section from real evidence only; (3) user merges #81; (4) reconcile #71
+  (draft; conflicts expected in Main and `update_telemetry_labels()`); (5)
+  only then start the Iset slider/keypad editor (#74/#75), which must also
+  settle the open questions on zero limit, slider step and output-on
+  confirmation. Flash rules: guarded script only
+  (`scripts/guarded-flash.ps1 -Target crowpanel -Action upload`, expects COM12
+  / ESP32-S3 / MAC 80:B5:4E:E2:E4:08), set `PYTHONUTF8=1` and log to a file;
+  ask before every upload. In UART0 mode the console is the host link, so do
+  not add non-`CMD:` prints. Useful serial aids: `SCREEN DETAIL1|DETAIL2`,
+  `DEMO ON|OFF` (console commands only work when the transport is not UART0).
+- 2026-10-04 RESUME POINT (#78, PR #81, branch `display/fnirsi-dual-rail-dashboard`,
+  head `5404611` plus this note; open, mergeable, not merged): panel review round 1
+  (see above) was flashed by the user and reported verbally as "the screens look
+  great". No photos, touch, graph-tap, ON-dialog, stale/demo/unknown, limit-refresh
+  or OUTPUT command evidence was captured, so all of it stays PENDING. The user
+  wants operational experience with the panel before continuing. Not started, by
+  decision: Iset slider/keypad editor, STM32 telemetry cadence (user target
+  500-1000 ms, to be settled with the Graph chart-speed work; the 5000 ms vs
+  1500 ms stale mismatch is still in place), WiFi/network time (#82), bottom nav
+  on Setup/Graph/Settings, #71 reconciliation. Flash notes: the guard's
+  `read-mac` right after its `chip-id` probe failed intermittently; a 2 s wait
+  with up to 3 retries in `scripts/guarded-flash.ps1` fixed it (local, uncommitted).
+  One guarded upload then failed loading the esptool stub (`Checksum error`, no
+  flash written); the user's successful flash used `upload_speed = 460800` in
+  `crowpanel-43-bringup/platformio.ini` (local, uncommitted, not made by Copilot).
+  Next steps: (1) collect operating notes/photos and fix any defects; (2) fill the
+  PR's bench section from real evidence only; (3) user decides on committing the
+  guard and `upload_speed` changes and on merging #81; (4) reconcile #71; (5) Iset
+  editor (#74/#75).
+- 2026-10-04 review checkpoint (#78, PR #81, no firmware change): user supplied
+  panel photos and reported no layout/touch defects to fix; the only issue noted
+  is the telemetry refresh rate (STM32 cadence, deferred to the next effort).
+  Photo evidence reviewed by Copilot: CH2 (+3.3V Supply) detail only - LIVE,
+  OUTPUT OFF, V/I/W readings, TRIP with "STM32 flags: OCP", FIXED +3.30 V,
+  Iset LIMIT 1.500 A CONFIRMED, trend with limit trace, bottom nav; no clipped
+  text. Observation, not changed: the readings panel's lower edge sits behind the
+  FIXED/Iset cards (minor overlap). Main and CH1 detail photos could not be
+  viewed in this session, so they stay PENDING. Still PENDING: touch navigation,
+  graph tap, ON dialog, stale/demo/unknown, limit-refresh, OUTPUT success/ERR/no-ACK.
+  No upload this session. Stopped at the panel-review checkpoint, before Iset editor work.
+- 2026-10-04 END-OF-SESSION RESUME POINT / HANDOFF (#78, PR #81, branch
+  `display/fnirsi-dual-rail-dashboard`; open, not merged): the guard `read-mac`
+  retry (`scripts/guarded-flash.ps1`) and `upload_speed = 460800`
+  (`crowpanel-43-bringup/platformio.ini`) are now committed with this note. No firmware
+  change this session. State: user reports no layout/touch defects; wants
+  operating time on the panel before further changes. Next agent: (1) wait for
+  the user's operating notes/photos (Main and CH1 detail photos still unreviewed;
+  they are in the user's OneDrive exchange folder) and fix only reported defects;
+  optional minor overlap of the Detail readings panel behind the FIXED/Iset cards
+  if the user approves; (2) next effort: STM32 telemetry cadence 500-1000 ms vs the
+  1500 ms stale threshold (needs STM32/protocol scope approval); (3) fill the PR
+  bench section from real evidence only; (4) user decides on merging #81; (5)
+  reconcile draft #71 only after that; (6) Iset editor (#74/#75) last. Rules: ask
+  before every upload and use `.\scripts\guarded-flash.ps1 -Target crowpanel -Action upload`
+  (expects COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08, `PYTHONUTF8=1`, log to file); never
+  write non-`CMD:` text to UART0; do not toggle real outputs without permission.

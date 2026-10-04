@@ -40,6 +40,10 @@ A simulated, browser-viewable 800x480 mockup for visual review is at
 (baseline visual appearance and screen flow approved 2026-10-02; behavior
 questions unresolved; not bench-tested; not an LVGL rendering).
 
+The first LVGL port of the approved Main overview and single-channel detail
+screens is on `display/fnirsi-dual-rail-dashboard` (#78); status and visual
+differences are in the screen tracker. Build-verified only; not bench-tested.
+
 ## Active display candidate
 - Elecrow CrowPanel Advance 4.3 inch HMI ESP32 display
 - 800x480 IPS panel
