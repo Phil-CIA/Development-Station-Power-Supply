@@ -767,3 +767,14 @@ When returning to this session for a status sync:
   PR's bench section from real evidence only; (3) user decides on committing the
   guard and `upload_speed` changes and on merging #81; (4) reconcile #71; (5) Iset
   editor (#74/#75).
+- 2026-10-04 review checkpoint (#78, PR #81, no firmware change): user supplied
+  panel photos and reported no layout/touch defects to fix; the only issue noted
+  is the telemetry refresh rate (STM32 cadence, deferred to the next effort).
+  Photo evidence reviewed by Copilot: CH2 (+3.3V Supply) detail only - LIVE,
+  OUTPUT OFF, V/I/W readings, TRIP with "STM32 flags: OCP", FIXED +3.30 V,
+  Iset LIMIT 1.500 A CONFIRMED, trend with limit trace, bottom nav; no clipped
+  text. Observation, not changed: the readings panel's lower edge sits behind the
+  FIXED/Iset cards (minor overlap). Main and CH1 detail photos could not be
+  viewed in this session, so they stay PENDING. Still PENDING: touch navigation,
+  graph tap, ON dialog, stale/demo/unknown, limit-refresh, OUTPUT success/ERR/no-ACK.
+  No upload this session. Stopped at the panel-review checkpoint, before Iset editor work.
