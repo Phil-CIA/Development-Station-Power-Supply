@@ -104,6 +104,7 @@ static const uint8_t FRAME_SOF2 = 0x55;
 static const uint8_t FRAME_TAG = 'T';
 static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
+static const uint32_t TELEMETRY_PERIOD_MS = 500;  // CrowPanel link goes STALE after 1500 ms
 static const uint16_t CH1_ENABLED_MIN_MV = 1000;
 static const uint16_t CH2_ENABLED_MIN_MV = 1000;
 static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
@@ -2542,7 +2543,12 @@ void loop() {
         SerialDbg.println("flash: HOLD (bring-up test failed)");
       }
     }
-    
+  }
+
+  static uint32_t lastTelemetryMs = 0;
+  if (now - lastTelemetryMs >= TELEMETRY_PERIOD_MS) {
+    lastTelemetryMs = now;
+
     // Publish live telemetry from INA3221 rails when available.
     Ina3221Reading ina_5v = {};
     Ina3221Reading ina_3v3 = {};
