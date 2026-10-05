@@ -35,7 +35,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
 | D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (4500 samples). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | [#89](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/89) | 🟢 | part of #26 |
 | D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, per-pen show/hide. Time-based resample of the PSRAM ring. Bench-reviewed by the user (no changes requested); see the 2026-10-05 note. | [#91](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/91) | ✅ merged 2026-10-05 (squash `e1624a9`); user panel review only, checks not itemised | part of #26 |
-| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view (one `Micro` screen, CH1/CH2 switch), entered from a new Detail `MICRO` button or the Graph header; Back returns to the opening screen. One tall V+I plot from the selected channel only: V upper band / left axis, I lower band / right axis, unit-labelled axes, independent-scale caption, autoscale (100 mV / 10 mA snap, 2-step minimum span, grow-at-once / shrink-at-2x hysteresis, never clips). Link chip + plot note for LIVE/STALE/DEMO/UNKNOWN/no data; pause-rollover note. Feed rate and pause shared with Graph; pen show/hide does not apply. Uptime axis (time of day waits for #82). Spec: strip-recorder-graph-spec.md section 5a. | — | 🟡 (builds; not yet bench-tested, no PR yet) | part of #26 |
+| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view (one `Micro` screen, CH1/CH2 switch), entered from a new Detail `MICRO` button or the Graph header; Back returns to the opening screen. One tall V+I plot from the selected channel only: V upper band / left axis, I lower band / right axis, unit-labelled axes, independent-scale caption, autoscale (100 mV / 10 mA snap, 2-step minimum span, grow-at-once / shrink-at-2x hysteresis, never clips). Link chip + plot note for LIVE/STALE/DEMO/UNKNOWN/no data; pause-rollover note. Feed rate and pause shared with Graph; pen show/hide does not apply. Uptime axis (time of day waits for #82). Spec: strip-recorder-graph-spec.md section 5a. | — | 🟡 (builds; flashed and user-reviewed as good enough for this iteration; individual checks not itemised; PR not merged) | part of #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
 | D8 | `phil-cia-crowpanel-startup-selftest` | Boot self-test screen: RGB, touch, I2C (0x30, 0x5D), SPI flash, PSRAM, UDI handshake — pass/fail chips before Main. | — | ⬜ | #27, #37, #38, #39, #40 |
@@ -946,13 +946,32 @@ When returning to this session for a status sync:
     is 98.1% of 64 KB, so little room for more STM32 firmware.
   - Rules: ask before every upload and push; guarded script only (`PYTHONUTF8=1`, log to file); power
     the Blue Pill off first; never write non-`CMD:` text to UART0.
-- 2026-10-05 SESSION 2 (D5c micro-view; adds to the resume point above): #91 was still open, so branch
-  `phil-cia-crowpanel-strip-recorder-microview` is stacked on the D5b branch. After #91 squash-merges,
-  run `git rebase --onto main <old D5b tip> phil-cia-crowpanel-strip-recorder-microview` before opening
-  the D5c PR (base `main`). `main.cpp` only: new `UiScreen::Micro` (one screen, `micro_channel` 0/1),
-  CH1/CH2 buttons in the Graph and Micro headers, serial `SCREEN MICRO1|MICRO2`. Trace separation: V is
-  fitted into the 55-92 % band and I into the 8-45 % band of the plot (`fitMicroAxis`); V uses the left
-  (primary) axis, I the right (secondary) axis. Shared with Graph: feed rate, pause, fault row text
-  (`faultRowText`/`applyFaultRow`), time axis and window text helpers. `crowpanel43` builds (flash 3.7 %).
-  NOT yet flashed or bench-checked: confirm both channels, CH2 blank on legacy frames, feed/pause sync with
-  Graph, no overlap at flat and at swinging data, demo mode. D5 (#26) closes when #91 and the D5c PR merge.
+- 2026-10-05 SESSION 2 (D5c micro-view; adds to the resume point above; supersedes its "Next" list):
+  #91 squash-merged as `e1624a9` (user-authorized); the D5c commits were rebased onto it. D5c is `main.cpp`
+  plus docs only; design in strip-recorder-graph-spec.md section 5a.
+  - Implemented: `UiScreen::Micro` (one screen, `micro_channel` 0/1) entered from a new Detail `MICRO`
+    button or the Graph header CH1/CH2; Back returns to the opening screen (Detail is re-selected to the
+    channel last viewed). V in the 55-92 % band / left axis, I in the 8-45 % band / right axis, unit-labelled
+    ticks, headers and an independent-scale caption. Autoscale: 100 mV / 10 mA snap, 2-step minimum span,
+    grow-at-once / shrink-below-half hysteresis, no clipping, held spans reset on channel/rate/demo change.
+    Link chip plus plot-gap note for LIVE/STALE/DEMO/UNKNOWN/no data; paused-window rollover note. Shared with
+    Graph: feed rate, pause, time axis (uptime), fault row. Pen show/hide does not apply to Micro. Detail
+    footer was re-flowed to fit the button (Edit 208 -> 136 px wide); header buttons are 44 px tall.
+  - Build: `pio run -d crowpanel-43-bringup -e crowpanel43` succeeds (flash 3.7 %).
+  - Bench: flashed with the guarded script (COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08, Blue Pill off,
+    log `crowpanel-43-bringup/upload-d5c-2026-10-05.log`, not committed). The user looked at the panel and
+    judged it good enough for this iteration. No photos or serial logs were captured and the individual
+    checks were NOT itemised, so these remain unrecorded: both channels' source, distinct scales, flat-data
+    readability, scale stability, gaps, STALE/UNKNOWN/DEMO states, Graph controls still working, no
+    clipping and 44x44 touch targets (incl. the narrowed Detail footer). The paused-window rollover note
+    was not exercised.
+  - D5c is NOT complete until its PR is merged; the acceptance checks above are open follow-ups, not passed.
+    #26 and the broader screen issues stay open.
+  - NEXT SESSION: (1) #93 UART0 handshake / quiet mode is the next objective; it needs its own design and
+    firmware/flash-flow session (STM32 + `guarded-flash.ps1`). (2) Until it lands the workaround is: power
+    the Blue Pill off (or hold NRST / unplug the UART link) before every CrowPanel upload and reconnect
+    after; the guarded script probes every serial port with `esptool chip-id`; never write non-`CMD:` text
+    to UART0. (3) STM32 flash headroom is tight (last reported 98.1 % of 64 KB), so #93 must be small or
+    host-side. (4) #92 and #93 have identical titles and bodies, so #92 duplicates #93; propose closing
+    one as a duplicate of the other once the user decides (neither closed). (5) After that: D6-D8, #71
+    reconciliation and Iset editor (#74/#75), #82 time, #84 CSV.
