@@ -27,11 +27,11 @@ constexpr bool    kLiveChartsEnabled = true;
 constexpr bool    kMinimalUiLabelsOnly = false;
 constexpr uint8_t kChartDecimation = 2;
 constexpr uint32_t kSplashDurationMs = 1800;
-constexpr int16_t  kOutputOnThreshold_mA = 50;  // legacy Graph-screen RUN chip only (D5)
 constexpr uint32_t kDemoFrameMs = 50;
 constexpr uint32_t kDemoTourSwitchMs = 8000;
-constexpr size_t   kTrendCapacity = 1800;  // 7.5 minutes at 4 Hz
-constexpr uint16_t kChartPoints   = 120;   // 2 minutes visible at 1 Hz (decimated)
+// 15 min at the 5 Hz cap (kTrendSampleMs). sizeof(TrendSample)=28 B -> 4500 * 28 = 126,000 B in PSRAM.
+constexpr size_t   kTrendCapacity = 4500;
+constexpr uint16_t kChartPoints   = 120;   // plotted points; each is every kChartDecimation-th sample
 constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
 constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
 constexpr uint16_t kSetupStep_mA = 50;
@@ -78,6 +78,7 @@ struct UiTheme {
   static constexpr uint32_t kCh1Tint = 0x28361C;
   static constexpr uint32_t kCh2 = 0x2DD4BF;
   static constexpr uint32_t kCh2Tint = 0x1E3837;
+  static constexpr uint32_t kScope = 0x0D1013;
 };
 
 // ── hardware ───────────────────────────────────────────────────────────────
@@ -241,29 +242,21 @@ static size_t detail_last_trend_count = static_cast<size_t>(-1);
 static uint32_t detail_last_chart_ms = 0;
 static size_t detail_plotted = 0;
 
-static lv_obj_t* lbl_graph_voltage = nullptr;
-static lv_obj_t* lbl_graph_current = nullptr;
+// Graph-screen pen order: CH1 V, CH1 I, CH2 V, CH2 I.
+static lv_obj_t* lbl_pen_val[4] = {};
 static lv_obj_t* lbl_graph_stats = nullptr;
 static lv_obj_t* lbl_window = nullptr;
 static lv_obj_t* lbl_graph_window_v = nullptr;
 static lv_obj_t* lbl_graph_window_i = nullptr;
+static lv_obj_t* lbl_graph_axis_v[5] = {};
+static lv_obj_t* lbl_graph_axis_i[5] = {};
+static lv_obj_t* lbl_graph_time[7] = {};
 
 static lv_obj_t* lbl_splash_hint = nullptr;
 static lv_obj_t* lbl_fault_graph = nullptr;
 
-static lv_obj_t* chip_graph_ok = nullptr;
-static lv_obj_t* chip_graph_mode = nullptr;
-static lv_obj_t* chip_graph_limit = nullptr;
-static lv_obj_t* chip_graph_run = nullptr;
-
 static lv_obj_t* chart_v     = nullptr;
 static lv_obj_t* chart_i     = nullptr;
-static lv_obj_t* chart_ch1_v = nullptr;
-static lv_obj_t* chart_ch1_i = nullptr;
-static lv_obj_t* chart_ch2_v = nullptr;
-static lv_obj_t* chart_ch2_i = nullptr;
-static lv_chart_series_t* chart_v_series = nullptr;
-static lv_chart_series_t* chart_i_series = nullptr;
 static lv_chart_series_t* chart_ch1_v_series = nullptr;
 static lv_chart_series_t* chart_ch1_i_series = nullptr;
 static lv_chart_series_t* chart_ch2_v_series = nullptr;
@@ -323,9 +316,10 @@ struct TrendSample {
   bool demo;
 };
 
-static TrendSample trend_buf[kTrendCapacity] = {};
+static TrendSample* trend_buf = nullptr;  // PSRAM, kTrendCapacity entries
 static size_t trend_head = 0;
 static size_t trend_count = 0;
+static uint32_t trend_total = 0;  // monotonic; trend_count saturates when the ring is full
 static bool trend_logging_enabled = true;
 
 void setupRequestRefresh();
@@ -368,15 +362,16 @@ const TrendSample& trendAt(size_t logical_idx) {
 void trendClear() {
   trend_head = 0;
   trend_count = 0;
+  trend_total = 0;
   chart_write_idx = 0;
-  if (chart_v && chart_v_series) {
-    lv_chart_set_all_value(chart_v, chart_v_series, LV_CHART_POINT_NONE);
-    lv_chart_refresh(chart_v);
+  lv_obj_t* const charts[4] = {chart_v, chart_v, chart_i, chart_i};
+  lv_chart_series_t* const series[4] = {chart_ch1_v_series, chart_ch2_v_series,
+                                        chart_ch1_i_series, chart_ch2_i_series};
+  for (int k = 0; k < 4; ++k) {
+    if (charts[k] && series[k]) lv_chart_set_all_value(charts[k], series[k], LV_CHART_POINT_NONE);
   }
-  if (chart_i && chart_i_series) {
-    lv_chart_set_all_value(chart_i, chart_i_series, LV_CHART_POINT_NONE);
-    lv_chart_refresh(chart_i);
-  }
+  if (chart_v) lv_chart_refresh(chart_v);
+  if (chart_i) lv_chart_refresh(chart_i);
 }
 
 struct TrendWindowStats {
@@ -416,14 +411,29 @@ TrendWindowStats getTrendWindowStats(size_t window_samples) {
 
 void appendCharts(const TrendSample& s) {
   if (!kLiveChartsEnabled) return;
-  if (!chart_v || !chart_i || !chart_v_series || !chart_i_series) return;
+  if (!chart_v || !chart_i || !chart_ch1_v_series || !chart_ch1_i_series ||
+      !chart_ch2_v_series || !chart_ch2_i_series) return;
 
-  // Use LVGL's incremental circular update path to reduce redraw artifacts.
-  lv_chart_set_next_value(chart_v, chart_v_series, static_cast<lv_coord_t>(s.v12_mV));
-  lv_chart_set_next_value(chart_i, chart_i_series, static_cast<lv_coord_t>(s.i12_mA));
+  // SHIFT mode scrolls right-to-left; CH2 stays blank for legacy frames that carry no CH2 data.
+  lv_chart_set_next_value(chart_v, chart_ch1_v_series, static_cast<lv_coord_t>(s.v12_mV));
+  lv_chart_set_next_value(chart_v, chart_ch2_v_series,
+                          s.has_ch2 ? static_cast<lv_coord_t>(s.v3v3_mV) : LV_CHART_POINT_NONE);
+  lv_chart_set_next_value(chart_i, chart_ch1_i_series, static_cast<lv_coord_t>(s.i12_mA));
+  lv_chart_set_next_value(chart_i, chart_ch2_i_series,
+                          s.has_ch2 ? static_cast<lv_coord_t>(s.i3v3_mA) : LV_CHART_POINT_NONE);
+}
+
+void trendInit() {
+  trend_buf = static_cast<TrendSample*>(
+      heap_caps_calloc(kTrendCapacity, sizeof(TrendSample), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!trend_buf) {
+    Serial.println("trend: PSRAM buffer alloc failed, trend logging disabled");
+    trend_logging_enabled = false;
+  }
 }
 
 void trendPushSample(const disp_link_slave::Telemetry& t, uint32_t now_ms) {
+  if (!trend_buf) return;
   TrendSample s = {};
   s.t_ms = now_ms;
   s.rx_count = t.rx_count;
@@ -439,9 +449,10 @@ void trendPushSample(const disp_link_slave::Telemetry& t, uint32_t now_ms) {
   trend_buf[trend_head] = s;
   trend_head = (trend_head + 1) % kTrendCapacity;
   if (trend_count < kTrendCapacity) trend_count++;
+  trend_total++;
 
   // Decimate chart writes to limit redraw pressure while labels stay snappy.
-  if ((trend_count % kChartDecimation) == 0) {
+  if ((trend_total % kChartDecimation) == 0) {
     appendCharts(s);
   }
 }
@@ -1182,24 +1193,6 @@ lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, in
   lv_obj_set_style_text_font(label, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_center(label);
   return btn;
-}
-
-lv_obj_t* create_state_chip(lv_obj_t* parent, const char* text, uint32_t bg_hex, uint32_t text_hex, int y_ofs) {
-  lv_obj_t* chip = lv_obj_create(parent);
-  lv_obj_set_size(chip, 74, 34);
-  lv_obj_align(chip, LV_ALIGN_TOP_MID, 0, y_ofs);
-  lv_obj_set_style_bg_color(chip, lv_color_hex(bg_hex), LV_PART_MAIN);
-  lv_obj_set_style_border_width(chip, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(chip, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-  lv_obj_set_style_radius(chip, 8, LV_PART_MAIN);
-  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t* lbl = lv_label_create(chip);
-  lv_label_set_text(lbl, text);
-  lv_obj_set_style_text_color(lbl, lv_color_hex(text_hex), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_center(lbl);
-  return lbl;
 }
 
 // ── LVGL init ──────────────────────────────────────────────────────────────
@@ -2441,104 +2434,97 @@ void refreshDashboard(bool force) {
   }
 }
 
+// Strip-recorder Graph screen (D5a): 640x122 plot areas stacked V over I, two pens each.
+constexpr int kGraphChartX = 62;
+constexpr int kGraphChartW = 640;
+constexpr int kGraphChartH = 122;
+constexpr int kGraphVChartY = 128;
+constexpr int kGraphIChartY = 270;
+
+lv_obj_t* createGraphChart(int y, int32_t y_min, int32_t y_max) {
+  lv_obj_t* c = lv_chart_create(screen_graph);
+  lv_obj_set_pos(c, kGraphChartX, y);
+  lv_obj_set_size(c, kGraphChartW, kGraphChartH);
+  lv_obj_set_style_pad_all(c, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(c, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(c, lv_color_hex(UiTheme::kScope), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(c, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(c, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(c, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_line_color(c, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_line_width(c, 1, LV_PART_MAIN);
+  lv_obj_set_style_line_width(c, 2, LV_PART_ITEMS);
+  lv_obj_set_style_size(c, 0, LV_PART_INDICATOR);
+  lv_obj_clear_flag(c, LV_OBJ_FLAG_CLICKABLE);
+  lv_chart_set_type(c, LV_CHART_TYPE_LINE);
+  lv_chart_set_update_mode(c, LV_CHART_UPDATE_MODE_SHIFT);
+  lv_chart_set_point_count(c, kChartPoints);
+  // lv_chart skips the two border positions, so N divs draw N-2 interior lines: 3 horizontal, 5 vertical.
+  lv_chart_set_div_line_count(c, 5, 7);
+  lv_chart_set_range(c, LV_CHART_AXIS_PRIMARY_Y, y_min, y_max);
+  return c;
+}
+
 void create_graph_screen(lv_obj_t* root) {
-  screen_graph = lv_obj_create(root);
-  lv_obj_set_size(screen_graph, kDisplayWidth, kDisplayHeight);
-  lv_obj_clear_flag(screen_graph, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(screen_graph, 0, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(screen_graph, lv_color_hex(UiTheme::kBg), LV_PART_MAIN);
-  lv_obj_set_style_border_width(screen_graph, 0, LV_PART_MAIN);
+  screen_graph = makeScreen(root);
 
-  lv_obj_t* status = lv_obj_create(screen_graph);
-  lv_obj_set_size(status, kDisplayWidth - 20, 44);
-  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 8);
-  lv_obj_set_style_bg_color(status, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
-  lv_obj_set_style_radius(status, 12, LV_PART_MAIN);
-  lv_obj_set_style_border_width(status, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(status, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-
-  lv_obj_t* mode = lv_label_create(status);
-  lv_label_set_text(mode, "TREND HISTORY");
-  lv_obj_set_style_text_color(mode, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(mode, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(mode, LV_ALIGN_LEFT_MID, 14, 0);
-
+  // Header bezel: title, group label, nav.
+  lv_obj_t* status = makeBox(screen_graph, 8, 6, kDisplayWidth - 16, 44, UiTheme::kStatusBar, UiTheme::kBorder, 1, 8);
+  makeLabel(status, 14, 0, 190, 44, "STRIP RECORDER", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+  makeLabel(status, 212, 0, 330, 44, "GROUP 1   +5V / +3.3V", &lv_font_montserrat_16, UiTheme::kTextMuted);
   create_nav_btn(status, "Settings", UiScreen::Settings, -120);
   create_nav_btn(status, "Main", UiScreen::Main, -10);
 
-  lv_obj_t* card = lv_obj_create(screen_graph);
-  lv_obj_set_size(card, kDisplayWidth - 36, 72);
-  lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 62);
-  lv_obj_set_style_bg_color(card, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
-  lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(card, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  // Pen legend: swatch + live value per channel.
+  static const struct { const char* tag; uint32_t color; } kPens[4] = {
+    {"CH1 +5V  VOLT", UiTheme::kCh1},
+    {"CH1 +5V  CURR", UiTheme::kCh1},
+    {"CH2 +3.3V  VOLT", UiTheme::kCh2},
+    {"CH2 +3.3V  CURR", UiTheme::kCh2},
+  };
+  for (int k = 0; k < 4; ++k) {
+    lv_obj_t* cell = makeBox(screen_graph, 18 + k * 193, 56, 185, 52, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 6);
+    makeBox(cell, 8, 10, 6, 30, kPens[k].color, kPens[k].color, 0, 2);
+    makeLabel(cell, 22, 4, 158, 18, kPens[k].tag, &lv_font_montserrat_12, kPens[k].color);
+    lbl_pen_val[k] = makeLabel(cell, 22, 22, 158, 26, "--", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+  }
 
-  lbl_graph_voltage = lv_label_create(card);
-  lv_label_set_text_fmt(lbl_graph_voltage, "%s --.--V / --.---A", kRails[0].name);
-  lv_obj_set_style_text_color(lbl_graph_voltage, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_graph_voltage, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_set_width(lbl_graph_voltage, 280);
-  lv_obj_set_style_text_align(lbl_graph_voltage, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-  lv_obj_align(lbl_graph_voltage, LV_ALIGN_LEFT_MID, 18, -14);
+  lbl_graph_stats = makeLabel(screen_graph, kGraphChartX + kGraphChartW + 12, 330, 74, 54, "n=0\nT=--C",
+                              &lv_font_montserrat_12, UiTheme::kTextMuted);
 
-  lbl_graph_current = lv_label_create(card);
-  lv_label_set_text_fmt(lbl_graph_current, "%s --.--V / --.---A", kRails[1].name);
-  lv_obj_set_style_text_color(lbl_graph_current, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_graph_current, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_set_width(lbl_graph_current, 280);
-  lv_obj_set_style_text_align(lbl_graph_current, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-  lv_obj_align(lbl_graph_current, LV_ALIGN_LEFT_MID, 18, 14);
+  makeLabel(screen_graph, kGraphChartX, 110, 300, 16, "VOLTAGE (V)", &lv_font_montserrat_12, UiTheme::kTextMuted);
+  chart_v = createGraphChart(kGraphVChartY, 0, 6000);
+  chart_ch1_v_series = lv_chart_add_series(chart_v, lv_color_hex(UiTheme::kCh1), LV_CHART_AXIS_PRIMARY_Y);
+  chart_ch2_v_series = lv_chart_add_series(chart_v, lv_color_hex(UiTheme::kCh2), LV_CHART_AXIS_PRIMARY_Y);
+  lv_chart_set_all_value(chart_v, chart_ch1_v_series, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(chart_v, chart_ch2_v_series, LV_CHART_POINT_NONE);
 
-  lbl_graph_stats = lv_label_create(card);
-  lv_label_set_text(lbl_graph_stats, "samples=0 T=--C");
-  lv_obj_set_style_text_color(lbl_graph_stats, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_graph_stats, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_align(lbl_graph_stats, LV_ALIGN_RIGHT_MID, -18, 0);
+  makeLabel(screen_graph, kGraphChartX, 252, 300, 16, "CURRENT (A)", &lv_font_montserrat_12, UiTheme::kTextMuted);
+  chart_i = createGraphChart(kGraphIChartY, 0, 4000);
+  chart_ch1_i_series = lv_chart_add_series(chart_i, lv_color_hex(UiTheme::kCh1), LV_CHART_AXIS_PRIMARY_Y);
+  chart_ch2_i_series = lv_chart_add_series(chart_i, lv_color_hex(UiTheme::kCh2), LV_CHART_AXIS_PRIMARY_Y);
+  lv_chart_set_all_value(chart_i, chart_ch1_i_series, LV_CHART_POINT_NONE);
+  lv_chart_set_all_value(chart_i, chart_ch2_i_series, LV_CHART_POINT_NONE);
 
-  lv_obj_t* lbl_v_trend = lv_label_create(screen_graph);
-  lv_label_set_text(lbl_v_trend, "Voltage trend (mV)");
-  lv_obj_set_style_text_color(lbl_v_trend, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_v_trend, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_v_trend, LV_ALIGN_TOP_LEFT, 22, 144);
+  // Axis scales are fixed (V 0..6 V, I 0..4 A), so these labels are static.
+  for (int j = 0; j < 5; ++j) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%.1f", 6.0f * (4 - j) / 4.0f);
+    makeLabel(screen_graph, 12, kGraphVChartY + j * (kGraphChartH - 1) / 4 - 8, 46, 16, buf,
+              &lv_font_montserrat_12, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+    snprintf(buf, sizeof(buf), "%.1f", 4.0f * (4 - j) / 4.0f);
+    makeLabel(screen_graph, 12, kGraphIChartY + j * (kGraphChartH - 1) / 4 - 8, 46, 16, buf,
+              &lv_font_montserrat_12, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+  }
 
-  chart_v = lv_chart_create(screen_graph);
-  lv_obj_set_size(chart_v, 650, 96);
-  lv_obj_align(chart_v, LV_ALIGN_TOP_LEFT, 22, 170);
-  lv_chart_set_type(chart_v, LV_CHART_TYPE_LINE);
-  lv_chart_set_update_mode(chart_v, LV_CHART_UPDATE_MODE_CIRCULAR);
-  lv_chart_set_point_count(chart_v, kChartPoints);
-  lv_chart_set_div_line_count(chart_v, 6, 8);
-  lv_chart_set_range(chart_v, LV_CHART_AXIS_PRIMARY_Y, 9000, 15000);
-  lv_obj_set_style_bg_color(chart_v, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_border_color(chart_v, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-  lv_obj_set_style_border_width(chart_v, 1, LV_PART_MAIN);
-  lv_obj_set_style_line_color(chart_v, lv_color_hex(0x4A525D), LV_PART_ITEMS);
-  lv_obj_set_style_line_opa(chart_v, LV_OPA_30, LV_PART_ITEMS);
-  chart_v_series = lv_chart_add_series(chart_v, lv_color_hex(UiTheme::kAccentV), LV_CHART_AXIS_PRIMARY_Y);
-  lv_chart_set_all_value(chart_v, chart_v_series, LV_CHART_POINT_NONE);
-
-  lv_obj_t* lbl_i_trend = lv_label_create(screen_graph);
-  lv_label_set_text(lbl_i_trend, "Current trend (mA)");
-  lv_obj_set_style_text_color(lbl_i_trend, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
-  lv_obj_set_style_text_font(lbl_i_trend, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_align(lbl_i_trend, LV_ALIGN_TOP_LEFT, 22, 278);
-
-  chart_i = lv_chart_create(screen_graph);
-  lv_obj_set_size(chart_i, 650, 96);
-  lv_obj_align(chart_i, LV_ALIGN_TOP_LEFT, 22, 304);
-  lv_chart_set_type(chart_i, LV_CHART_TYPE_LINE);
-  lv_chart_set_update_mode(chart_i, LV_CHART_UPDATE_MODE_CIRCULAR);
-  lv_chart_set_point_count(chart_i, kChartPoints);
-  lv_chart_set_div_line_count(chart_i, 6, 8);
-  lv_chart_set_range(chart_i, LV_CHART_AXIS_PRIMARY_Y, -500, 3000);
-  lv_obj_set_style_bg_color(chart_i, lv_color_hex(UiTheme::kPanel), LV_PART_MAIN);
-  lv_obj_set_style_border_color(chart_i, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
-  lv_obj_set_style_border_width(chart_i, 1, LV_PART_MAIN);
-  lv_obj_set_style_line_color(chart_i, lv_color_hex(0x4A525D), LV_PART_ITEMS);
-  lv_obj_set_style_line_opa(chart_i, LV_OPA_30, LV_PART_ITEMS);
-  chart_i_series = lv_chart_add_series(chart_i, lv_color_hex(UiTheme::kAccentI), LV_CHART_AXIS_PRIMARY_Y);
-  lv_chart_set_all_value(chart_i, chart_i_series, LV_CHART_POINT_NONE);
+  // One label per major vertical grid line (6 columns); times are CrowPanel uptime until a real clock exists (#82).
+  for (int k = 0; k < 7; ++k) {
+    const int cx = kGraphChartX + k * kGraphChartW / 6;
+    const int x = (k == 0) ? kGraphChartX : (k == 6) ? kGraphChartX + kGraphChartW - 70 : cx - 35;
+    const lv_text_align_t al = (k == 0) ? LV_TEXT_ALIGN_LEFT : (k == 6) ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_CENTER;
+    lbl_graph_time[k] = makeLabel(screen_graph, x, 394, 70, 16, "--:--:--", &lv_font_montserrat_12, UiTheme::kTextMuted, al);
+  }
+  makeLabel(screen_graph, kGraphChartX + kGraphChartW + 12, 394, 74, 16, "UPTIME", &lv_font_montserrat_12, UiTheme::kTextMuted);
 
   lbl_window = lv_label_create(screen_graph);
   lv_label_set_text(lbl_window, "win: waiting for samples");
@@ -2547,41 +2533,29 @@ void create_graph_screen(lv_obj_t* root) {
   lv_obj_align(lbl_window, LV_ALIGN_BOTTOM_LEFT, 24, -8);
 
   lbl_graph_window_v = lv_label_create(screen_graph);
-  lv_label_set_text(lbl_graph_window_v, "V min/max --.-- / --.--");
-  lv_obj_set_style_text_color(lbl_graph_window_v, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
+  lv_label_set_text(lbl_graph_window_v, "CH1 V min/max --.-- / --.--");
+  lv_obj_set_style_text_color(lbl_graph_window_v, lv_color_hex(UiTheme::kCh1), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_graph_window_v, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(lbl_graph_window_v, LV_ALIGN_BOTTOM_MID, -120, -8);
 
   lbl_graph_window_i = lv_label_create(screen_graph);
-  lv_label_set_text(lbl_graph_window_i, "I min/max --.--- / --.---");
-  lv_obj_set_style_text_color(lbl_graph_window_i, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_label_set_text(lbl_graph_window_i, "CH1 I min/max --.--- / --.---");
+  lv_obj_set_style_text_color(lbl_graph_window_i, lv_color_hex(UiTheme::kCh1), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_graph_window_i, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(lbl_graph_window_i, LV_ALIGN_BOTTOM_RIGHT, -22, -8);
-
-  lv_obj_t* chip_col = lv_obj_create(screen_graph);
-  lv_obj_set_size(chip_col, 92, 246);
-  lv_obj_align(chip_col, LV_ALIGN_TOP_RIGHT, -24, 172);
-  lv_obj_set_style_bg_opa(chip_col, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(chip_col, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(chip_col, 0, LV_PART_MAIN);
-  lv_obj_clear_flag(chip_col, LV_OBJ_FLAG_SCROLLABLE);
-
-  chip_graph_ok = create_state_chip(chip_col, "OK", 0x193425, UiTheme::kAccentOk, 0);
-  chip_graph_mode = create_state_chip(chip_col, "M1", 0x24364A, UiTheme::kAccentI, 52);
-  chip_graph_limit = create_state_chip(chip_col, "CV", 0x1F3A27, UiTheme::kAccentOk, 104);
-  chip_graph_run = create_state_chip(chip_col, "RUN", 0x1F3A27, UiTheme::kAccentOk, 156);
 
   lv_obj_t* fault_row = lv_obj_create(screen_graph);
   lv_obj_set_size(fault_row, kDisplayWidth - 36, 30);
   lv_obj_align(fault_row, LV_ALIGN_BOTTOM_MID, 0, -26);
+  lv_obj_clear_flag(fault_row, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(fault_row, lv_color_hex(UiTheme::kStatusBar), LV_PART_MAIN);
   lv_obj_set_style_radius(fault_row, 9, LV_PART_MAIN);
   lv_obj_set_style_border_width(fault_row, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(fault_row, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
 
   lbl_fault_graph = lv_label_create(fault_row);
-  lv_label_set_text(lbl_fault_graph, "OVP OK   OCP OK   OTP OK   SCP OK   LIM CV");
-  lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(UiTheme::kAccentOk), LV_PART_MAIN);
+  lv_label_set_text(lbl_fault_graph, "NO TELEMETRY");
+  lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(UiTheme::kUnknown), LV_PART_MAIN);
   lv_obj_set_style_text_font(lbl_fault_graph, &lv_font_montserrat_16, LV_PART_MAIN);
   lv_obj_center(lbl_fault_graph);
 }
@@ -2602,6 +2576,62 @@ void create_dashboard() {
 }
 
 // ── Telemetry label updates ────────────────────────────────────────────────
+// Lists only active trips; no CC/CV claim (#77). Runs every loop so STALE shows without a new frame.
+void refreshGraphFaultRow(const DisplayTelemetry& t, uint32_t now_ms) {
+  if (!lbl_fault_graph || active_screen != UiScreen::Graph) return;
+
+  uint32_t age_ms = 0;
+  const LinkState link = linkStateOf(t, now_ms, &age_ms);
+  char buf[96] = "";
+  uint32_t color = UiTheme::kAccentOk;
+  if (link == LinkState::Unknown) {
+    strcpy(buf, "NO TELEMETRY");
+    color = UiTheme::kUnknown;
+  } else if (link == LinkState::Demo) {
+    strcpy(buf, "DEMO DATA - NO FAULT INFO");
+    color = UiTheme::kDemo;
+  } else if (link == LinkState::Stale) {
+    strcpy(buf, "LINK STALE - FAULT STATE UNKNOWN");
+    color = UiTheme::kAccentWarn;
+  } else if (!t.has_extended) {
+    strcpy(buf, "FAULT FLAGS NOT REPORTED (LEGACY FRAME)");
+    color = UiTheme::kUnknown;
+  } else {
+    static const char* const kTripNames[3] = {"OVP", "OCP", "OTP"};
+    static const uint8_t kTripBits[3] = {kTripOvp, kTripOcp, kTripOtp};
+    for (int ch = 0; ch < 2; ++ch) {
+      const RailData d = railData(ch, t, link);
+      char part[40] = "";
+      for (int k = 0; k < 3; ++k) {
+        if (d.trip_flags & kTripBits[k]) {
+          strncat(part, part[0] ? " " : "", sizeof(part) - strlen(part) - 1);
+          strncat(part, kTripNames[k], sizeof(part) - strlen(part) - 1);
+        }
+      }
+      if (part[0]) {
+        char entry[56];
+        snprintf(entry, sizeof(entry), "%sCH%d %s", buf[0] ? "   " : "", ch + 1, part);
+        strncat(buf, entry, sizeof(buf) - strlen(buf) - 1);
+      }
+    }
+    if (t.status & 0x08u) strncat(buf, buf[0] ? "   THERM WARN" : "THERM WARN", sizeof(buf) - strlen(buf) - 1);
+    if (buf[0]) {
+      color = UiTheme::kError;
+    } else {
+      strcpy(buf, "NO FAULTS");
+    }
+  }
+  static uint32_t last_color = 0xFFFFFFFFu;
+  if (strcmp(lv_label_get_text(lbl_fault_graph), buf) != 0) {
+    lv_label_set_text(lbl_fault_graph, buf);
+    lv_obj_center(lbl_fault_graph);
+  }
+  if (color != last_color) {
+    last_color = color;
+    lv_obj_set_style_text_color(lbl_fault_graph, lv_color_hex(color), LV_PART_MAIN);
+  }
+}
+
 void update_telemetry_labels() {
   if (!kLiveTelemetryUiEnabled) return;
 
@@ -2609,6 +2639,7 @@ void update_telemetry_labels() {
   if (now_ms - last_ui_update_ms < kUiUpdateMinMs) return;
 
   const DisplayTelemetry t = get_display_telemetry();
+  refreshGraphFaultRow(t, now_ms);
   if (t.rx_count == last_drawn_count &&
       t.last_seq == last_drawn_seq) return;
 
@@ -2617,19 +2648,23 @@ void update_telemetry_labels() {
   last_drawn_seq   = t.last_seq;
 
   // Main and channel-detail screens are driven by refreshDashboard(); this updates the Graph screen only.
-  if (lbl_graph_voltage) {
-    char v_graph[48];
-    snprintf(v_graph, sizeof(v_graph), "%s %05.2fV / %05.3fA", kRails[0].name,
-             t.last_v12_mV / 1000.0f,
-             t.last_i12_mA / 1000.0f);
-    setLabel(lbl_graph_voltage, v_graph);
-  }
-  if (lbl_graph_current) {
-    char i_graph[48];
-    snprintf(i_graph, sizeof(i_graph), "%s %05.2fV / %05.3fA", kRails[1].name,
-             t.last_v3v3_mV / 1000.0f,
-             t.last_i3v3_mA / 1000.0f);
-    setLabel(lbl_graph_current, i_graph);
+  {
+    uint32_t age_ms = 0;
+    const LinkState link = linkStateOf(t, now_ms, &age_ms);
+    for (int ch = 0; ch < 2; ++ch) {
+      const RailData d = railData(ch, t, link);
+      char vbuf[16];
+      char ibuf[16];
+      if (d.have_reading) {
+        snprintf(vbuf, sizeof(vbuf), "%.2f V", d.v_mV / 1000.0f);
+        snprintf(ibuf, sizeof(ibuf), "%.3f A", d.i_mA / 1000.0f);
+      } else {
+        strcpy(vbuf, "--");
+        strcpy(ibuf, "--");
+      }
+      setLabel(lbl_pen_val[ch * 2], vbuf);
+      setLabel(lbl_pen_val[ch * 2 + 1], ibuf);
+    }
   }
 
   if (kMinimalUiLabelsOnly) return;
@@ -2638,101 +2673,70 @@ void update_telemetry_labels() {
   last_detail_ui_update_ms = now_ms;
 
   if (lbl_graph_stats) {
-    char gbuf[112];
-    snprintf(gbuf, sizeof(gbuf), "samples=%lu rx=%lu src=%lu err=%lu uartB=%lu T=%uC",
+    char gbuf[48];
+    snprintf(gbuf, sizeof(gbuf), "n=%lu\nT=%uC\nerr=%lu",
              static_cast<unsigned long>(trend_count),
-             static_cast<unsigned long>(t.rx_count),
-             static_cast<unsigned long>(t.i2c_rx_count),
-             static_cast<unsigned long>(t.err_count),
-             static_cast<unsigned long>(t.uart_bytes),
-             static_cast<unsigned>(t.last_temp_C));
-    lv_label_set_text(lbl_graph_stats, gbuf);
+             static_cast<unsigned>(t.last_temp_C),
+             static_cast<unsigned long>(t.err_count));
+    setLabel(lbl_graph_stats, gbuf);
   }
 
-  if (lbl_fault_graph) {
-    const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-    const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
-    const bool ch1_ovp = t.has_extended ? ((t.protection_flags & 0x80u) != 0u) : false;
-    const bool ch1_ocp = t.has_extended ? ((t.protection_flags & 0x40u) != 0u) : false;
-    const bool ch1_otp = t.has_extended ? ((t.protection_flags & 0x08u) != 0u) : false;
-    const bool ch2_ovp = t.has_extended ? ((t.protection_flags & 0x20u) != 0u) : false;
-    const bool ch2_ocp = t.has_extended ? ((t.protection_flags & 0x10u) != 0u) : false;
-    const bool ch2_otp = t.has_extended ? ((t.protection_flags & 0x04u) != 0u) : false;
-    const bool thermal_warn = t.has_extended ? ((t.status & 0x08u) != 0u) : false;
-    char fbuf[128];
-    snprintf(fbuf, sizeof(fbuf), "CH1 %s/%s/%s  CH2 %s/%s/%s  LIM %s%s%s",
-             ch1_ovp ? "OVP!" : "OVP",
-             ch1_ocp ? "OCP!" : "OCP",
-             ch1_otp ? "OTP!" : "OTP",
-             ch2_ovp ? "OVP!" : "OVP",
-             ch2_ocp ? "OCP!" : "OCP",
-             ch2_otp ? "OTP!" : "OTP",
-             cc_mode ? "CC" : "CV",
-             thermal_warn ? "   THERM WARN" : "",
-             link_stale ? "   COMM WARN" : "");
-    lv_label_set_text(lbl_fault_graph, fbuf);
-    lv_obj_set_style_text_color(lbl_fault_graph,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
+  if (trend_total != last_drawn_samples) {
+    last_drawn_samples = trend_total;
+    const TrendWindowStats stats = getTrendWindowStats(static_cast<size_t>(kChartPoints) * kChartDecimation);
 
-  const bool link_stale = (!demo_mode && (t.last_rx_ms == 0 || (millis() - t.last_rx_ms) > 1500));
-  const bool cc_mode = t.has_extended ? ((t.status & 0x20u) == 0u) : (t.last_i12_mA >= 1500);
+    // Plotted window = measured sample spacing x decimation x (points - 1).
+    const size_t span = trend_count < 100 ? trend_count : 100;
+    uint32_t window_ms = 0;
+    if (span >= 2) {
+      const uint32_t dt_ms = trendAt(trend_count - 1).t_ms - trendAt(trend_count - span).t_ms;
+      window_ms = static_cast<uint32_t>(
+          static_cast<uint64_t>(dt_ms) * kChartDecimation * (kChartPoints - 1) / (span - 1));
+    }
+    const uint32_t window_s = (window_ms + 500) / 1000;
 
-  if (chip_graph_ok) {
-    lv_label_set_text(chip_graph_ok, link_stale ? "WARN" : "OK");
-    lv_obj_set_style_text_color(chip_graph_ok,
-                                link_stale ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_mode) {
-    lv_label_set_text(chip_graph_mode, demo_mode ? "DEMO" : (t.has_extended ? "EXT" : "LEG"));
-    lv_obj_set_style_text_color(chip_graph_mode,
-                                demo_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentI),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_limit) {
-    lv_label_set_text(chip_graph_limit, cc_mode ? "CC" : "CV");
-    lv_obj_set_style_text_color(chip_graph_limit,
-                                cc_mode ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-  if (chip_graph_run) {
-    const bool ch1_enabled = t.has_extended ? ((t.status & 0x80u) != 0u) : (t.last_i12_mA >= kOutputOnThreshold_mA);
-    lv_label_set_text(chip_graph_run, (link_stale || !ch1_enabled) ? "WAIT" : "RUN");
-    lv_obj_set_style_text_color(chip_graph_run,
-                                (link_stale || !ch1_enabled) ? lv_color_hex(UiTheme::kAccentWarn) : lv_color_hex(UiTheme::kAccentOk),
-                                LV_PART_MAIN);
-  }
-
-  if (trend_count != last_drawn_samples) {
-    last_drawn_samples = trend_count;
-    const TrendWindowStats stats = getTrendWindowStats(kChartPoints);
     char wbuf[128];
     if (!stats.has_data) {
       snprintf(wbuf, sizeof(wbuf), "win: waiting for samples");
-      if (lbl_graph_window_v) lv_label_set_text(lbl_graph_window_v, "V min/max --.-- / --.--");
-      if (lbl_graph_window_i) lv_label_set_text(lbl_graph_window_i, "I min/max --.--- / --.---");
+      if (lbl_graph_window_v) lv_label_set_text(lbl_graph_window_v, "CH1 V min/max --.-- / --.--");
+      if (lbl_graph_window_i) lv_label_set_text(lbl_graph_window_i, "CH1 I min/max --.--- / --.---");
     } else {
       // range detail lives in lbl_graph_window_v/_i; keep this one short to avoid overlap
-      snprintf(wbuf, sizeof(wbuf), "win %u s", static_cast<unsigned>(stats.samples));
+      snprintf(wbuf, sizeof(wbuf), "win %lu s", static_cast<unsigned long>(window_s));
 
       if (lbl_graph_window_v) {
         char v_win[64];
-        snprintf(v_win, sizeof(v_win), "V min/max %.2f / %.2f",
+        snprintf(v_win, sizeof(v_win), "CH1 V min/max %.2f / %.2f",
                  stats.min_v12_mV / 1000.0f,
                  stats.max_v12_mV / 1000.0f);
         lv_label_set_text(lbl_graph_window_v, v_win);
       }
       if (lbl_graph_window_i) {
         char i_win[64];
-        snprintf(i_win, sizeof(i_win), "I min/max %.3f / %.3f",
+        snprintf(i_win, sizeof(i_win), "CH1 I min/max %.3f / %.3f",
                  stats.min_i12_mA / 1000.0f,
                  stats.max_i12_mA / 1000.0f);
         lv_label_set_text(lbl_graph_window_i, i_win);
       }
     }
     if (lbl_window) lv_label_set_text(lbl_window, wbuf);
+
+    if (span >= 2) {
+      // Grid line k sits k/6 of the way across the plotted window; blank where it predates boot.
+      const uint32_t newest_ms = trendAt(trend_count - 1).t_ms;
+      for (int k = 0; k < 7; ++k) {
+        const uint32_t back_ms = static_cast<uint32_t>(static_cast<uint64_t>(window_ms) * (6 - k) / 6);
+        char tbuf[16];
+        if (back_ms > newest_ms) {
+          strcpy(tbuf, "--:--:--");
+        } else {
+          const uint32_t s = (newest_ms - back_ms) / 1000UL;
+          snprintf(tbuf, sizeof(tbuf), "%lu:%02lu:%02lu", static_cast<unsigned long>(s / 3600UL),
+                   static_cast<unsigned long>((s / 60UL) % 60UL), static_cast<unsigned long>(s % 60UL));
+        }
+        setLabel(lbl_graph_time[k], tbuf);
+      }
+    }
   }
 }
 
@@ -3198,6 +3202,7 @@ void setup() {
 
   disp_link_slave::begin();
 
+  trendInit();
   init_lvgl();
   create_dashboard();
   {
