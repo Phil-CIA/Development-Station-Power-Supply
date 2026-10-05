@@ -4,12 +4,10 @@
 #include <string.h>
 #include <Adafruit_AW9523.h>
 
-// NOTE: STM32duino's concrete serial class is `Uart`, not `HardwareSerial`.
-// `HardwareSerial` here is only the abstract ArduinoCore-API base class and
-// has no (rx, tx) pin-pair constructor, which is what broke this build
-// (see issue #3).
-Uart SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
-Uart SerialU3(PB11, PB10); // RX, TX (USART3)
+// NOTE: framework-arduinoststm32 4.21200.0 (core 2.12) has no `Uart`; its concrete
+// serial class is `HardwareSerial` with an (rx, tx) pin-pair constructor.
+HardwareSerial SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
+HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
 
 // Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
 static const uint8_t PIN_ISET_5V = PA0;
@@ -104,6 +102,7 @@ static const uint8_t FRAME_SOF2 = 0x55;
 static const uint8_t FRAME_TAG = 'T';
 static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
+static const uint32_t TELEMETRY_PERIOD_MS = 500;  // CrowPanel link goes STALE after 1500 ms
 static const uint16_t CH1_ENABLED_MIN_MV = 1000;
 static const uint16_t CH2_ENABLED_MIN_MV = 1000;
 static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
@@ -2542,7 +2541,12 @@ void loop() {
         SerialDbg.println("flash: HOLD (bring-up test failed)");
       }
     }
-    
+  }
+
+  static uint32_t lastTelemetryMs = 0;
+  if (now - lastTelemetryMs >= TELEMETRY_PERIOD_MS) {
+    lastTelemetryMs = now;
+
     // Publish live telemetry from INA3221 rails when available.
     Ina3221Reading ina_5v = {};
     Ina3221Reading ina_3v3 = {};
