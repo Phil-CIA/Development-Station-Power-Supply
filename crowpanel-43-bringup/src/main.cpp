@@ -25,13 +25,25 @@ constexpr uint32_t kDetailUiUpdateMinMs = 250;
 constexpr uint32_t kSettingsUiUpdateMinMs = 300;
 constexpr bool    kLiveChartsEnabled = true;
 constexpr bool    kMinimalUiLabelsOnly = false;
-constexpr uint8_t kChartDecimation = 2;
 constexpr uint32_t kSplashDurationMs = 1800;
 constexpr uint32_t kDemoFrameMs = 50;
 constexpr uint32_t kDemoTourSwitchMs = 8000;
 // 15 min at the 5 Hz cap (kTrendSampleMs). sizeof(TrendSample)=28 B -> 4500 * 28 = 126,000 B in PSRAM.
 constexpr size_t   kTrendCapacity = 4500;
-constexpr uint16_t kChartPoints   = 120;   // plotted points; each is every kChartDecimation-th sample
+constexpr uint16_t kChartPoints   = 120;   // max plotted points per pen; a feed rate may use fewer
+
+// Strip-recorder feed rates (D5b): window = time per division x 6 columns.
+struct FeedRate {
+  uint32_t div_ms;
+  const char* label;
+};
+constexpr FeedRate kFeedRates[] = {
+  {10000UL, "10 s"}, {30000UL, "30 s"}, {60000UL, "1 min"},
+  {300000UL, "5 min"}, {900000UL, "15 min"}, {3600000UL, "1 hr"},
+};
+constexpr uint8_t kFeedRateCount = sizeof(kFeedRates) / sizeof(kFeedRates[0]);
+constexpr uint8_t kGraphDivisions = 6;
+constexpr uint32_t kGraphMinBucketMs = 1000;  // keeps >= 1 sample per point at the 500 ms STM32 cadence
 constexpr uint16_t kSetupCh1LimitMax_mA = 3000;
 constexpr uint16_t kSetupCh2LimitMax_mA = 2000;
 constexpr uint16_t kSetupStep_mA = 50;
@@ -262,6 +274,21 @@ static lv_chart_series_t* chart_ch1_i_series = nullptr;
 static lv_chart_series_t* chart_ch2_v_series = nullptr;
 static lv_chart_series_t* chart_ch2_i_series = nullptr;
 
+// Graph recorder state (D5b). Pen order matches lbl_pen_val: CH1 V, CH1 I, CH2 V, CH2 I.
+static uint8_t graph_rate_idx = 1;
+static bool graph_paused = false;
+static uint32_t graph_pause_ms = 0;
+static bool graph_pen_visible[4] = {true, true, true, true};
+static bool graph_dirty = true;
+static uint32_t graph_last_end_bucket = 0;
+static uint32_t graph_last_total = 0;
+static lv_coord_t graph_pts[4][kChartPoints];
+static lv_obj_t* graph_pen_cell[4] = {};
+static lv_obj_t* graph_pen_tag[4] = {};
+static lv_obj_t* graph_feed_lbl = nullptr;
+static lv_obj_t* graph_pause_btn = nullptr;
+static lv_obj_t* graph_pause_lbl = nullptr;
+
 static UiScreen active_screen = UiScreen::Splash;
 static bool splash_done = false;
 static uint32_t splash_start_ms = 0;
@@ -270,7 +297,6 @@ static uint32_t splash_start_ms = 0;
 static uint32_t last_drawn_seq   = 0xFFFFFFFFu;
 static uint32_t last_drawn_count = 0;
 static uint32_t last_ui_update_ms = 0;
-static size_t   last_drawn_samples = static_cast<size_t>(-1);
 static uint16_t chart_write_idx = 0;
 static uint32_t last_detail_ui_update_ms = 0;
 static bool demo_mode = false;
@@ -364,6 +390,7 @@ void trendClear() {
   trend_count = 0;
   trend_total = 0;
   chart_write_idx = 0;
+  graph_dirty = true;
   lv_obj_t* const charts[4] = {chart_v, chart_v, chart_i, chart_i};
   lv_chart_series_t* const series[4] = {chart_ch1_v_series, chart_ch2_v_series,
                                         chart_ch1_i_series, chart_ch2_i_series};
@@ -409,20 +436,6 @@ TrendWindowStats getTrendWindowStats(size_t window_samples) {
   return stats;
 }
 
-void appendCharts(const TrendSample& s) {
-  if (!kLiveChartsEnabled) return;
-  if (!chart_v || !chart_i || !chart_ch1_v_series || !chart_ch1_i_series ||
-      !chart_ch2_v_series || !chart_ch2_i_series) return;
-
-  // SHIFT mode scrolls right-to-left; CH2 stays blank for legacy frames that carry no CH2 data.
-  lv_chart_set_next_value(chart_v, chart_ch1_v_series, static_cast<lv_coord_t>(s.v12_mV));
-  lv_chart_set_next_value(chart_v, chart_ch2_v_series,
-                          s.has_ch2 ? static_cast<lv_coord_t>(s.v3v3_mV) : LV_CHART_POINT_NONE);
-  lv_chart_set_next_value(chart_i, chart_ch1_i_series, static_cast<lv_coord_t>(s.i12_mA));
-  lv_chart_set_next_value(chart_i, chart_ch2_i_series,
-                          s.has_ch2 ? static_cast<lv_coord_t>(s.i3v3_mA) : LV_CHART_POINT_NONE);
-}
-
 void trendInit() {
   trend_buf = static_cast<TrendSample*>(
       heap_caps_calloc(kTrendCapacity, sizeof(TrendSample), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -450,11 +463,6 @@ void trendPushSample(const disp_link_slave::Telemetry& t, uint32_t now_ms) {
   trend_head = (trend_head + 1) % kTrendCapacity;
   if (trend_count < kTrendCapacity) trend_count++;
   trend_total++;
-
-  // Decimate chart writes to limit redraw pressure while labels stay snappy.
-  if ((trend_total % kChartDecimation) == 0) {
-    appendCharts(s);
-  }
 }
 
 DisplayTelemetry get_display_telemetry() {
@@ -556,6 +564,7 @@ void set_active_screen(UiScreen screen) {
     else lv_obj_add_flag(screen_detail, LV_OBJ_FLAG_HIDDEN);
   }
   if (screen == UiScreen::Detail) detail_chart_dirty = true;
+  if (screen == UiScreen::Graph) graph_dirty = true;
   refreshDashboard(true);
 }
 
@@ -2441,6 +2450,185 @@ constexpr int kGraphChartH = 122;
 constexpr int kGraphVChartY = 128;
 constexpr int kGraphIChartY = 270;
 
+struct GraphPen {
+  const char* tag;
+  uint32_t color;
+};
+constexpr GraphPen kGraphPens[4] = {
+  {"CH1 +5V  VOLT", UiTheme::kCh1},
+  {"CH1 +5V  CURR", UiTheme::kCh1},
+  {"CH2 +3.3V  VOLT", UiTheme::kCh2},
+  {"CH2 +3.3V  CURR", UiTheme::kCh2},
+};
+
+uint32_t graphWindowMs() { return kFeedRates[graph_rate_idx].div_ms * kGraphDivisions; }
+
+uint32_t graphBucketMs() {
+  const uint32_t b = graphWindowMs() / kChartPoints;
+  return b < kGraphMinBucketMs ? kGraphMinBucketMs : b;
+}
+
+uint16_t graphPointCount() { return static_cast<uint16_t>(graphWindowMs() / graphBucketMs()); }
+
+void formatSpan(uint32_t ms, char* out, size_t n) {
+  if (ms < 120000UL) {
+    snprintf(out, n, "%lu s", static_cast<unsigned long>((ms + 500UL) / 1000UL));
+  } else if (ms < 10800000UL) {
+    snprintf(out, n, "%lu min", static_cast<unsigned long>((ms + 30000UL) / 60000UL));
+  } else {
+    snprintf(out, n, "%.1f hr", ms / 3600000.0f);
+  }
+}
+
+void applyGraphRate() {
+  const uint16_t n = graphPointCount();
+  if (chart_v) lv_chart_set_point_count(chart_v, n);
+  if (chart_i) lv_chart_set_point_count(chart_i, n);
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%s\n/div", kFeedRates[graph_rate_idx].label);
+  if (graph_feed_lbl) lv_label_set_text(graph_feed_lbl, buf);
+  graph_dirty = true;
+}
+
+void applyGraphPause() {
+  if (graph_pause_lbl) lv_label_set_text(graph_pause_lbl, graph_paused ? "RESUME" : "PAUSE");
+  if (graph_pause_btn) {
+    const uint32_t accent = graph_paused ? UiTheme::kAccentWarn : UiTheme::kTextPrimary;
+    lv_obj_set_style_bg_color(graph_pause_btn, lv_color_hex(graph_paused ? 0x4A2E1A : UiTheme::kPanelSoft), LV_PART_MAIN);
+    lv_obj_set_style_border_color(graph_pause_btn, lv_color_hex(graph_paused ? UiTheme::kAccentWarn : UiTheme::kBorder), LV_PART_MAIN);
+    lv_obj_set_style_text_color(graph_pause_lbl, lv_color_hex(accent), LV_PART_MAIN);
+  }
+  graph_dirty = true;
+}
+
+void applyGraphPen(int k) {
+  lv_obj_t* const chart = (k % 2 == 0) ? chart_v : chart_i;
+  lv_chart_series_t* const series[4] = {chart_ch1_v_series, chart_ch1_i_series,
+                                        chart_ch2_v_series, chart_ch2_i_series};
+  if (chart && series[k]) lv_chart_hide_series(chart, series[k], !graph_pen_visible[k]);
+  if (graph_pen_cell[k]) lv_obj_set_style_opa(graph_pen_cell[k], graph_pen_visible[k] ? LV_OPA_COVER : LV_OPA_40, LV_PART_MAIN);
+  if (graph_pen_tag[k]) {
+    char buf[40];
+    snprintf(buf, sizeof(buf), "%s%s", kGraphPens[k].tag, graph_pen_visible[k] ? "" : "  [OFF]");
+    lv_label_set_text(graph_pen_tag[k], buf);
+  }
+}
+
+void graph_feed_cb(lv_event_t* /*e*/) {
+  graph_rate_idx = static_cast<uint8_t>((graph_rate_idx + 1) % kFeedRateCount);
+  applyGraphRate();
+}
+
+void graph_pause_cb(lv_event_t* /*e*/) {
+  graph_paused = !graph_paused;
+  if (graph_paused) graph_pause_ms = millis();
+  applyGraphPause();
+}
+
+void graph_pen_cb(lv_event_t* e) {
+  const int k = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  if (k < 0 || k >= 4) return;
+  graph_pen_visible[k] = !graph_pen_visible[k];
+  applyGraphPen(k);
+}
+
+// Resamples the PSRAM trend ring into the charts by time; empty buckets stay blank (no fabricated history).
+void refreshGraphChart(uint32_t now_ms) {
+  if (!kLiveChartsEnabled || active_screen != UiScreen::Graph || !trend_buf || !chart_v || !chart_i) return;
+
+  const uint32_t window_ms = graphWindowMs();
+  const uint32_t bucket_ms = graphBucketMs();
+  const uint16_t n = graphPointCount();
+  const uint32_t end_ms = graph_paused ? graph_pause_ms : now_ms;
+  const uint32_t end_bucket = end_ms / bucket_ms;
+  if (!graph_dirty &&
+      (graph_paused || (end_bucket == graph_last_end_bucket && trend_total == graph_last_total))) return;
+  graph_dirty = false;
+  graph_last_end_bucket = end_bucket;
+  graph_last_total = trend_total;
+
+  static int32_t sum[4][kChartPoints];
+  static uint16_t cnt[4][kChartPoints];
+  memset(sum, 0, sizeof(sum));
+  memset(cnt, 0, sizeof(cnt));
+
+  bool have_ch1 = false;
+  uint16_t v_min = 0, v_max = 0;
+  int16_t i_min = 0, i_max = 0;
+  for (size_t idx = trend_count; idx-- > 0;) {
+    const TrendSample& s = trendAt(idx);
+    if (s.t_ms > end_ms) continue;  // recorded after pause
+    const uint32_t back = end_bucket - s.t_ms / bucket_ms;
+    if (back >= n) break;
+    if (s.demo != demo_mode) continue;  // never mix demo and live samples
+    const int p = n - 1 - static_cast<int>(back);
+    sum[0][p] += s.v12_mV;
+    cnt[0][p]++;
+    sum[1][p] += s.i12_mA;
+    cnt[1][p]++;
+    if (s.has_ch2) {
+      sum[2][p] += s.v3v3_mV;
+      cnt[2][p]++;
+      sum[3][p] += s.i3v3_mA;
+      cnt[3][p]++;
+    }
+    if (!have_ch1) {
+      have_ch1 = true;
+      v_min = v_max = s.v12_mV;
+      i_min = i_max = s.i12_mA;
+    } else {
+      if (s.v12_mV < v_min) v_min = s.v12_mV;
+      if (s.v12_mV > v_max) v_max = s.v12_mV;
+      if (s.i12_mA < i_min) i_min = s.i12_mA;
+      if (s.i12_mA > i_max) i_max = s.i12_mA;
+    }
+  }
+  for (int k = 0; k < 4; ++k) {
+    for (int p = 0; p < n; ++p) {
+      graph_pts[k][p] = cnt[k][p] ? static_cast<lv_coord_t>(sum[k][p] / cnt[k][p]) : LV_CHART_POINT_NONE;
+    }
+  }
+  lv_chart_refresh(chart_v);
+  lv_chart_refresh(chart_i);
+
+  // Grid line k sits k/6 of the way across the window; blank where it predates boot.
+  for (int k = 0; k < 7; ++k) {
+    const uint32_t back_ms = static_cast<uint32_t>(static_cast<uint64_t>(window_ms) * (6 - k) / 6);
+    char tbuf[16];
+    if (back_ms > end_ms) {
+      strcpy(tbuf, "--:--:--");
+    } else {
+      const uint32_t s = (end_ms - back_ms) / 1000UL;
+      snprintf(tbuf, sizeof(tbuf), "%lu:%02lu:%02lu", static_cast<unsigned long>(s / 3600UL),
+               static_cast<unsigned long>((s / 60UL) % 60UL), static_cast<unsigned long>(s % 60UL));
+    }
+    setLabel(lbl_graph_time[k], tbuf);
+  }
+
+  char wbuf[64];
+  if (trend_count == 0) {
+    snprintf(wbuf, sizeof(wbuf), "%swaiting for samples", graph_paused ? "PAUSED  " : "");
+  } else {
+    char win[16];
+    char hist[16];
+    formatSpan(window_ms, win, sizeof(win));
+    formatSpan(trendAt(trend_count - 1).t_ms - trendAt(0).t_ms, hist, sizeof(hist));
+    snprintf(wbuf, sizeof(wbuf), "%swin %s  hist %s", graph_paused ? "PAUSED  " : "", win, hist);
+  }
+  setLabel(lbl_window, wbuf);
+
+  char mm[64];
+  if (have_ch1) {
+    snprintf(mm, sizeof(mm), "CH1 V min/max %.2f / %.2f", v_min / 1000.0f, v_max / 1000.0f);
+    setLabel(lbl_graph_window_v, mm);
+    snprintf(mm, sizeof(mm), "CH1 I min/max %.3f / %.3f", i_min / 1000.0f, i_max / 1000.0f);
+    setLabel(lbl_graph_window_i, mm);
+  } else {
+    setLabel(lbl_graph_window_v, "CH1 V min/max --.-- / --.--");
+    setLabel(lbl_graph_window_i, "CH1 I min/max --.--- / --.---");
+  }
+}
+
 lv_obj_t* createGraphChart(int y, int32_t y_min, int32_t y_max) {
   lv_obj_t* c = lv_chart_create(screen_graph);
   lv_obj_set_pos(c, kGraphChartX, y);
@@ -2475,17 +2663,14 @@ void create_graph_screen(lv_obj_t* root) {
   create_nav_btn(status, "Settings", UiScreen::Settings, -120);
   create_nav_btn(status, "Main", UiScreen::Main, -10);
 
-  // Pen legend: swatch + live value per channel.
-  static const struct { const char* tag; uint32_t color; } kPens[4] = {
-    {"CH1 +5V  VOLT", UiTheme::kCh1},
-    {"CH1 +5V  CURR", UiTheme::kCh1},
-    {"CH2 +3.3V  VOLT", UiTheme::kCh2},
-    {"CH2 +3.3V  CURR", UiTheme::kCh2},
-  };
+  // Pen legend: swatch + live value per channel; tap a cell to show/hide that pen.
   for (int k = 0; k < 4; ++k) {
     lv_obj_t* cell = makeBox(screen_graph, 18 + k * 193, 56, 185, 52, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 6);
-    makeBox(cell, 8, 10, 6, 30, kPens[k].color, kPens[k].color, 0, 2);
-    makeLabel(cell, 22, 4, 158, 18, kPens[k].tag, &lv_font_montserrat_12, kPens[k].color);
+    graph_pen_cell[k] = cell;
+    lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(cell, graph_pen_cb, LV_EVENT_CLICKED, reinterpret_cast<void*>(static_cast<intptr_t>(k)));
+    makeBox(cell, 8, 10, 6, 30, kGraphPens[k].color, kGraphPens[k].color, 0, 2);
+    graph_pen_tag[k] = makeLabel(cell, 22, 4, 158, 18, kGraphPens[k].tag, &lv_font_montserrat_12, kGraphPens[k].color);
     lbl_pen_val[k] = makeLabel(cell, 22, 22, 158, 26, "--", &lv_font_montserrat_20, UiTheme::kTextPrimary);
   }
 
@@ -2505,6 +2690,37 @@ void create_graph_screen(lv_obj_t* root) {
   chart_ch2_i_series = lv_chart_add_series(chart_i, lv_color_hex(UiTheme::kCh2), LV_CHART_AXIS_PRIMARY_Y);
   lv_chart_set_all_value(chart_i, chart_ch1_i_series, LV_CHART_POINT_NONE);
   lv_chart_set_all_value(chart_i, chart_ch2_i_series, LV_CHART_POINT_NONE);
+
+  // Pens plot from static arrays refilled by refreshGraphChart() (time-based resample).
+  for (auto& row : graph_pts) {
+    for (auto& v : row) v = LV_CHART_POINT_NONE;
+  }
+  lv_chart_set_ext_y_array(chart_v, chart_ch1_v_series, graph_pts[0]);
+  lv_chart_set_ext_y_array(chart_i, chart_ch1_i_series, graph_pts[1]);
+  lv_chart_set_ext_y_array(chart_v, chart_ch2_v_series, graph_pts[2]);
+  lv_chart_set_ext_y_array(chart_i, chart_ch2_i_series, graph_pts[3]);
+
+  // Right column: feed rate (tap = next, wraps) and pause/resume.
+  constexpr int kCtlX = kGraphChartX + kGraphChartW + 10;
+  makeLabel(screen_graph, kCtlX, 128, 78, 14, "FEED (TAP)", &lv_font_montserrat_12, UiTheme::kTextMuted);
+  lv_obj_t* feed_btn = makeButton(screen_graph, kCtlX, 146, 78, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 2, 8);
+  lv_obj_add_event_cb(feed_btn, graph_feed_cb, LV_EVENT_CLICKED, nullptr);
+  graph_feed_lbl = lv_label_create(feed_btn);
+  lv_obj_set_width(graph_feed_lbl, 74);
+  lv_obj_set_style_text_font(graph_feed_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_set_style_text_color(graph_feed_lbl, lv_color_hex(UiTheme::kAccentV), LV_PART_MAIN);
+  lv_obj_set_style_text_align(graph_feed_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_center(graph_feed_lbl);
+
+  graph_pause_btn = makeButton(screen_graph, kCtlX, 214, 78, 50, UiTheme::kPanelSoft, UiTheme::kBorder, 2, 8);
+  lv_obj_add_event_cb(graph_pause_btn, graph_pause_cb, LV_EVENT_CLICKED, nullptr);
+  graph_pause_lbl = lv_label_create(graph_pause_btn);
+  lv_obj_set_width(graph_pause_lbl, 74);
+  lv_obj_set_style_text_font(graph_pause_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_set_style_text_align(graph_pause_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_center(graph_pause_lbl);
+  applyGraphPause();
+  applyGraphRate();
 
   // Axis scales are fixed (V 0..6 V, I 0..4 A), so these labels are static.
   for (int j = 0; j < 5; ++j) {
@@ -2640,6 +2856,7 @@ void update_telemetry_labels() {
 
   const DisplayTelemetry t = get_display_telemetry();
   refreshGraphFaultRow(t, now_ms);
+  refreshGraphChart(now_ms);
   if (t.rx_count == last_drawn_count &&
       t.last_seq == last_drawn_seq) return;
 
@@ -2679,64 +2896,6 @@ void update_telemetry_labels() {
              static_cast<unsigned>(t.last_temp_C),
              static_cast<unsigned long>(t.err_count));
     setLabel(lbl_graph_stats, gbuf);
-  }
-
-  if (trend_total != last_drawn_samples) {
-    last_drawn_samples = trend_total;
-    const TrendWindowStats stats = getTrendWindowStats(static_cast<size_t>(kChartPoints) * kChartDecimation);
-
-    // Plotted window = measured sample spacing x decimation x (points - 1).
-    const size_t span = trend_count < 100 ? trend_count : 100;
-    uint32_t window_ms = 0;
-    if (span >= 2) {
-      const uint32_t dt_ms = trendAt(trend_count - 1).t_ms - trendAt(trend_count - span).t_ms;
-      window_ms = static_cast<uint32_t>(
-          static_cast<uint64_t>(dt_ms) * kChartDecimation * (kChartPoints - 1) / (span - 1));
-    }
-    const uint32_t window_s = (window_ms + 500) / 1000;
-
-    char wbuf[128];
-    if (!stats.has_data) {
-      snprintf(wbuf, sizeof(wbuf), "win: waiting for samples");
-      if (lbl_graph_window_v) lv_label_set_text(lbl_graph_window_v, "CH1 V min/max --.-- / --.--");
-      if (lbl_graph_window_i) lv_label_set_text(lbl_graph_window_i, "CH1 I min/max --.--- / --.---");
-    } else {
-      // range detail lives in lbl_graph_window_v/_i; keep this one short to avoid overlap
-      snprintf(wbuf, sizeof(wbuf), "win %lu s", static_cast<unsigned long>(window_s));
-
-      if (lbl_graph_window_v) {
-        char v_win[64];
-        snprintf(v_win, sizeof(v_win), "CH1 V min/max %.2f / %.2f",
-                 stats.min_v12_mV / 1000.0f,
-                 stats.max_v12_mV / 1000.0f);
-        lv_label_set_text(lbl_graph_window_v, v_win);
-      }
-      if (lbl_graph_window_i) {
-        char i_win[64];
-        snprintf(i_win, sizeof(i_win), "CH1 I min/max %.3f / %.3f",
-                 stats.min_i12_mA / 1000.0f,
-                 stats.max_i12_mA / 1000.0f);
-        lv_label_set_text(lbl_graph_window_i, i_win);
-      }
-    }
-    if (lbl_window) lv_label_set_text(lbl_window, wbuf);
-
-    if (span >= 2) {
-      // Grid line k sits k/6 of the way across the plotted window; blank where it predates boot.
-      const uint32_t newest_ms = trendAt(trend_count - 1).t_ms;
-      for (int k = 0; k < 7; ++k) {
-        const uint32_t back_ms = static_cast<uint32_t>(static_cast<uint64_t>(window_ms) * (6 - k) / 6);
-        char tbuf[16];
-        if (back_ms > newest_ms) {
-          strcpy(tbuf, "--:--:--");
-        } else {
-          const uint32_t s = (newest_ms - back_ms) / 1000UL;
-          snprintf(tbuf, sizeof(tbuf), "%lu:%02lu:%02lu", static_cast<unsigned long>(s / 3600UL),
-                   static_cast<unsigned long>((s / 60UL) % 60UL), static_cast<unsigned long>(s % 60UL));
-        }
-        setLabel(lbl_graph_time[k], tbuf);
-      }
-    }
   }
 }
 
