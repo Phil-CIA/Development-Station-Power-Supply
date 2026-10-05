@@ -975,3 +975,28 @@ When returning to this session for a status sync:
     host-side. (4) #92 and #93 have identical titles and bodies, so #92 duplicates #93; propose closing
     one as a duplicate of the other once the user decides (neither closed). (5) After that: D6-D8, #71
     reconciliation and Iset editor (#74/#75), #82 time, #84 CSV.
+- 2026-10-05 SESSION 3 (#93, branch `firmware/crowpanel-flash-quiet-mode`, NOT pushed, NO hardware touched):
+  - Design (user-chosen, replaces the earlier lease-by-host proposal): the PC sends `QUIET <s>` to the STM32
+    console on COM7 (HAT CH340 on USART1; DTR# is not connected, so opening it cannot reset the STM32) and the
+    STM32 acknowledges with `ACK QUIET ON rem=.. up=..` before the script runs any esptool call. `guarded-flash.ps1`
+    then renews the 15 s lease every 3 s from a background runspace while esptool/PlatformIO run, aborts the
+    uploader if two renewals go unacknowledged, the STM32 uptime goes backwards (STM32 reset) or the lease may have
+    lapsed, and sends `QUIET OFF` only after the uploader has exited. A lease that is never renewed expires on its
+    own, so telemetry is never disabled permanently. The command exists only on the console, not on the UDI link.
+  - STM32 (`main.cpp`): while quiet, `sendUdiAck/Err/Evt`, `publishTelemetry` and UDI RX are suppressed, USART3 is
+    ended and PB10 is set to input (idle-high push-pull would contend with the CH340K if the nets are joined; that
+    net topology is still UNCONFIRMED). The `usart3: ready` boot line on the UDI link was removed (non-CMD text).
+    Resume re-announces fault state. Output/limit/fault/calibration code is untouched.
+  - Build: `bluepill_f103c8` 65212 / 65536 B (99.5 %), +916 B vs 64296 B; 324 B headroom left. CrowPanel code is
+    unchanged. `guarded-flash.ps1` parses cleanly; hardware-free failure paths checked (absent quiet port, quiet
+    port = programming port, wrong target): all exit 2 before any esptool or serial traffic.
+  - Script changes: crowpanel target requires an acknowledged quiet unless `-NoQuiet`; `-QuietPort` overrides COM7
+    (identity is proved by the ACK, not the port number); with the MAC lock set, only the expected port is probed
+    (other serial devices are no longer reset). Existing port/chip/MAC guards are unchanged.
+  - OPERATOR FLOW: (1) ST-Link flash the STM32 first (it needs the new firmware). (2) Run the CrowPanel upload
+    task with the Blue Pill powered and both cables connected. (3) If the script reports a quiet failure, nothing
+    was assumed quiet: re-run; the CrowPanel may be in download mode, press RESET if it stays blank.
+    FALLBACK (unchanged, until the lease is bench-proven): power off or isolate the Blue Pill and run with `-NoQuiet`.
+  - NOT PROVEN: no upload, no bench test and no capture have been done. Pending: powered-Blue-Pill upload, repeated
+    uploads, STALE-free telemetry afterwards, aborted-upload behaviour, CrowPanel-only / STM32-only / cold-boot
+    resets, existing CMD/ACK/ERR/EVT behaviour, and output/limit state unchanged. Do not close #93 until then.

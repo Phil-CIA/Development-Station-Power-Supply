@@ -813,17 +813,44 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
   }
 }
 
+// UDI quiet lease: while active, nothing is transmitted on USART3 and PB10 is released (high-Z)
+// so the CrowPanel CH340K can program UART0. Only the console (USB/USART1) can request it, and the
+// lease must be renewed; it never touches outputs, limits, faults or calibration.
+static const uint32_t UDI_QUIET_MAX_S = 30;
+static bool g_udi_quiet = false;
+static uint32_t g_udi_quiet_until_ms = 0;
+
+void udiQuietEnter(uint32_t seconds) {
+  g_udi_quiet_until_ms = millis() + seconds * 1000u;
+  if (g_udi_quiet) return;
+  SerialU3.end();          // flushes pending TX first
+  pinMode(PB10, INPUT);    // end() leaves PB10 as an idle-high driver
+  g_udi_line_len = 0;
+  g_udi_quiet = true;
+}
+
+void udiQuietExit() {
+  if (!g_udi_quiet) return;
+  SerialU3.begin(115200);
+  g_udi_quiet = false;
+  g_fault_evt_valid = false;  // re-announce fault state to the display
+  g_aw_int_pending = true;
+}
+
 void sendUdiAck(const char* payload) {
+  if (g_udi_quiet) return;
   SerialU3.print("ACK:");
   SerialU3.println(payload);
 }
 
 void sendUdiErr(const char* payload) {
+  if (g_udi_quiet) return;
   SerialU3.print("ERR:");
   SerialU3.println(payload);
 }
 
 void sendUdiEvt(const char* payload) {
+  if (g_udi_quiet) return;
   SerialU3.print("EVT:");
   SerialU3.println(payload);
 }
@@ -1065,6 +1092,29 @@ void handleCommand(const String& cmd_in) {
     setD9PathEnabled(false);
     g_config.d9_path_enabled = 0;
     savePersistentConfig(false);
+    return;
+  }
+
+  if (cmd.startsWith("QUIET")) {
+    unsigned secs = 0;
+    if (cmd == "QUIET OFF") {
+      udiQuietExit();
+    } else if (cmd != "QUIET") {
+      if (sscanf(cmd.c_str(), "QUIET %u", &secs) != 1 || secs == 0 || secs > UDI_QUIET_MAX_S) {
+        logBoth("ERR QUIET: use QUIET <1..30> | QUIET OFF | QUIET");
+        return;
+      }
+      udiQuietEnter(secs);
+    }
+    char qmsg[48];
+    if (g_udi_quiet) {
+      snprintf(qmsg, sizeof(qmsg), "ACK QUIET ON rem=%lu up=%lu",
+               static_cast<unsigned long>(g_udi_quiet_until_ms - millis()),
+               static_cast<unsigned long>(millis()));
+    } else {
+      snprintf(qmsg, sizeof(qmsg), "ACK QUIET OFF up=%lu", static_cast<unsigned long>(millis()));
+    }
+    logBoth(qmsg);
     return;
   }
 
@@ -1357,6 +1407,7 @@ void pollCommands() {
 }
 
 void pollUdiCommands() {
+  if (g_udi_quiet) return;
   while (SerialU3.available() > 0) {
     const char ch = static_cast<char>(SerialU3.read());
     if (ch == '\r') {
@@ -2379,7 +2430,7 @@ void publishTelemetry(uint16_t v5_mV,
   // CRC over [2..15] (len + tag + payload)
   frame[16] = crc8(&frame[2], 14);
   
-  // Send binary frame
+  if (g_udi_quiet) return;
   SerialU3.write(frame, FRAME_SIZE);
 }
 
@@ -2473,8 +2524,7 @@ void setup() {
   serviceAw9523FaultPath();
 
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
-  SerialU3.begin(115200);
-  SerialU3.println("stm32-bluepill usart3: ready");
+  SerialU3.begin(115200);  // no boot text on the shared UDI link
   SerialDbg.println("stm32-bluepill usart3: ready");
 
   printCommandHelp();
@@ -2503,6 +2553,10 @@ void setup() {
 
 void loop() {
   pollCommands();
+  if (g_udi_quiet && static_cast<int32_t>(millis() - g_udi_quiet_until_ms) >= 0) {
+    udiQuietExit();
+    logBoth("quiet: lease expired, UDI TX resumed");
+  }
   serviceAw9523FaultPath();
 
   static uint32_t lastMs = 0;
