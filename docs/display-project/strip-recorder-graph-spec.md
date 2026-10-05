@@ -104,11 +104,42 @@ rather than synthetic history. This is documented in the UI (see section 6).
 |----|---|---|
 | D5a | `phil-cia-crowpanel-strip-recorder-core` | Recorder-bezel re-skin of the Graph screen (header bar, group label, grid/time-axis styling). Extend `TrendSample` to carry CH2 (`v2_mV`/`i2_mA`), move the ring buffer to a PSRAM allocation sized for ~10–15 min at current sample rate. Two stacked chart areas (V pair, I pair — see rationale below), each with both channels' traces, pen legend with live value + color swatch per channel. No feed-rate control yet — this bucket is the re-skin + CH2 data-model fix. |
 | D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s/30 s/1 min/5 min/15 min/1 hr per div per Option B), pause/resume, return-to-live, simple per-channel show/hide toggle. Resamples the PSRAM ring buffer into the chart on every feed-rate change. |
-| D5c (proposed) | `phil-cia-crowpanel-strip-recorder-microview` | Two per-channel micro-view screens (CH1, CH2), each with one taller auto-scaled V+I graph and a trace-positioning algorithm so the V and I traces stay separated and readable. Time-of-day axis replaces uptime labels once #82 lands. Starts after D5b. |
+| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view (CH1, CH2): one taller V+I graph from that channel's data only, auto-scaled for display, with V and I on separate bands and axes. See section 5a. Time-of-day axis replaces uptime labels once #82 lands. |
 
 The Rev 1 D5c (history pan) and D5d (alarm markers) are **removed**, not
 deferred — they are out of scope per section 4. The D5c above is a new,
 unrelated proposal.
+
+## 5a. D5c micro-view (as implemented)
+
+One `Micro` screen serves both channels (`micro_channel`); there is no second channel page.
+
+- **Navigation.** Detail has a `MICRO / V / A zoom` button; the Graph header keeps CH1/CH2 buttons. Micro has a
+  Back button that returns to the screen that opened it (Detail or Graph; Detail is re-selected to the
+  channel last viewed in Micro), a Main button, and CH1/CH2 switches that keep the origin. All header
+  buttons are at least 44 px tall. Serial `SCREEN MICRO1|MICRO2` also opens it.
+- **Data.** Only the selected channel's samples from the existing PSRAM ring, resampled by the same
+  time buckets as Graph. Live and demo samples are never mixed. Empty buckets stay blank. The raw ring is
+  never modified; all scaling is display-only.
+- **Trace positioning.** V occupies the upper band (55-92 % of plot height, left axis, `V`), I the lower
+  band (8-45 %, right axis, `A`), so the traces cannot overlap. Each axis is labelled with its unit, the
+  headers say which trace is which, and a caption states that V and A are scaled independently and are
+  not comparable.
+- **Autoscale.** Span covers the window's raw min and max, snapped outward to 100 mV (V) / 10 mA (I).
+  Minimum span is 2 steps (200 mV / 20 mA) grown alternately below and above, so flat data sits near the
+  middle of its band. Signed current is handled (labels carry the sign). No data: nominal V (5.0 V / 3.3 V)
+  or 0 A, blank traces, `NO DATA` note. Peaks and outliers are never clipped; a spike expands the scale
+  immediately. Hysteresis: the scale grows at once and shrinks only when the held span exceeds twice the
+  needed span; held spans reset on channel, feed-rate or live/demo change.
+- **Shared with Graph.** Feed rate, pause/resume, time axis (uptime; time of day waits for #82) and the
+  fault row. **Not applicable to Micro:** per-pen show/hide (both traces are always drawn).
+- **State treatment.** Header link chip (LIVE / STALE n s / DEMO DATA / UNKNOWN), traces and live readouts
+  dimmed when STALE, and a note in the plot gap for NO DATA, DEMO, legacy no-CH2 frame, STALE, or an empty
+  window.
+- **Pause and rollover.** While paused the window is frozen and not recomputed. If the plot is rebuilt
+  (re-entering Micro, changing channel) after the ring has overwritten samples that belonged to the
+  frozen window, those buckets stay blank and the note reads `PAUSED - older samples overwritten`.
+- **Not asserted.** No CV/CC claim (#77).
 
 Each bucket is its own branch + PR per `SYSTEM_DEVELOPMENT_WORKFLOW.md` /
 tracker rules of engagement, bench-tested on the physical CrowPanel before
@@ -154,3 +185,8 @@ CH2 data model it introduces).
   gauges — these are out of scope, not bugs.
 - CSV export tracked and extended separately in issue #84, not blocking this
   screen's PRs.
+- D5c micro-views: CH1 and CH2 each show only their own channel, with
+  separately scaled and unit-labelled V and A axes, readable flat data, no
+  clipped peaks, truthful LIVE/STALE/DEMO/UNKNOWN/no-data treatment, visible
+  Back navigation, and touch targets of at least 44x44 px. Bench evidence is
+  recorded in the screens tracker.

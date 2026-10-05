@@ -279,6 +279,8 @@ static lv_chart_series_t* chart_ch2_i_series = nullptr;
 static uint8_t graph_rate_idx = 1;
 static bool graph_paused = false;
 static uint32_t graph_pause_ms = 0;
+static uint32_t graph_pause_oldest_ms = 0;  // oldest ring sample when paused; detects rollover while frozen
+static bool graph_pause_has_oldest = false;
 static bool graph_pen_visible[4] = {true, true, true, true};
 static bool graph_dirty = true;
 static uint32_t graph_last_end_bucket = 0;
@@ -314,6 +316,23 @@ static lv_obj_t* micro_feed_lbl = nullptr;
 static lv_obj_t* micro_pause_btn = nullptr;
 static lv_obj_t* micro_pause_lbl = nullptr;
 static lv_obj_t* micro_fault_lbl = nullptr;
+static Chip micro_link_chip;
+static lv_obj_t* micro_note = nullptr;
+static lv_obj_t* micro_back_lbl = nullptr;
+static UiScreen micro_return_screen = UiScreen::Graph;
+static bool micro_have_points = false;
+static bool micro_window_lost = false;  // paused window lost samples to ring rollover
+static bool micro_dim = false;
+static int32_t micro_scale_key = -1;
+
+// Held display-only axis span (snapped data bounds); expands at once, contracts only when much larger than needed.
+struct MicroSpan {
+  int32_t lo;
+  int32_t hi;
+  bool valid;
+};
+static MicroSpan micro_hold_v = {0, 0, false};
+static MicroSpan micro_hold_i = {0, 0, false};
 
 static UiScreen active_screen = UiScreen::Splash;
 static bool splash_done = false;
@@ -1218,9 +1237,10 @@ void nav_btn_event_cb(lv_event_t* e) {
   }
 }
 
-lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, int x_ofs) {  lv_obj_t* btn = lv_btn_create(parent);
-  lv_obj_set_size(btn, 102, 32);
-  lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, 6);
+lv_obj_t* create_nav_btn(lv_obj_t* parent, const char* text, UiScreen target, int x_ofs, int h = 32) {
+  lv_obj_t* btn = lv_btn_create(parent);
+  lv_obj_set_size(btn, 102, h);
+  lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, h > 32 ? -1 : 6);
   lv_obj_set_style_bg_color(btn, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
   lv_obj_set_style_border_color(btn, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
   lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
@@ -1603,13 +1623,21 @@ constexpr int kNavBtnW = 200;
 constexpr int kNavBtnH = 52;
 constexpr int kCardW = 388;
 constexpr int kCardH = 336;
-constexpr int kEditBtnW = 208;
+constexpr int kEditBtnW = 136;
 constexpr int kEditBtnH = 56;
+constexpr int kMicroBtnW = 132;
+constexpr int kMicroBtnH = 56;
+constexpr int kHdrBtnH = 44;
+constexpr int kMicroChBtnW = 56;
+constexpr int kMicroBackW = 110;
 static_assert(kBackBtnW >= kTouchMinPx && kBackBtnH >= kTouchMinPx, "Back button below 44x44");
 static_assert(kOutBtnW >= kTouchMinPx && kOutBtnH >= kTouchMinPx, "OUTPUT button below 44x44");
 static_assert(kNavBtnW >= kTouchMinPx && kNavBtnH >= kTouchMinPx, "Nav button below 44x44");
 static_assert(kCardW >= kTouchMinPx && kCardH >= kTouchMinPx, "Channel card below 44x44");
 static_assert(kEditBtnW >= kTouchMinPx && kEditBtnH >= kTouchMinPx, "Edit button below 44x44");
+static_assert(kMicroBtnW >= kTouchMinPx && kMicroBtnH >= kTouchMinPx, "Micro button below 44x44");
+static_assert(kMicroChBtnW >= kTouchMinPx && kHdrBtnH >= kTouchMinPx, "Micro CH button below 44x44");
+static_assert(kMicroBackW >= kTouchMinPx && kHdrBtnH >= kTouchMinPx, "Micro Back button below 44x44");
 
 constexpr uint8_t kStatusEnabledAny = 0xC0u;  // CH1 | CH2 enabled bits
 constexpr uint8_t kTripOvp = 1u;
@@ -1743,6 +1771,8 @@ void postNotice(const char* text, uint32_t color, uint32_t now_ms) {
   dash_notice.active = true;
 }
 
+void openMicroView(uint8_t channel);
+
 void dash_open_detail_cb(lv_event_t* e) {
   const uintptr_t ch = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
   detail_channel = (ch == 1u) ? 1u : 0u;
@@ -1763,6 +1793,10 @@ void dash_edit_limit_cb(lv_event_t* /*e*/) {
 // Tapping the detail graph panel opens the dedicated Graph screen.
 void dash_open_graph_cb(lv_event_t* /*e*/) {
   set_active_screen(UiScreen::Graph);
+}
+
+void dash_open_micro_cb(lv_event_t* /*e*/) {
+  openMicroView(detail_channel);
 }
 
 void sendOutputCommand(bool turn_on) {
@@ -2069,17 +2103,23 @@ void create_detail_screen(lv_obj_t* root) {
   makeLabel(detail_graph_panel, 392, 242, 52, 22, "now", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
 
   // Footer: read-only nominal voltage, confirmed Iset (read-only here), and the existing Setup editor.
-  lv_obj_t* fixed = makeBox(screen_detail, 8, 366, 230, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
-  makeLabel(fixed, 10, 2, 210, 20, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
-  detail_fixed_val = makeLabel(fixed, 10, 20, 210, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
+  lv_obj_t* fixed = makeBox(screen_detail, 8, 366, 170, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  makeLabel(fixed, 10, 2, 150, 20, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_fixed_val = makeLabel(fixed, 10, 20, 150, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
 
-  lv_obj_t* iset = makeBox(screen_detail, 246, 366, 330, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  lv_obj_t* iset = makeBox(screen_detail, 186, 366, 322, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
   makeLabel(iset, 10, 2, 150, 20, "Iset LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
   detail_iset_val = makeLabel(iset, 10, 20, 150, 32, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
-  makeChip(iset, 166, 12, 156, 32, &lv_font_montserrat_16, detail_iset_chip);
+  makeChip(iset, 162, 12, 152, 32, &lv_font_montserrat_16, detail_iset_chip);
   setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
 
-  lv_obj_t* edit = makeButton(screen_detail, 584, 366, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
+  lv_obj_t* micro = makeButton(screen_detail, 516, 366, kMicroBtnW, kMicroBtnH, UiTheme::kPanelSoft,
+                               UiTheme::kAccentV, 2, 8);
+  lv_obj_add_event_cb(micro, dash_open_micro_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(micro, 0, 2, kMicroBtnW - 4, 26, "MICRO", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  makeLabel(micro, 0, 28, kMicroBtnW - 4, 22, "V / A zoom", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+
+  lv_obj_t* edit = makeButton(screen_detail, 656, 366, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
                               UiTheme::kAccentI, 2, 8);
   lv_obj_add_event_cb(edit, dash_edit_limit_cb, LV_EVENT_CLICKED, nullptr);
   makeLabel(edit, 0, 2, kEditBtnW - 4, 26, "EDIT LIMIT", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
@@ -2202,23 +2242,27 @@ void refreshRailCard(RailCard& c, const RailData& d, LinkState link, bool main_l
   setHidden(c.limit_chip.box, d.have_limit);
 }
 
-void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_t age_ms) {
+void setLinkChip(Chip& chip, LinkState link, uint32_t age_ms) {
   char buf[32];
   switch (link) {
     case LinkState::Live:
-      setChip(b.link, "LIVE", UiTheme::kAccentOk);
+      setChip(chip, "LIVE", UiTheme::kAccentOk);
       break;
     case LinkState::Stale:
       snprintf(buf, sizeof(buf), "STALE %lu s", static_cast<unsigned long>(age_ms / 1000UL));
-      setChip(b.link, buf, UiTheme::kAccentWarn);
+      setChip(chip, buf, UiTheme::kAccentWarn);
       break;
     case LinkState::Demo:
-      setChip(b.link, "DEMO DATA", UiTheme::kDemo);
+      setChip(chip, "DEMO DATA", UiTheme::kDemo);
       break;
     default:
-      setChip(b.link, "UNKNOWN", UiTheme::kUnknown);
+      setChip(chip, "UNKNOWN", UiTheme::kUnknown);
       break;
   }
+}
+
+void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_t age_ms) {
+  setLinkChip(b.link, link, age_ms);
 
   // Output state comes from the extended telemetry status byte; it is never inferred from current.
   const bool have_state = t.has_extended && link != LinkState::Unknown;
@@ -2561,7 +2605,11 @@ void graph_feed_cb(lv_event_t* /*e*/) {
 
 void graph_pause_cb(lv_event_t* /*e*/) {
   graph_paused = !graph_paused;
-  if (graph_paused) graph_pause_ms = millis();
+  if (graph_paused) {
+    graph_pause_ms = millis();
+    graph_pause_has_oldest = trend_buf && trend_count > 0;
+    graph_pause_oldest_ms = graph_pause_has_oldest ? trendAt(0).t_ms : 0;
+  }
   applyGraphPause();
 }
 
@@ -2684,13 +2732,14 @@ constexpr int kMicroChartY = 128;
 constexpr int kMicroRightX = kGraphChartX + kMicroChartW + 6;
 
 // Trace separation: V is fitted into the upper band and I into the lower band of the plot, so the
-// two traces cannot overlap whatever their values.
+// two traces cannot overlap whatever their values. The 45-55 % gap holds the status note.
 constexpr float kMicroVBandLo = 0.55f;
 constexpr float kMicroVBandHi = 0.92f;
 constexpr float kMicroIBandLo = 0.08f;
 constexpr float kMicroIBandHi = 0.45f;
-constexpr int32_t kMicroVStep_mV = 100;  // axis bounds snap to these steps so the scale moves only when data crosses one
+constexpr int32_t kMicroVStep_mV = 100;  // axis bounds snap outward to these steps
 constexpr int32_t kMicroIStep_mA = 10;  // resolves 5-15 mA signature steps
+constexpr int32_t kMicroMinSteps = 2;  // minimum span in steps, so flat data is centred and readable
 
 int32_t floorToStep(int32_t v, int32_t step) {
   int32_t q = v / step;
@@ -2698,13 +2747,29 @@ int32_t floorToStep(int32_t v, int32_t step) {
   return q * step;
 }
 
-void fitMicroAxis(int32_t lo, int32_t hi, int32_t step, float band_lo, float band_hi,
-                  int32_t* axis_min, int32_t* axis_max) {
-  lo = floorToStep(lo, step);
-  hi = -floorToStep(-hi, step);
-  if (hi - lo < step) hi = lo + step;
-  const float span = static_cast<float>(hi - lo) / (band_hi - band_lo);
-  const float amin = static_cast<float>(lo) - band_lo * span;
+int32_t ceilToStep(int32_t v, int32_t step) { return -floorToStep(-v, step); }
+
+// Never clips: the span always contains [data_lo, data_hi]. Grows at once; shrinks only when the held
+// span is more than twice the needed span, so the scale does not jitter at step boundaries.
+void stabilizeSpan(MicroSpan& hold, int32_t data_lo, int32_t data_hi, int32_t step) {
+  int32_t lo = floorToStep(data_lo, step);
+  int32_t hi = ceilToStep(data_hi, step);
+  bool grow_low = true;
+  while (hi - lo < kMicroMinSteps * step) {
+    if (grow_low) lo -= step;
+    else hi += step;
+    grow_low = !grow_low;
+  }
+  if (hold.valid && lo >= hold.lo && hi <= hold.hi && hold.hi - hold.lo <= 2 * (hi - lo)) return;
+  hold.lo = lo;
+  hold.hi = hi;
+  hold.valid = true;
+}
+
+// Chooses the full axis range so that span [lo, hi] occupies the given fraction of the plot height.
+void fitMicroAxis(const MicroSpan& s, float band_lo, float band_hi, int32_t* axis_min, int32_t* axis_max) {
+  const float span = static_cast<float>(s.hi - s.lo) / (band_hi - band_lo);
+  const float amin = static_cast<float>(s.lo) - band_lo * span;
   *axis_min = static_cast<int32_t>(lroundf(amin));
   *axis_max = static_cast<int32_t>(lroundf(amin + span));
 }
@@ -2715,9 +2780,9 @@ void setMicroAxis(int32_t v_min, int32_t v_max, int32_t i_min, int32_t i_max) {
   char buf[12];
   for (int j = 0; j < 5; ++j) {
     const float f = static_cast<float>(4 - j) / 4.0f;
-    snprintf(buf, sizeof(buf), "%.2f", (static_cast<float>(v_min) + static_cast<float>(v_max - v_min) * f) / 1000.0f);
+    snprintf(buf, sizeof(buf), "%.2fV", (static_cast<float>(v_min) + static_cast<float>(v_max - v_min) * f) / 1000.0f);
     setLabel(micro_axis_v[j], buf);
-    snprintf(buf, sizeof(buf), "%.3f", (static_cast<float>(i_min) + static_cast<float>(i_max - i_min) * f) / 1000.0f);
+    snprintf(buf, sizeof(buf), "%.3fA", (static_cast<float>(i_min) + static_cast<float>(i_max - i_min) * f) / 1000.0f);
     setLabel(micro_axis_i[j], buf);
   }
 }
@@ -2736,6 +2801,14 @@ void refreshMicroChart(uint32_t now_ms) {
   micro_dirty = false;
   micro_last_end_bucket = end_bucket;
   micro_last_total = trend_total;
+
+  // Held scales apply to one channel/feed-rate/source only.
+  const int32_t scale_key = micro_channel | (graph_rate_idx << 1) | (demo_mode ? 0x100 : 0);
+  if (scale_key != micro_scale_key) {
+    micro_scale_key = scale_key;
+    micro_hold_v.valid = false;
+    micro_hold_i.valid = false;
+  }
 
   static int32_t sum[2][kChartPoints];
   static uint16_t cnt[kChartPoints];  // V and I share one count per bucket
@@ -2776,12 +2849,17 @@ void refreshMicroChart(uint32_t now_ms) {
 
   int32_t v_ax_min, v_ax_max, i_ax_min, i_ax_max;
   const int32_t v_nom = ch2 ? 3300 : 5000;
-  fitMicroAxis(have ? v_min : v_nom, have ? v_max : v_nom, kMicroVStep_mV, kMicroVBandLo, kMicroVBandHi,
-               &v_ax_min, &v_ax_max);
-  fitMicroAxis(have ? i_min : 0, have ? i_max : 0, kMicroIStep_mA, kMicroIBandLo, kMicroIBandHi,
-               &i_ax_min, &i_ax_max);
+  stabilizeSpan(micro_hold_v, have ? v_min : v_nom, have ? v_max : v_nom, kMicroVStep_mV);
+  stabilizeSpan(micro_hold_i, have ? i_min : 0, have ? i_max : 0, kMicroIStep_mA);
+  fitMicroAxis(micro_hold_v, kMicroVBandLo, kMicroVBandHi, &v_ax_min, &v_ax_max);
+  fitMicroAxis(micro_hold_i, kMicroIBandLo, kMicroIBandHi, &i_ax_min, &i_ax_max);
   setMicroAxis(v_ax_min, v_ax_max, i_ax_min, i_ax_max);
   lv_chart_refresh(micro_chart);
+
+  micro_have_points = have;
+  const uint32_t start_ms = end_ms > window_ms ? end_ms - window_ms : 0;
+  micro_window_lost = graph_paused && graph_pause_has_oldest && trend_count > 0 &&
+                      trendAt(0).t_ms > graph_pause_oldest_ms && trendAt(0).t_ms > start_ms;
 
   setTimeAxis(micro_time, window_ms, end_ms);
   char wbuf[64];
@@ -2817,17 +2895,34 @@ void applyMicroChannel() {
   micro_dirty = true;
 }
 
-void micro_open_cb(lv_event_t* e) {
-  const uintptr_t ch = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
-  micro_channel = (ch == 1u) ? 1u : 0u;
+void applyMicroBack() {
+  setLabel(micro_back_lbl, micro_return_screen == UiScreen::Detail ? LV_SYMBOL_LEFT " Detail" : LV_SYMBOL_LEFT " Graph");
+}
+
+// Entry from Graph or Detail records where Back returns; switching CH inside Micro keeps the origin.
+void openMicroView(uint8_t channel) {
+  if (active_screen != UiScreen::Micro) {
+    micro_return_screen = (active_screen == UiScreen::Detail) ? UiScreen::Detail : UiScreen::Graph;
+  }
+  micro_channel = (channel == 1u) ? 1u : 0u;
   applyMicroChannel();
+  applyMicroBack();
   set_active_screen(UiScreen::Micro);
+}
+
+void micro_back_cb(lv_event_t* /*e*/) {
+  if (micro_return_screen == UiScreen::Detail) detail_channel = micro_channel;
+  set_active_screen(micro_return_screen);
+}
+
+void micro_open_cb(lv_event_t* e) {
+  openMicroView(static_cast<uint8_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e))));
 }
 
 lv_obj_t* createMicroBtn(lv_obj_t* parent, const char* text, int channel, int x_ofs) {
   lv_obj_t* btn = lv_btn_create(parent);
-  lv_obj_set_size(btn, 56, 32);
-  lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, 6);
+  lv_obj_set_size(btn, kMicroChBtnW, kHdrBtnH);
+  lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_ofs, -1);
   lv_obj_set_style_bg_color(btn, lv_color_hex(UiTheme::kPanelSoft), LV_PART_MAIN);
   lv_obj_set_style_border_color(btn, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
   lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
@@ -3000,11 +3095,25 @@ void create_micro_screen(lv_obj_t* root) {
   screen_micro = makeScreen(root);
 
   lv_obj_t* status = makeBox(screen_micro, 8, 6, kDisplayWidth - 16, 44, UiTheme::kStatusBar, UiTheme::kBorder, 1, 8);
-  micro_title = makeLabel(status, 14, 0, 330, 44, "CH1 +5V  MICRO VIEW", &lv_font_montserrat_20, UiTheme::kCh1);
-  create_nav_btn(status, "Graph", UiScreen::Graph, -120);
-  create_nav_btn(status, "Main", UiScreen::Main, -10);
-  micro_ch_btn[1] = createMicroBtn(status, "CH2", 1, -230);
-  micro_ch_btn[0] = createMicroBtn(status, "CH1", 0, -294);
+  micro_title = makeLabel(status, 14, 0, 272, 44, "CH1 +5V  MICRO VIEW", &lv_font_montserrat_20, UiTheme::kCh1);
+  makeChip(status, 292, 6, 120, 32, &lv_font_montserrat_16, micro_link_chip);
+  setChip(micro_link_chip, "UNKNOWN", UiTheme::kUnknown);
+  create_nav_btn(status, "Main", UiScreen::Main, -10, kHdrBtnH);
+  lv_obj_t* back = lv_btn_create(status);
+  lv_obj_set_size(back, kMicroBackW, kHdrBtnH);
+  lv_obj_align(back, LV_ALIGN_TOP_RIGHT, -120, -1);
+  lv_obj_set_style_bg_color(back, lv_color_hex(UiTheme::kBadge), LV_PART_MAIN);
+  lv_obj_set_style_border_color(back, lv_color_hex(UiTheme::kAccentI), LV_PART_MAIN);
+  lv_obj_set_style_border_width(back, 2, LV_PART_MAIN);
+  lv_obj_set_style_radius(back, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(back, micro_back_cb, LV_EVENT_CLICKED, nullptr);
+  micro_back_lbl = lv_label_create(back);
+  lv_obj_set_style_text_color(micro_back_lbl, lv_color_hex(UiTheme::kTextPrimary), LV_PART_MAIN);
+  lv_obj_set_style_text_font(micro_back_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_center(micro_back_lbl);
+  applyMicroBack();
+  micro_ch_btn[1] = createMicroBtn(status, "CH2", 1, -236);
+  micro_ch_btn[0] = createMicroBtn(status, "CH1", 0, -298);
 
   // Readouts: live value and window min/max for each trace.
   struct Cell {
@@ -3026,8 +3135,8 @@ void create_micro_screen(lv_obj_t* root) {
     *cells[k].val = makeLabel(cell, 22, 22, 158, 26, "--", cells[k].font, UiTheme::kTextPrimary);
   }
 
-  makeLabel(screen_micro, kGraphChartX, 110, 200, 16, "VOLTAGE (V)  upper band", &lv_font_montserrat_12, UiTheme::kAccentV);
-  makeLabel(screen_micro, kGraphChartX + kMicroChartW - 200, 110, 200, 16, "lower band  CURRENT (A)", &lv_font_montserrat_12,
+  makeLabel(screen_micro, kGraphChartX, 110, 300, 16, "V = VOLTS  (left axis, upper trace)", &lv_font_montserrat_12, UiTheme::kAccentV);
+  makeLabel(screen_micro, kGraphChartX + kMicroChartW - 300, 110, 300, 16, "A = AMPS  (right axis, lower trace)", &lv_font_montserrat_12,
             UiTheme::kAccentI, LV_TEXT_ALIGN_RIGHT);
 
   micro_chart = createGraphChart(screen_micro, kMicroChartY, kMicroChartW, kMicroChartH, 0, 6000);
@@ -3038,6 +3147,18 @@ void create_micro_screen(lv_obj_t* root) {
   }
   lv_chart_set_ext_y_array(micro_chart, micro_ser_v, micro_pts[0]);
   lv_chart_set_ext_y_array(micro_chart, micro_ser_i, micro_pts[1]);
+
+  // Status note sits in the empty 45-55 % gap between the V and I bands, so it never covers a trace.
+  micro_note = lv_label_create(micro_chart);
+  lv_label_set_text(micro_note, "");
+  lv_obj_set_style_text_font(micro_note, &lv_font_montserrat_16, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(micro_note, lv_color_hex(UiTheme::kScope), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(micro_note, LV_OPA_80, LV_PART_MAIN);
+  lv_obj_set_style_pad_hor(micro_note, 8, LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(micro_note, 2, LV_PART_MAIN);
+  lv_obj_set_style_radius(micro_note, 6, LV_PART_MAIN);
+  lv_obj_align(micro_note, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_add_flag(micro_note, LV_OBJ_FLAG_HIDDEN);
 
   // Right column: feed rate (tap = next, wraps) and pause/resume, shared with the Graph screen.
   constexpr int kCtlX = kMicroRightX + 54;
@@ -3064,7 +3185,7 @@ void create_micro_screen(lv_obj_t* root) {
   for (int j = 0; j < 5; ++j) {
     const int y = kMicroChartY + j * (kMicroChartH - 1) / 4 - 8;
     micro_axis_v[j] = makeLabel(screen_micro, 12, y, 46, 16, "", &lv_font_montserrat_12, UiTheme::kAccentV, LV_TEXT_ALIGN_RIGHT);
-    micro_axis_i[j] = makeLabel(screen_micro, kMicroRightX, y, 48, 16, "", &lv_font_montserrat_12, UiTheme::kAccentI);
+    micro_axis_i[j] = makeLabel(screen_micro, kMicroRightX, y, 54, 16, "", &lv_font_montserrat_12, UiTheme::kAccentI);
   }
   setMicroAxis(4900, 5200, 0, 400);
 
@@ -3081,6 +3202,9 @@ void create_micro_screen(lv_obj_t* root) {
   lv_obj_set_style_text_color(micro_window_lbl, lv_color_hex(UiTheme::kTextMuted), LV_PART_MAIN);
   lv_obj_set_style_text_font(micro_window_lbl, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_align(micro_window_lbl, LV_ALIGN_BOTTOM_LEFT, 24, -8);
+  makeLabel(screen_micro, kDisplayWidth - 24 - 380, 456, 380, 16,
+            "V and A are scaled independently - not comparable", &lv_font_montserrat_12, UiTheme::kTextMuted,
+            LV_TEXT_ALIGN_RIGHT);
 
   micro_fault_lbl = createFaultRow(screen_micro);
   applyMicroChannel();
@@ -3190,6 +3314,40 @@ void refreshMicroLive(const DisplayTelemetry& t, uint32_t now_ms) {
   }
   setLabel(micro_lbl_v_now, vbuf);
   setLabel(micro_lbl_i_now, ibuf);
+
+  setLinkChip(micro_link_chip, link, age_ms);
+  const bool stale = (link == LinkState::Stale);
+  setTextOpa(micro_lbl_v_now, stale ? LV_OPA_50 : LV_OPA_COVER);
+  setTextOpa(micro_lbl_i_now, stale ? LV_OPA_50 : LV_OPA_COVER);
+  if (micro_chart && micro_dim != stale) {
+    micro_dim = stale;
+    lv_obj_set_style_opa(micro_chart, stale ? LV_OPA_50 : LV_OPA_COVER, LV_PART_ITEMS);
+  }
+
+  const char* note = nullptr;
+  uint32_t note_color = UiTheme::kUnknown;
+  if (micro_window_lost) {
+    note = "PAUSED - older samples overwritten";
+    note_color = UiTheme::kAccentWarn;
+  } else if (link == LinkState::Unknown) {
+    note = "NO DATA - no telemetry yet";
+  } else if (link == LinkState::Demo) {
+    note = "DEMO DATA - SIMULATED";
+    note_color = UiTheme::kDemo;
+  } else if (!d.have_reading) {
+    note = "NO CH2 DATA (legacy frame)";
+  } else if (stale) {
+    note = "STALE - no new samples";
+    note_color = UiTheme::kAccentWarn;
+  } else if (!micro_have_points) {
+    note = "NO SAMPLES IN WINDOW";
+  }
+  if (note && strcmp(lv_label_get_text(micro_note), note) != 0) {
+    lv_label_set_text(micro_note, note);
+    lv_obj_set_style_text_color(micro_note, lv_color_hex(note_color), LV_PART_MAIN);
+    lv_obj_align(micro_note, LV_ALIGN_CENTER, 0, 0);
+  }
+  setHidden(micro_note, note == nullptr);
 }
 
 void update_telemetry_labels() {
@@ -3469,8 +3627,7 @@ void handleCommand(const String& rawLine) {
     }
     if (arg.equalsIgnoreCase("MICRO1") || arg.equalsIgnoreCase("MICRO2")) {
       micro_channel = arg.endsWith("2") ? 1u : 0u;
-      applyMicroChannel();
-      set_active_screen(UiScreen::Micro);
+      openMicroView(micro_channel);
       Serial.printf("ACK SCREEN MICRO%u\n", static_cast<unsigned>(micro_channel + 1u));
       return;
     }
