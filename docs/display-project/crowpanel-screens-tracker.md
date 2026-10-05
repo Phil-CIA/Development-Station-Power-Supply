@@ -33,8 +33,9 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | [#67](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/67) | 🟢 | part of #26 |
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟢 | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
-| D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (~10-15 min). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | — | ⬜ | #26 |
-| D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, return-to-live, per-channel show/hide. Depends on D5a. See `strip-recorder-graph-spec.md` (Rev 2). | — | ⬜ | #26 |
+| D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (4500 samples). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | [#89](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/89) | 🟢 | part of #26 |
+| D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, per-pen show/hide. Time-based resample of the PSRAM ring. Bench-reviewed by the user (no changes requested); see the 2026-10-05 note. | PR open (see 2026-10-05 note) | 🟡 | part of #26 |
+| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view screens (auto-scaled V+I graph, trace separation); time-of-day axis once #82 lands. Proposed in `strip-recorder-graph-spec.md`; starts after D5b. | — | ⬜ | part of #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
 | D8 | `phil-cia-crowpanel-startup-selftest` | Boot self-test screen: RGB, touch, I2C (0x30, 0x5D), SPI flash, PSRAM, UDI handshake — pass/fail chips before Main. | — | ⬜ | #27, #37, #38, #39, #40 |
@@ -909,3 +910,39 @@ When returning to this session for a status sync:
   - Rules: ask before every upload and push; guarded script only (`PYTHONUTF8=1`, log to file);
     local PlatformIO at `%USERPROFILE%\.platformio\penv\Scripts\platformio.exe`; read user
     feedback .docx from the OneDrive exchange folder only after the user closes it in Word.
+- 2026-10-05 END-OF-SESSION RESUME POINT (D5a merged, D5b open; supersedes the 2026-10-04 D5a
+  resume point above). Merged into `main` this session (all squashed): #83 (plan doc), #88
+  (Detail panel overlap fix), #89 (D5a Graph), #90 (STM32 500 ms telemetry + `HardwareSerial`
+  build fix + `ststm32@19.7.0` platform pin, because unpinned CI pulled core 3.0 where `Uart`
+  exists). Still open elsewhere: #63, #61 (older bench-evidence docs; #61 conflicts), #71 (D4, draft).
+  - D5b (branch `phil-cia-crowpanel-strip-recorder-feedrate`, `crowpanel-43-bringup/src/main.cpp`
+    only): the chart is no longer fed incrementally; `refreshGraphChart()` resamples the PSRAM trend
+    ring by time on every loop into per-pen static arrays (`lv_chart_set_ext_y_array`), bucketed on
+    absolute time so points do not jitter. Feed button cycles 10 s / 30 s / 1 min / 5 min / 15 min /
+    1 hr per division (default 30 s; window = 6 divisions); bucket is at least 1 s, so 10 s/div uses
+    60 points. Empty buckets are blank (no synthetic history); the label reads `win <window>  hist
+    <recorded span>`. Pause freezes the right edge (samples keep recording; RESUME returns to live;
+    button turns orange). Tap a legend cell to hide/show that pen (dims, `[OFF]`). Demo and live
+    samples are never mixed. Removed `kChartDecimation`/`appendCharts`. No history pan, alarms, or
+    autoscale (cut by spec). `crowpanel43` builds; STM32 CI green.
+  - Bench: flashed to the panel with the guarded script (COM12 / ESP32-S3 / MAC
+    80:B5:4E:E2:E4:08). The user reviewed it and asked for no changes. No photos or logs were captured
+    by Copilot and the individual checks (all six rates, pause/resume, pen hide, no gaps at 10 s/div)
+    were not itemised, so treat those details as user-observed, not documented evidence.
+  - Observed: at 500 ms telemetry the default 30 s/div window is 3 min; the previous fixed view
+    (about 2 min) was 120 points x decimation 2 x 500 ms. 15 min and 1 hr/div can show at most
+    about 37 min of history (4500 samples at 500 ms); the rest is blank by design.
+  - ROOT CAUSE of repeated CrowPanel flash failures ("Checksum error" on the stub, "serial data
+    stream stopped", 460800 "bad checksum"): the host link is UART0 (IO44/IO43), the same UART as the
+    CH340K on COM12, so the Blue Pill's 500 ms telemetry corrupts the flash stream. Confirmed
+    2026-10-05: with the Blue Pill powered off the unchanged guarded script passed first try. Not the
+    cable. **Power the Blue Pill off (or hold NRST / unplug the UART link) before every CrowPanel
+    upload, then reconnect.** Longer-term options: move the link to UART1 (`DISP_LINK_SLAVE_USE_UART0 =
+    0`, needs wiring) or have the STM32 hold telemetry until the display speaks first.
+  - Next, in order: (1) user merges the D5b PR; (2) D5c micro-views (separate branch off `main`);
+    (3) Setup/Settings/fault modal/self-test (D6-D8); (4) #71 reconciliation and the Iset editor
+    (#74/#75); (5) WiFi time (#82), CSV export (#84, needs CH2 columns). Open from before: `OCP` flags on
+    both channels come from the unrouted-on-Rev-C FAULT_CRITICAL_SUM path (not investigated); STM32 flash
+    is 98.1% of 64 KB, so little room for more STM32 firmware.
+  - Rules: ask before every upload and push; guarded script only (`PYTHONUTF8=1`, log to file); power
+    the Blue Pill off first; never write non-`CMD:` text to UART0.
