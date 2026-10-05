@@ -2690,7 +2690,7 @@ constexpr float kMicroVBandHi = 0.92f;
 constexpr float kMicroIBandLo = 0.08f;
 constexpr float kMicroIBandHi = 0.45f;
 constexpr int32_t kMicroVStep_mV = 100;  // axis bounds snap to these steps so the scale moves only when data crosses one
-constexpr int32_t kMicroIStep_mA = 50;
+constexpr int32_t kMicroIStep_mA = 10;  // resolves 5-15 mA signature steps
 
 int32_t floorToStep(int32_t v, int32_t step) {
   int32_t q = v / step;
