@@ -34,7 +34,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟢 | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
 | D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (4500 samples). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | [#89](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/89) | 🟢 | part of #26 |
-| D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, per-pen show/hide. Time-based resample of the PSRAM ring. Bench-reviewed by the user (no changes requested); see the 2026-10-05 note. | PR open (see 2026-10-05 note) | 🟡 | part of #26 |
+| D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, per-pen show/hide. Time-based resample of the PSRAM ring. Bench-reviewed by the user (no changes requested); see the 2026-10-05 note. | [#91](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/91) | 🟡 (open PR; not merged) | part of #26 |
 | D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view screens (auto-scaled V+I graph, trace separation); time-of-day axis once #82 lands. Proposed in `strip-recorder-graph-spec.md`; starts after D5b. | — | ⬜ | part of #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
@@ -939,7 +939,7 @@ When returning to this session for a status sync:
     cable. **Power the Blue Pill off (or hold NRST / unplug the UART link) before every CrowPanel
     upload, then reconnect.** Longer-term options: move the link to UART1 (`DISP_LINK_SLAVE_USE_UART0 =
     0`, needs wiring) or have the STM32 hold telemetry until the display speaks first.
-  - Next, in order: (1) user merges the D5b PR; (2) D5c micro-views (separate branch off `main`);
+  - Next, in order: (1) user merges the D5b PR (#91); (2) D5c micro-views (separate branch off `main`);
     (3) Setup/Settings/fault modal/self-test (D6-D8); (4) #71 reconciliation and the Iset editor
     (#74/#75); (5) WiFi time (#82), CSV export (#84, needs CH2 columns). Open from before: `OCP` flags on
     both channels come from the unrouted-on-Rev-C FAULT_CRITICAL_SUM path (not investigated); STM32 flash
