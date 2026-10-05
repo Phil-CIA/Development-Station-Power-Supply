@@ -35,7 +35,7 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
 | D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (4500 samples). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | [#89](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/89) | 🟢 | part of #26 |
 | D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, per-pen show/hide. Time-based resample of the PSRAM ring. Bench-reviewed by the user (no changes requested); see the 2026-10-05 note. | [#91](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/91) | 🟡 (open PR; not merged) | part of #26 |
-| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view screens (auto-scaled V+I graph, trace separation); time-of-day axis once #82 lands. Proposed in `strip-recorder-graph-spec.md`; starts after D5b. | — | ⬜ | part of #26 |
+| D5c | `phil-cia-crowpanel-strip-recorder-microview` | Per-channel micro-view screen (one screen, CH1/CH2 switch): one tall V+I plot, V on the left axis fitted to the upper band and I on the right axis fitted to the lower band so traces never overlap; axes auto-scale to the window (bounds snap to 100 mV / 50 mA steps). Feed rate and pause shared with Graph. Entered from the Graph header (CH1/CH2). Time-of-day axis once #82 lands. Branch is stacked on D5b (#91) until it merges. | — | 🟡 (builds; not bench-tested, no PR yet) | part of #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
 | D8 | `phil-cia-crowpanel-startup-selftest` | Boot self-test screen: RGB, touch, I2C (0x30, 0x5D), SPI flash, PSRAM, UDI handshake — pass/fail chips before Main. | — | ⬜ | #27, #37, #38, #39, #40 |
@@ -946,3 +946,13 @@ When returning to this session for a status sync:
     is 98.1% of 64 KB, so little room for more STM32 firmware.
   - Rules: ask before every upload and push; guarded script only (`PYTHONUTF8=1`, log to file); power
     the Blue Pill off first; never write non-`CMD:` text to UART0.
+- 2026-10-05 SESSION 2 (D5c micro-view; adds to the resume point above): #91 was still open, so branch
+  `phil-cia-crowpanel-strip-recorder-microview` is stacked on the D5b branch. After #91 squash-merges,
+  run `git rebase --onto main <old D5b tip> phil-cia-crowpanel-strip-recorder-microview` before opening
+  the D5c PR (base `main`). `main.cpp` only: new `UiScreen::Micro` (one screen, `micro_channel` 0/1),
+  CH1/CH2 buttons in the Graph and Micro headers, serial `SCREEN MICRO1|MICRO2`. Trace separation: V is
+  fitted into the 55-92 % band and I into the 8-45 % band of the plot (`fitMicroAxis`); V uses the left
+  (primary) axis, I the right (secondary) axis. Shared with Graph: feed rate, pause, fault row text
+  (`faultRowText`/`applyFaultRow`), time axis and window text helpers. `crowpanel43` builds (flash 3.7 %).
+  NOT yet flashed or bench-checked: confirm both channels, CH2 blank on legacy frames, feed/pause sync with
+  Graph, no overlap at flat and at swinging data, demo mode. D5 (#26) closes when #91 and the D5c PR merge.
