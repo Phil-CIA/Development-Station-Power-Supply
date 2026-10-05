@@ -33,7 +33,8 @@ Legend: ⬜ not started · 🟡 in progress · 🟢 merged · 🔴 blocked
 | D2 | `phil-cia-crowpanel-nav-shell` | Uniform top bar + bottom nav across all screens, consistent back/home, state chip system unified. | [#67](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/67) | 🟢 | part of #26 |
 | D3 | `phil-cia-crowpanel-main-screen` | Main telemetry: live V/I/P per channel, output ON/OFF wired to UDI, channel selector, big numerics, fault/ILIM chips. | [#68](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/68) | 🟢 | #26 |
 | D4 | `phil-cia-crowpanel-setup-screen` | Setup wizard: shared output and CH1/CH2 current limits, commit via UDI, cancel/back, validation. No adjustable voltage or manual CV/CC selector. | [#71](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/71) | 🟡 (open PR; not merged) | part of #26 |
-| D5 | `phil-cia-crowpanel-graph-screen` | Trend: window selector (30 s / 5 min / 30 min), pause/resume, clear, per-channel visibility, autoscale. | — | ⬜ | #26 |
+| D5a | `phil-cia-crowpanel-strip-recorder-core` | Strip-recorder re-skin of the Graph screen: bezel, 4-pen trend (CH1 V/I, CH2 V/I), PSRAM ring buffer (~10-15 min). Supersedes the prior window-selector-only D5 scope. See `strip-recorder-graph-spec.md` (Rev 2). | — | ⬜ | #26 |
+| D5b | `phil-cia-crowpanel-strip-recorder-feedrate` | Feed-rate selector (10 s–1 hr/div), pause/resume, return-to-live, per-channel show/hide. Depends on D5a. See `strip-recorder-graph-spec.md` (Rev 2). | — | ⬜ | #26 |
 | D6 | `phil-cia-crowpanel-settings-screen` | Settings submenus fully functional: System (brightness, sleep, units), Dataset (save/load/reset cal), About (versions, uptime, UDI stats). | — | ⬜ | #26 |
 | D7 | `phil-cia-crowpanel-fault-modal` | Global fault/alert modal (OVP/OCP/OTP/UVLO) driven by `EVT:` frames, ack + clear. | — | ⬜ | #26 + Bucket 3 tie-in |
 | D8 | `phil-cia-crowpanel-startup-selftest` | Boot self-test screen: RGB, touch, I2C (0x30, 0x5D), SPI flash, PSRAM, UDI handshake — pass/fail chips before Main. | — | ⬜ | #27, #37, #38, #39, #40 |
@@ -619,6 +620,88 @@ decimal/backspace/range validation, Apply/Cancel, and success/ERR/timeout/
 stale paths. Verify no write before Apply, no duplicate pending writes,
 and no implicit output enable. Request bench evidence. Update the tracker
 and affected inventory, then open one Bucket 4 PR referencing #74/#75/#65.
+```
+
+**Session 5: strip-recorder core re-skin + CH2 data model (D5a)**
+
+Recommended model: **Claude Sonnet 5.5**, reasoning effort **medium**. This
+is mostly mechanical LVGL/data-structure work in one large existing file;
+a mid-effort coding-focused model is sufficient. Use **high** effort (or
+Claude Opus 5.5) only if the PSRAM buffer-sizing math or chart-series
+plumbing needs deeper review.
+
+```text
+Work in Development-Station-Power-Supply on
+phil-cia-crowpanel-strip-recorder-core, branched off main (not off any
+other feature branch). Read README.md, docs/SYSTEM_DEVELOPMENT_WORKFLOW.md,
+docs/display-project/README.md, this tracker, and
+docs/display-project/strip-recorder-graph-spec.md (Rev 2) in full before
+editing. Read issue #26. Issue #84 (CSV export) is separate and not part of
+this session's scope — do not touch LOG_DUMP_CSV beyond what D5a's data
+model change requires it to still compile.
+Implement only bucket D5a from strip-recorder-graph-spec.md: recorder-bezel
+re-skin of the Graph screen (header bar, group label, grid/time-axis
+styling) in crowpanel-43-bringup/src/main.cpp. Extend TrendSample with
+v2_mV/i2_mA for CH2, captured each tick from the existing
+t.last_v3v3_mV/t.last_i3v3_mA telemetry fields (already read live for the
+Main screen — do not add new UART/UDI messages). Move trend_buf from its
+static SRAM array to a heap_caps_malloc(..., MALLOC_CAP_SPIRAM) allocation;
+pick a concrete capacity sized for roughly 10-15 minutes at the current
+sample rate, show your sizing math, and record the exact number chosen in
+this tracker. Keep two stacked chart areas (voltage pair, current pair) per
+the spec's decided layout; add a second lv_chart_series_t pair for CH2 to
+both existing chart objects. Add a pen legend showing live value and color
+swatch per channel for all 4 real channels.
+Do not implement a feed-rate selector, pause/resume, or show/hide toggles —
+those are D5b, a separate later PR. Do not add alarm markers, relay
+functions, history scroll-back/pan, or bar gauges; these are permanently
+out of scope per spec section 4, not deferred work to stub out.
+Build with: pio run -d crowpanel-43-bringup -e crowpanel43 (use the local
+PlatformIO executable if not on PATH). Bench-test on the physical CrowPanel:
+confirm the CH2 trace renders against known reference values, confirm the
+PSRAM allocation succeeds (check the serial boot log for any allocation
+failure message), confirm the existing CH1 trace and Main-screen behavior
+are unchanged. Update this tracker's D5a row to the bench-tested status
+with evidence, record the final PSRAM buffer capacity chosen, and open one
+PR referencing #26 and strip-recorder-graph-spec.md. Stop before D5b.
+```
+
+**Session 6: strip-recorder feed-rate control (D5b)**
+
+Recommended model: **Claude Sonnet 5.5**, reasoning effort **high** (or
+**GPT-5.3-Codex** as an alternative). The resample-on-feed-rate-change logic
+and honest-blank-when-buffer-is-short behavior are more algorithmically
+fiddly than D5a and benefit from the extra reasoning effort.
+
+```text
+Work on phil-cia-crowpanel-strip-recorder-feedrate, branched off main, only
+after D5a's PR has merged. Read this tracker and
+docs/display-project/strip-recorder-graph-spec.md (Rev 2), then review the
+actual merged D5a diff before changing it — do not assume unmerged code or
+a different buffer capacity than what D5a's PR recorded in this tracker.
+Implement only bucket D5b: a feed-rate selector offering the full list
+(10 s/30 s/1 min/5 min/15 min/1 hr per div) per the spec's chosen Option B.
+On every feed-rate change, immediately resample the PSRAM ring buffer
+(written by D5a) into the chart's point array rather than only continuing
+circular live updates. When the selected window exceeds real buffer depth
+(15 min/div, 1 hr/div with a short buffer), render the unfilled portion of
+the chart as visibly blank — never fabricate or extrapolate data to fill it.
+Add pause/resume and return-to-live controls, and a simple independent
+show/hide toggle per channel (CH1 V, CH1 I, CH2 V, CH2 I) — no further pen
+framework, no per-pen color/scale editing.
+Do not add alarm markers, relay functions, history scroll-back/pan, or bar
+gauges; these remain out of scope per spec section 4.
+Build with: pio run -d crowpanel-43-bringup -e crowpanel43 (use the local
+PlatformIO executable if not on PATH). Bench-test on the physical CrowPanel:
+verify each feed-rate setting visually scales the trend correctly, verify
+pause freezes the displayed trace without losing buffered samples, verify
+resume reconnects to live data, verify show/hide toggles the correct series
+without disturbing the others, and verify the blank-when-short-buffer
+behavior for the slowest settings. Update this tracker's D5b row with bench
+evidence. Open one PR referencing #26 and strip-recorder-graph-spec.md.
+Close #26 only if this PR plus D5a together satisfy every acceptance
+criterion in strip-recorder-graph-spec.md section 7 — otherwise leave #26
+open and say what remains.
 ```
 
 ### Review/evidence checklist for this UI effort
