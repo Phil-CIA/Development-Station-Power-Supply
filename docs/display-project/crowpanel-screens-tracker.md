@@ -994,3 +994,12 @@ When returning to this session for a status sync:
     log); confirm normal 500 ms telemetry with no STALE flicker; repeat uploads; wrong-target rejection; command
     ACK/ERR handling over UART1. If UART1 receive fails on this panel (older V1.1 notes show IO19/IO20 shared with the
     I2S MIC), stop and report; do not fall back silently. Do not close #93 until the uploads are proven.
+  - 2026-10-06 FLASHED (user-approved), handoff to troubleshooting session:
+    - CrowPanel: guarded script, COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08 (all prechecks passed), UART1-default firmware, first
+      attempt, hash verified, exit 0. Log `crowpanel-43-bringup/upload-93-uart1-2026-10-06.log` (not committed). It is not
+      recorded whether the Blue Pill was powered during this upload; do not count it as the powered-Blue-Pill proof until confirmed.
+    - STM32: ST-Link upload of the unchanged firmware (64296 B), "Verified OK". Log `stm32-bluepill-bringup/upload-93-2026-10-06.log`
+      (not committed).
+    - NOT YET CHECKED: whether the panel shows live telemetry over UART1 (no photo, no serial log, no STALE observation was made),
+      repeat uploads, wrong-target rejection, command ACK/ERR over UART1. These are the troubleshooting session's first tasks.
+    - Branch has 3 local commits, not pushed, no PR yet.
