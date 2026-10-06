@@ -1078,7 +1078,7 @@ When returning to this session for a status sync:
     unrelated work.
   - CHECKPOINT (2026-10-06, paused for a fresh session; supersedes the RESUME POINT above):
     - State: branch `display/touch-current-limit-editor`, HEAD `e51daaa` (editor commit) plus this note's commit; both
-      LOCAL ONLY (branch not on origin, no PR). Changed files: `crowpanel-43-bringup/src/main.cpp`, `disp_link_slave.cpp/.h`,
+      LOCAL ONLY (branch not on origin, no PR). UPDATE: user approved; pushed and draft PR #97 opened. Changed files: `crowpanel-43-bringup/src/main.cpp`, `disp_link_slave.cpp/.h`,
       new `ilim_core.h` and `ilim_core_checks.h`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md`, this tracker. Untracked, not
       committed: `crowpanel-43-bringup/build-iset-editor.log` and three older upload logs.
     - Decisions (user): slider step 10 mA; zero writes blocked (slider min 0.010 A, keypad min 0.001 A).
