@@ -1104,3 +1104,28 @@ When returning to this session for a status sync:
   - Limitation remains explicit: ILIM in current host firmware is a RAM comparison threshold used for status behavior;
     it is not proven physical current-limit control (#77).
   - Stop point reached per user request: panel-review checkpoint only.
+
+- 2026-10-06 COMMAND-PATH VERIFICATION CHECKPOINT (bounded evidence closeout; no feature work):
+  - Route used (post-#96 topology): CrowPanel USB serial console on COM12 captured logs while host link remained on UART1
+    (IO19/IO20). This avoids competing with the STM32 UART1 path and avoids protocol-injecting debug text on the host link.
+  - Running firmware identity (observable): session used repo `main` at `ad4a732` as the code baseline; this checkpoint did
+    not perform a new upload. Runtime banners seen: `transport: UART1 (IO19/IO20)` and `disp_link_slave: UART1 listening ...`.
+  - Captured GET/readback evidence (raw serial lines):
+    - `udi ack: ILIM CH1 3000`
+    - `udi ack: ILIM CH2 1200`
+    - Repeated fresh refresh via `SCREEN SETUP` again returned `udi ack: ILIM CH1 3000` and `udi ack: ILIM CH2 1200`.
+  - User-authorized unchanged-value write performed once only:
+    - Sent: `UDI_ILIM CH2 1200`.
+    - Matching confirmation captured: `udi ack: ILIM CH2 1200` and `udi evt: ILIM CH2 1200 mA`.
+    - Post-write readback captured on fresh `SCREEN SETUP`: `udi ack: ILIM CH2 1200` (unchanged, matches request).
+  - Display retention outcome:
+    - Protocol confirmation/readback are captured as above.
+    - Copilot has not yet recorded the operator's explicit panel observation for the final displayed confirmed value after
+      the write/readback sequence; mark this UI-observed item pending operator confirmation.
+  - Evidence type and scope:
+    - Captured protocol evidence: yes (raw serial).
+    - UI-observed evidence: pending operator confirmation.
+    - Not performed by scope/user request: OUTPUT commands, fault/disconnect injection, reset/recovery matrix, parser/STM32
+      redesign, persistence changes, or physical ISET control validation.
+  - Limitation restated: ILIM still updates a RAM-held status threshold in current STM32 firmware; this checkpoint does not
+    prove physical current-limit control or persistence. #77 remains the next technical objective.
