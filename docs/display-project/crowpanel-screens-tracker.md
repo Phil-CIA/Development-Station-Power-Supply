@@ -1092,3 +1092,15 @@ When returning to this session for a status sync:
     - Next action: user decides on push + draft PR (#74/#75/#65, no closing keywords) and on a guarded flash.
     - Permission requests pending: push of this branch; CrowPanel flash; bench conditions for `GET ILIM` and one
       unchanged-value write. None granted.
+
+- 2026-10-06 PANEL-REVIEW CHECKPOINT (PR #97, branch `display/touch-current-limit-editor`):
+  - Guarded flash performed with target checks and succeeded on expected CrowPanel target (COM12, ESP32-S3,
+    MAC 80:B5:4E:E2:E4:08), including hash verification.
+  - User acceptance result (operator statement): "it does everything we asked it to do" for the Iset editor panel flow.
+    Photos were intentionally skipped by user choice (documentation not needed for this checkpoint).
+  - Observed evidence recorded this checkpoint: successful guarded upload and user-reported panel acceptance.
+  - Not executed in this checkpoint: command-path verification (`GET ILIM CH1/CH2`) and unchanged-value write/readback.
+    No host write was run.
+  - Limitation remains explicit: ILIM in current host firmware is a RAM comparison threshold used for status behavior;
+    it is not proven physical current-limit control (#77).
+  - Stop point reached per user request: panel-review checkpoint only.
