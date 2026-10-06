@@ -49,7 +49,20 @@ struct CommandLink {
   char     last_ack[64];
   char     last_err[96];
   char     last_evt[96];
+  uint32_t ctrl_dropped;   // control lines lost because the FIFO below was full
 };
+
+// Every ACK/ERR/EVT line in arrival order, so back-to-back replies are never overwritten.
+enum class ControlKind : uint8_t { Ack = 1, Err = 2, Evt = 3 };
+
+struct ControlLine {
+  ControlKind kind;
+  uint32_t    rx_ms;
+  char        text[96];  // payload after the ACK:/ERR:/EVT: prefix
+};
+
+// Oldest queued line, or false when empty. Drain from loop().
+bool popControlLine(ControlLine* out);
 
 // Bring up telemetry receiver on the selected UART transport.
 void begin();

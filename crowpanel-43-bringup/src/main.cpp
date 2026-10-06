@@ -8,6 +8,8 @@
 
 #include "CrowPanel43Display.h"
 #include "disp_link_slave.h"
+#include "ilim_core.h"
+#include "ilim_core_checks.h"
 
 namespace {
 
@@ -147,6 +149,20 @@ struct SetupBindingState {
 };
 
 static SetupBindingState setup_binding = {};
+
+// Host-confirmed ILIM per channel (index 0 = CH1, 1 = CH2). Only ACK/EVT/GET replies write it, so it
+// never holds a draft; Setup keeps its own edit copy in setup_binding.
+struct LimitConfirmed {
+  bool have;
+  bool fresh;      // false after a link loss until the host answers again
+  uint16_t mA;
+  uint32_t seq;    // bumps on every host report
+};
+static LimitConfirmed limit_confirmed[2] = {};
+// The single outstanding ILIM write shared by the Iset editor, Setup and the console aid.
+static ilim::Tx limit_tx = {};
+static char limit_refusal[56] = "";
+static uint32_t limit_last_ctrl_dropped = 0;
 
 enum class SettingsMenu : uint8_t {
   System = 0,
@@ -414,6 +430,8 @@ bool i2cAddressResponds(uint8_t address);
 void printLogStatus();
 void refreshDashboard(bool force);
 void main_output_toggle_event_cb(lv_event_t* e);
+bool limitWrite(uint8_t ch, uint16_t mA, char* why, size_t why_len);
+void limitEditorClose();
 
 void setup_prev_btn_event_cb(lv_event_t* e);
 void setup_next_btn_event_cb(lv_event_t* e);
@@ -584,6 +602,7 @@ void lvgl_touch_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 
 void set_active_screen(UiScreen screen) {
   active_screen = screen;
+  if (screen != UiScreen::Detail) limitEditorClose();  // closes the view only; a sent write stays tracked
   if (out_confirm_layer) lv_obj_add_flag(out_confirm_layer, LV_OBJ_FLAG_HIDDEN);
   if (screen_splash) {
     if (screen == UiScreen::Splash) lv_obj_clear_flag(screen_splash, LV_OBJ_FLAG_HIDDEN);
@@ -654,14 +673,32 @@ bool parseIlimPayload(const char* payload, char* channel_out, size_t channel_len
     return false;
   }
   char channel[8] = {0};
-  unsigned int limit = 0;
-  if (sscanf(payload, "ILIM %7s %u", channel, &limit) != 2) {
+  long limit = 0;
+  if (sscanf(payload, "ILIM %7s %ld", channel, &limit) != 2 || limit < 0 || limit > 65535L) {
     return false;
   }
   strncpy(channel_out, channel, channel_len - 1);
   channel_out[channel_len - 1] = '\0';
   *limit_mA_out = static_cast<uint16_t>(limit);
   return true;
+}
+
+// One host-reported limit (ACK, EVT or GET reply). Updates the confirmed value, the Setup copy
+// (unless Setup is mid-edit on that channel) and resolves a matching pending write.
+void limitReportReceived(uint8_t ch, uint16_t mA) {
+  LimitConfirmed& c = limit_confirmed[ch];
+  c.have = true;
+  c.fresh = true;
+  c.mA = mA;
+  c.seq++;
+  const SetupField field = (ch == 0) ? SetupField::Ch1CurrentLimit : SetupField::Ch2CurrentLimit;
+  if (!(setup_binding.editing && setup_binding.selected == field)) {
+    if (ch == 0) setup_binding.ch1_limit_mA = mA;
+    else setup_binding.ch2_limit_mA = mA;
+  }
+  if (ch == 0) setup_binding.have_ch1_limit = true;
+  else setup_binding.have_ch2_limit = true;
+  ilim::onReport(limit_tx, ch, mA);
 }
 
 void applySetupAck(const char* ack_payload) {
@@ -678,13 +715,11 @@ void applySetupAck(const char* ack_payload) {
   uint16_t limit_mA = 0;
   if (parseIlimPayload(ack_payload, channel, sizeof(channel), &limit_mA)) {
     if (strcmp(channel, "CH1") == 0) {
-      setup_binding.ch1_limit_mA = limit_mA;
-      setup_binding.have_ch1_limit = true;
+      limitReportReceived(0, limit_mA);
       return;
     }
     if (strcmp(channel, "CH2") == 0) {
-      setup_binding.ch2_limit_mA = limit_mA;
-      setup_binding.have_ch2_limit = true;
+      limitReportReceived(1, limit_mA);
       return;
     }
   }
@@ -699,6 +734,42 @@ void applySetupError(const char* err_payload) {
   if (err_payload == nullptr) return;
   strncpy(setup_binding.last_error, err_payload, sizeof(setup_binding.last_error) - 1);
   setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+}
+
+// One-line status of the shared ILIM write for Setup; empty when nothing has been written yet.
+void limitTxSetupText(char* buf, size_t n) {
+  buf[0] = '\0';
+  char req[16];
+  char rep[16];
+  ilim::formatAmps(limit_tx.requested_mA, req, sizeof(req));
+  ilim::formatAmps(limit_tx.reported_mA, rep, sizeof(rep));
+  const unsigned ch = static_cast<unsigned>(limit_tx.ch) + 1u;
+  if (limit_tx.state == ilim::TxState::Pending) {
+    snprintf(buf, n, "ILIM CH%u %s A PENDING - waiting for host ACK", ch, req);
+    return;
+  }
+  if (limit_tx.state == ilim::TxState::Unconfirmed) {
+    snprintf(buf, n, "ILIM CH%u %s A UNCONFIRMED - reading back from host", ch, req);
+    return;
+  }
+  switch (limit_tx.result) {
+    case ilim::TxResult::Confirmed:
+    case ilim::TxResult::ConfirmedLate:
+      snprintf(buf, n, "ILIM CH%u CONFIRMED by host: %s A", ch, req);
+      break;
+    case ilim::TxResult::Rejected:
+      snprintf(buf, n, "ILIM CH%u rejected by host: %.40s", ch, limit_tx.err);
+      break;
+    case ilim::TxResult::NotApplied:
+      snprintf(buf, n, "ILIM CH%u NOT APPLIED - host reports %s A", ch, rep);
+      break;
+    case ilim::TxResult::NotSent:
+    case ilim::TxResult::SendFailed:
+      snprintf(buf, n, "ILIM CH%u NOT SENT: %.40s", ch, limit_refusal);
+      break;
+    default:
+      break;
+  }
 }
 
 void refreshSetupScreenLabels() {
@@ -716,7 +787,12 @@ void refreshSetupScreenLabels() {
   }
   lv_label_set_text(lbl_setup_value, value_buf);
 
-  char list_buf[320];
+  const bool tx_open = limit_tx.state != ilim::TxState::Idle;
+  const char* ch1_note = setup_binding.have_ch1_limit ? "" : "(pending)";
+  const char* ch2_note = setup_binding.have_ch2_limit ? "" : "(pending)";
+  if (tx_open && limit_tx.ch == 0) ch1_note = "(WRITE PENDING)";
+  if (tx_open && limit_tx.ch == 1) ch2_note = "(WRITE PENDING)";
+  char list_buf[360];
   snprintf(list_buf,
            sizeof(list_buf),
            "%c Output Enable                 %s %s\n"
@@ -727,12 +803,14 @@ void refreshSetupScreenLabels() {
            setup_binding.have_output ? "" : "(pending)",
            setup_binding.selected == SetupField::Ch1CurrentLimit ? '>' : ' ',
            setup_binding.ch1_limit_mA / 1000.0f,
-           setup_binding.have_ch1_limit ? "" : "(pending)",
+           ch1_note,
            setup_binding.selected == SetupField::Ch2CurrentLimit ? '>' : ' ',
            setup_binding.ch2_limit_mA / 1000.0f,
-           setup_binding.have_ch2_limit ? "" : "(pending)");
+           ch2_note);
   lv_label_set_text(lbl_setup_list, list_buf);
 
+  char tx_buf[96];
+  limitTxSetupText(tx_buf, sizeof(tx_buf));
   if (setup_binding.last_error[0] != '\0') {
     char hint_buf[160];
     snprintf(hint_buf,
@@ -740,6 +818,8 @@ void refreshSetupScreenLabels() {
              "Host error: %s",
              setup_binding.last_error);
     lv_label_set_text(lbl_setup_hint, hint_buf);
+  } else if (tx_buf[0] != '\0' && !setup_binding.editing) {
+    lv_label_set_text(lbl_setup_hint, tx_buf);
   } else if (setup_binding.editing) {
     lv_label_set_text(lbl_setup_hint, "Editing: rotate (Prev/Next) to adjust, press (Edit/Apply) to commit.");
   } else {
@@ -781,28 +861,29 @@ void setupRequestRefresh() {
   }
 }
 
+// Drains the ordered ACK/ERR/EVT FIFO, so back-to-back replies are all applied (and a write is
+// matched only by its own reply), instead of reading the last-line-wins snapshot.
 void updateSetupBindingsFromUdi() {
-  static uint32_t last_udi_ack_count = 0;
-  static uint32_t last_udi_err_count = 0;
-  static uint32_t last_udi_evt_count = 0;
-
-  const auto udi_link = disp_link_slave::commandSnapshot();
   // On UART0 the console is the host link; any non-CMD: line we print draws an ERR reply, which we would echo again.
   const bool echo = !disp_link_slave::telemetryOnConsoleSerial();
-  if (udi_link.ack_count != last_udi_ack_count) {
-    last_udi_ack_count = udi_link.ack_count;
-    if (echo) Serial.printf("udi ack: %s\n", udi_link.last_ack[0] ? udi_link.last_ack : "(empty)");
-    applySetupAck(udi_link.last_ack);
-  }
-  if (udi_link.err_count != last_udi_err_count) {
-    last_udi_err_count = udi_link.err_count;
-    if (echo) Serial.printf("udi err: %s\n", udi_link.last_err[0] ? udi_link.last_err : "(empty)");
-    applySetupError(udi_link.last_err);
-  }
-  if (udi_link.evt_count != last_udi_evt_count) {
-    last_udi_evt_count = udi_link.evt_count;
-    if (echo) Serial.printf("udi evt: %s\n", udi_link.last_evt[0] ? udi_link.last_evt : "(empty)");
-    applySetupEvent(udi_link.last_evt);
+  disp_link_slave::ControlLine line;
+  uint8_t budget = 16;
+  while (budget-- > 0 && disp_link_slave::popControlLine(&line)) {
+    switch (line.kind) {
+      case disp_link_slave::ControlKind::Ack:
+        if (echo) Serial.printf("udi ack: %s\n", line.text[0] ? line.text : "(empty)");
+        applySetupAck(line.text);
+        break;
+      case disp_link_slave::ControlKind::Err:
+        if (echo) Serial.printf("udi err: %s\n", line.text[0] ? line.text : "(empty)");
+        applySetupError(line.text);
+        ilim::onErr(limit_tx, line.text);  // claims only ILIM errors; others stay unrelated
+        break;
+      case disp_link_slave::ControlKind::Evt:
+        if (echo) Serial.printf("udi evt: %s\n", line.text[0] ? line.text : "(empty)");
+        applySetupEvent(line.text);
+        break;
+    }
   }
 }
 
@@ -1166,17 +1247,29 @@ void handleSetupEncoderPress() {
 
   bool sent = false;
   if (setup_binding.selected == SetupField::Output) {
+    if (limit_tx.state != ilim::TxState::Idle) {
+      strncpy(setup_binding.last_error, "ILIM write unresolved - wait before changing OUTPUT",
+              sizeof(setup_binding.last_error) - 1);
+      setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+      setup_binding.editing = false;
+      refreshSetupScreenLabels();
+      return;
+    }
     sent = disp_link_slave::sendCommand(setup_binding.output_enabled ? "OUTPUT ON" : "OUTPUT OFF");
   } else {
-    char payload[40];
-    snprintf(payload,
-             sizeof(payload),
-             "ILIM %s %u",
-             setup_binding.selected == SetupField::Ch1CurrentLimit ? "CH1" : "CH2",
-             static_cast<unsigned>(setup_binding.selected == SetupField::Ch1CurrentLimit
-                                       ? setup_binding.ch1_limit_mA
-                                       : setup_binding.ch2_limit_mA));
-    sent = disp_link_slave::sendCommand(payload);
+    // Same transaction as the Iset editor: one tracked write, confirmed only by a matching reply.
+    const bool ch1 = setup_binding.selected == SetupField::Ch1CurrentLimit;
+    char why[sizeof(setup_binding.last_error)];
+    sent = limitWrite(ch1 ? 0u : 1u,
+                      ch1 ? setup_binding.ch1_limit_mA : setup_binding.ch2_limit_mA,
+                      why, sizeof(why));
+    if (!sent) {
+      strncpy(setup_binding.last_error, why, sizeof(setup_binding.last_error) - 1);
+      setup_binding.last_error[sizeof(setup_binding.last_error) - 1] = '\0';
+      setup_binding.editing = false;
+      refreshSetupScreenLabels();
+      return;
+    }
   }
   if (!sent) {
     strncpy(setup_binding.last_error, "link not ready", sizeof(setup_binding.last_error) - 1);
@@ -1623,10 +1716,10 @@ constexpr int kNavBtnW = 200;
 constexpr int kNavBtnH = 52;
 constexpr int kCardW = 388;
 constexpr int kCardH = 336;
-constexpr int kEditBtnW = 136;
-constexpr int kEditBtnH = 56;
 constexpr int kMicroBtnW = 132;
 constexpr int kMicroBtnH = 56;
+constexpr int kResultBoxW = 136;
+constexpr int kResultBoxH = 56;
 constexpr int kHdrBtnH = 44;
 constexpr int kMicroChBtnW = 56;
 constexpr int kMicroBackW = 110;
@@ -1634,7 +1727,6 @@ static_assert(kBackBtnW >= kTouchMinPx && kBackBtnH >= kTouchMinPx, "Back button
 static_assert(kOutBtnW >= kTouchMinPx && kOutBtnH >= kTouchMinPx, "OUTPUT button below 44x44");
 static_assert(kNavBtnW >= kTouchMinPx && kNavBtnH >= kTouchMinPx, "Nav button below 44x44");
 static_assert(kCardW >= kTouchMinPx && kCardH >= kTouchMinPx, "Channel card below 44x44");
-static_assert(kEditBtnW >= kTouchMinPx && kEditBtnH >= kTouchMinPx, "Edit button below 44x44");
 static_assert(kMicroBtnW >= kTouchMinPx && kMicroBtnH >= kTouchMinPx, "Micro button below 44x44");
 static_assert(kMicroChBtnW >= kTouchMinPx && kHdrBtnH >= kTouchMinPx, "Micro CH button below 44x44");
 static_assert(kMicroBackW >= kTouchMinPx && kHdrBtnH >= kTouchMinPx, "Micro Back button below 44x44");
@@ -1783,13 +1875,6 @@ void dash_back_cb(lv_event_t* /*e*/) {
   set_active_screen(UiScreen::Main);
 }
 
-// Opens the existing Setup editor on this channel's ILIM field; no new write path.
-void dash_edit_limit_cb(lv_event_t* /*e*/) {
-  setup_binding.selected = (detail_channel == 0u) ? SetupField::Ch1CurrentLimit
-                                                  : SetupField::Ch2CurrentLimit;
-  enterSetupScreen();
-}
-
 // Tapping the detail graph panel opens the dedicated Graph screen.
 void dash_open_graph_cb(lv_event_t* /*e*/) {
   set_active_screen(UiScreen::Graph);
@@ -1802,6 +1887,11 @@ void dash_open_micro_cb(lv_event_t* /*e*/) {
 void sendOutputCommand(bool turn_on) {
   const uint32_t now_ms = millis();
   const auto link = disp_link_slave::commandSnapshot();
+  if (limit_tx.state != ilim::TxState::Idle) {
+    postNotice("OUTPUT: ILIM write unresolved - wait", UiTheme::kAccentWarn, now_ms);
+    refreshDashboard(true);
+    return;
+  }
   if (!disp_link_slave::sendCommand(turn_on ? "OUTPUT ON" : "OUTPUT OFF")) {
     postNotice("OUTPUT: link not ready - command not sent", UiTheme::kAccentWarn, now_ms);
     refreshDashboard(true);
@@ -1816,7 +1906,7 @@ void sendOutputCommand(bool turn_on) {
 
 // OFF is one tap; ON must be confirmed in the dialog because it energizes both rails.
 void main_output_toggle_event_cb(lv_event_t* /*e*/) {
-  if (out_cmd.pending) return;
+  if (out_cmd.pending || limit_tx.state != ilim::TxState::Idle) return;
   const uint32_t now_ms = millis();
   const DisplayTelemetry t = get_display_telemetry();
   // The button is disabled in every other state; guard anyway.
@@ -2012,6 +2102,809 @@ void createOutputConfirm() {
   makeLabel(ok, 0, 0, 232, 60, "TURN ON", &lv_font_montserrat_28, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
 }
 
+// ── Iset editor (#74/#75): modal slider + numeric keypad over one draft ─────
+// Scope: display-side only, existing `CMD:ILIM CHn <mA>` / `GET ILIM CHn`. Draft, keypad text and the
+// host-confirmed value are three separate things; only Apply sends, and only a matching host reply
+// (or a readback) confirms. All widgets are created once and shown/hidden, so opening and closing
+// allocates nothing and registers no timers or extra callbacks.
+constexpr int kEdX = 60;
+constexpr int kEdY = 36;
+constexpr int kEdW = 680;
+constexpr int kEdH = 408;
+constexpr int kEdInnerW = kEdW - 6;
+constexpr int kEdInnerH = kEdH - 6;
+constexpr int kEdBtnW = 200;
+constexpr int kEdBtnH = 56;
+constexpr int kEdApplyW = 214;
+constexpr int kEdBackW = 130;
+constexpr int kEdBackH = 44;
+constexpr int kEdFieldW = 300;
+constexpr int kEdFieldH = 76;
+constexpr int kEdKeyW = 76;
+constexpr int kEdKeyH = 60;
+constexpr int kEdKeyGap = 8;
+constexpr int kEdSliderH = 20;
+constexpr int kEdSliderClickPad = 14;  // slider track 20 px + 2 x 14 = 48 px touch height
+static_assert(kEdBtnW >= kTouchMinPx && kEdBtnH >= kTouchMinPx, "Editor button below 44x44");
+static_assert(kEdApplyW >= kTouchMinPx, "Apply below 44 px wide");
+static_assert(kEdBackW >= kTouchMinPx && kEdBackH >= kTouchMinPx, "Keypad Back below 44x44");
+static_assert(kEdFieldW >= kTouchMinPx && kEdFieldH >= kTouchMinPx, "Value field below 44x44");
+static_assert(kEdKeyW >= kTouchMinPx && kEdKeyH >= kTouchMinPx, "Keypad key below 44x44");
+static_assert(kEdSliderH + 2 * kEdSliderClickPad >= kTouchMinPx, "Slider touch height below 44");
+static_assert(kEdY + kEdH <= kDisplayHeight && kEdX + kEdW <= kDisplayWidth, "Editor popup off screen");
+
+enum class EditView : uint8_t { Closed, Slider, Keypad };
+
+struct LimitEditor {
+  EditView view;
+  uint8_t ch;
+  bool drafted;        // draft was initialised from a host report received after opening
+  bool sent_session;   // Apply was pressed since opening: dismissal is then "Close", not "Cancel"
+  uint16_t draft_mA;
+  uint32_t seq_at_open;
+  uint32_t seen_seq;
+  uint16_t seen_mA;
+  bool get_sent;
+  uint32_t get_sent_ms;
+  char entry[ilim::kEntryCap];
+  char entry_msg[104];
+  uint32_t entry_msg_color;
+  char note[104];
+  uint32_t note_color;
+};
+static LimitEditor ed = {};
+
+struct LimitEditorUi {
+  lv_obj_t* scrim;
+  lv_obj_t* popup;
+  lv_obj_t* slider_view;
+  lv_obj_t* keypad_view;
+  Chip ch_chip;
+  lv_obj_t* conf_lbl;
+  Chip state_chip;
+  lv_obj_t* field_btn;
+  lv_obj_t* field_val;
+  lv_obj_t* slider;
+  lv_obj_t* min_lbl;
+  lv_obj_t* max_lbl;
+  lv_obj_t* msg_lbl;
+  lv_obj_t* cancel_btn;
+  lv_obj_t* cancel_lbl;
+  lv_obj_t* refresh_btn;
+  lv_obj_t* apply_btn;
+  lv_obj_t* apply_lbl;
+  Chip k_ch_chip;
+  lv_obj_t* k_entry;
+  lv_obj_t* k_draft_lbl;
+  lv_obj_t* k_range_lbl;
+  lv_obj_t* k_msg;
+};
+static LimitEditorUi edui = {};
+static lv_obj_t* detail_res_l1 = nullptr;
+static lv_obj_t* detail_res_l2 = nullptr;
+
+void copyText(char* dst, size_t n, const char* src) {
+  if (n == 0) return;
+  strncpy(dst, src, n - 1);
+  dst[n - 1] = '\0';
+}
+
+// Console evidence for bench logs. Skipped when the console is the host link (UART0 mode).
+void logLimitTx(const char* what) {
+  if (disp_link_slave::telemetryOnConsoleSerial()) return;
+  Serial.printf("ilim tx: %s | CH%u req=%u rep=%u state=%u result=%u why=%u err=%s\n", what,
+                static_cast<unsigned>(limit_tx.ch) + 1u, static_cast<unsigned>(limit_tx.requested_mA),
+                static_cast<unsigned>(limit_tx.reported_mA), static_cast<unsigned>(limit_tx.state),
+                static_cast<unsigned>(limit_tx.result), static_cast<unsigned>(limit_tx.why),
+                limit_tx.err[0] ? limit_tx.err : "-");
+}
+
+// Every ILIM write (editor, Setup, console aid) goes through here: one send, only while the link is
+// live and nothing else is unresolved. true means "sent"; only the host's reply confirms it.
+bool limitWrite(uint8_t ch, uint16_t mA, char* why, size_t why_len) {
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  const LinkState link = linkStateOf(t, now_ms, nullptr);
+  const char* refuse = nullptr;
+  if (ch > 1u) refuse = "bad channel";
+  else if (link == LinkState::Demo) refuse = "demo data - no host control";
+  else if (link != LinkState::Live) refuse = "link not live";
+  else if (limit_tx.state != ilim::TxState::Idle) refuse = "another limit write is unresolved";
+  else if (out_cmd.pending) refuse = "OUTPUT command pending";
+  else if (mA < ilim::kMinWriteMa) refuse = "zero limit is blocked";
+  else if (mA > ilim::kMaxMa[ch]) refuse = "above channel maximum";
+  if (refuse != nullptr) {
+    copyText(limit_refusal, sizeof(limit_refusal), refuse);
+    if (why != nullptr) copyText(why, why_len, refuse);
+    ilim::noteNotSent(limit_tx, ch, mA);
+    return false;
+  }
+  char payload[24];
+  snprintf(payload, sizeof(payload), "ILIM CH%u %u", static_cast<unsigned>(ch) + 1u, static_cast<unsigned>(mA));
+  if (!disp_link_slave::sendCommand(payload)) {
+    copyText(limit_refusal, sizeof(limit_refusal), "UART not ready");
+    if (why != nullptr) copyText(why, why_len, "UART not ready");
+    ilim::noteSendFailed(limit_tx, ch, mA);
+    return false;
+  }
+  ilim::begin(limit_tx, ch, mA, now_ms);
+  if (why != nullptr && why_len > 0) why[0] = '\0';
+  return true;
+}
+
+// Per-loop upkeep of the shared write: staleness after link loss, timeouts, readback after an
+// uncertain outcome, and the Setup copy after a write ends. Runs on every screen.
+void serviceLimitLink() {
+  static bool was_live = false;
+  static ilim::TxState prev_state = ilim::TxState::Idle;
+  static ilim::TxResult prev_result = ilim::TxResult::None;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  const LinkState link = linkStateOf(t, now_ms, nullptr);
+  const bool live = (link == LinkState::Live);
+
+  if (was_live && !live) {
+    limit_confirmed[0].fresh = false;  // values must be re-read once the host is back
+    limit_confirmed[1].fresh = false;
+  }
+  was_live = live;
+
+  const uint32_t dropped = disp_link_slave::commandSnapshot().ctrl_dropped;
+  if (dropped != limit_last_ctrl_dropped) {
+    limit_last_ctrl_dropped = dropped;
+    ilim::markUnconfirmed(limit_tx, ilim::Why::Dropped);
+  }
+  ilim::tick(limit_tx, now_ms, live);
+  if (ilim::reconcileDue(limit_tx, now_ms, live, false)) {
+    char cmd[16];
+    snprintf(cmd, sizeof(cmd), "GET ILIM CH%u", static_cast<unsigned>(limit_tx.ch) + 1u);
+    if (disp_link_slave::sendCommand(cmd)) ilim::markReconcileSent(limit_tx, now_ms);
+  }
+
+  if (limit_tx.state != prev_state || limit_tx.result != prev_result) {
+    logLimitTx(limit_tx.state == ilim::TxState::Pending ? "write sent" : "state change");
+    prev_state = limit_tx.state;
+    prev_result = limit_tx.result;
+  }
+
+  // Setup shows its own edit copy; once nothing is in flight and Setup is not editing, resync it.
+  if (!setup_binding.editing && limit_tx.state == ilim::TxState::Idle) {
+    if (limit_confirmed[0].have) setup_binding.ch1_limit_mA = limit_confirmed[0].mA;
+    if (limit_confirmed[1].have) setup_binding.ch2_limit_mA = limit_confirmed[1].mA;
+  }
+}
+
+// Detail footer "last ILIM result" box: two short lines, never claims more than the host confirmed.
+void refreshLimitResultBox() {
+  if (!detail_res_l1 || !detail_res_l2) return;
+  char l1[24] = "LAST ILIM";
+  char l2[32] = "--";
+  uint32_t color = UiTheme::kTextMuted;
+  char amt[16];
+  const unsigned ch = static_cast<unsigned>(limit_tx.ch) + 1u;
+  if (limit_tx.state == ilim::TxState::Pending) {
+    ilim::formatAmps(limit_tx.requested_mA, amt, sizeof(amt));
+    snprintf(l1, sizeof(l1), "CH%u PENDING", ch);
+    snprintf(l2, sizeof(l2), "%s A", amt);
+    color = UiTheme::kAccentWarn;
+  } else if (limit_tx.state == ilim::TxState::Unconfirmed) {
+    snprintf(l1, sizeof(l1), "CH%u UNCONF.", ch);
+    copyText(l2, sizeof(l2), limit_tx.why == ilim::Why::Timeout ? "timeout"
+                             : limit_tx.why == ilim::Why::LinkLost ? "link lost" : "reply lost");
+    color = UiTheme::kAccentWarn;
+  } else {
+    switch (limit_tx.result) {
+      case ilim::TxResult::Confirmed:
+      case ilim::TxResult::ConfirmedLate:
+        ilim::formatAmps(limit_tx.requested_mA, amt, sizeof(amt));
+        snprintf(l1, sizeof(l1), "CH%u OK", ch);
+        snprintf(l2, sizeof(l2), "%s A", amt);
+        color = UiTheme::kAccentOk;
+        break;
+      case ilim::TxResult::Rejected:
+        snprintf(l1, sizeof(l1), "CH%u ERR", ch);
+        copyText(l2, sizeof(l2), "host rejected");
+        color = UiTheme::kError;
+        break;
+      case ilim::TxResult::NotApplied:
+        ilim::formatAmps(limit_tx.reported_mA, amt, sizeof(amt));
+        snprintf(l1, sizeof(l1), "CH%u NOT SET", ch);
+        snprintf(l2, sizeof(l2), "host %s A", amt);
+        color = UiTheme::kAccentWarn;
+        break;
+      case ilim::TxResult::NotSent:
+      case ilim::TxResult::SendFailed:
+        snprintf(l1, sizeof(l1), "CH%u NOT SENT", ch);
+        copyText(l2, sizeof(l2), limit_refusal);
+        color = UiTheme::kError;
+        break;
+      default:
+        break;
+    }
+  }
+  setLabel(detail_res_l1, l1);
+  setLabel(detail_res_l2, l2);
+  static uint32_t last_color = 0xFFFFFFFFu;
+  if (color != last_color) {
+    last_color = color;
+    lv_obj_set_style_text_color(detail_res_l1, lv_color_hex(color), LV_PART_MAIN);
+    lv_obj_set_style_text_color(detail_res_l2, lv_color_hex(color), LV_PART_MAIN);
+  }
+}
+
+enum class Block : uint8_t { None, NoValue, Demo, LinkDown, Refreshing, Unresolved, OutputBusy, Invalid, NoChange };
+
+Block edApplyBlock(bool live, bool demo) {
+  const LimitConfirmed& cf = limit_confirmed[ed.ch];
+  if (!ed.drafted) return Block::NoValue;
+  if (demo) return Block::Demo;
+  if (!live) return Block::LinkDown;
+  if (!cf.fresh) return Block::Refreshing;
+  if (limit_tx.state != ilim::TxState::Idle) return Block::Unresolved;
+  if (out_cmd.pending) return Block::OutputBusy;
+  if (ed.draft_mA < ilim::kMinWriteMa || ed.draft_mA > ilim::kMaxMa[ed.ch]) return Block::Invalid;
+  if (ed.draft_mA == cf.mA) return Block::NoChange;
+  return Block::None;
+}
+
+void edSetEnabled(lv_obj_t* obj, bool enabled) {
+  if (!obj) return;
+  if (enabled == !lv_obj_has_state(obj, LV_STATE_DISABLED)) return;
+  if (enabled) {
+    lv_obj_clear_state(obj, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
+  } else {
+    lv_obj_add_state(obj, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(obj, LV_OPA_40, LV_PART_MAIN);
+  }
+}
+
+void edSetMsg(lv_obj_t* lbl, const char* text, uint32_t color) {
+  setLabel(lbl, text);
+  const lv_color_t c = lv_color_hex(color);
+  if (lv_obj_get_style_text_color(lbl, LV_PART_MAIN).full != c.full) {
+    lv_obj_set_style_text_color(lbl, c, LV_PART_MAIN);
+  }
+}
+
+void edParseText(ilim::Parse p, char* out, size_t n) {
+  char max[16];
+  ilim::formatAmps(ilim::kMaxMa[ed.ch], max, sizeof(max));
+  switch (p) {
+    case ilim::Parse::Empty:
+      copyText(out, n, "Nothing typed. Type a value, or tap Back to keep the draft.");
+      break;
+    case ilim::Parse::Malformed:
+      copyText(out, n, "Not a valid number.");
+      break;
+    case ilim::Parse::Negative:
+      copyText(out, n, "Negative values are not allowed.");
+      break;
+    case ilim::Parse::TooManyDecimals:
+      copyText(out, n, "At most 3 decimals (1 mA). Not rounded.");
+      break;
+    case ilim::Parse::Zero:
+      copyText(out, n, "Zero is blocked. Minimum is 0.001 A.");
+      break;
+    case ilim::Parse::OutOfRange:
+      snprintf(out, n, "Above the CH%u maximum of %s A. Not clamped.", static_cast<unsigned>(ed.ch) + 1u, max);
+      break;
+    default:
+      out[0] = '\0';
+      break;
+  }
+}
+
+// Live validation of the keypad text; also run after every key press.
+void edEntryHint() {
+  char max[16];
+  ilim::formatAmps(ilim::kMaxMa[ed.ch], max, sizeof(max));
+  if (ed.entry[0] == '\0') {
+    snprintf(ed.entry_msg, sizeof(ed.entry_msg), "Type the new limit: 0.001 to %s A, up to 3 decimals.", max);
+    ed.entry_msg_color = UiTheme::kTextMuted;
+    return;
+  }
+  const ilim::ParseResult r = ilim::parseAmps(ed.entry, ed.ch);
+  if (r.status == ilim::Parse::Ok) {
+    char amt[16];
+    ilim::formatAmps(r.mA, amt, sizeof(amt));
+    snprintf(ed.entry_msg, sizeof(ed.entry_msg), "Valid: %s A. Tap OK to use it as the draft.", amt);
+    ed.entry_msg_color = UiTheme::kAccentOk;
+  } else {
+    edParseText(r.status, ed.entry_msg, sizeof(ed.entry_msg));
+    ed.entry_msg_color = UiTheme::kAccentWarn;
+  }
+}
+
+void limitEditorRefresh() {
+  if (ed.view == EditView::Closed || !edui.scrim) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  const LinkState link = linkStateOf(t, now_ms, nullptr);
+  const bool live = (link == LinkState::Live);
+  const bool demo = (link == LinkState::Demo);
+  const LimitConfirmed& cf = limit_confirmed[ed.ch];
+  const bool tx_open = limit_tx.state != ilim::TxState::Idle;
+  const bool tx_mine = tx_open && limit_tx.ch == ed.ch;
+  const unsigned chn = static_cast<unsigned>(ed.ch) + 1u;
+  char amt[16];
+
+  // The draft starts only from a host report that arrived after opening; never from a cached or default value.
+  if (!ed.drafted && cf.have && cf.fresh && cf.seq != ed.seq_at_open) {
+    ed.drafted = true;
+    ed.draft_mA = cf.mA;
+    ed.seen_seq = cf.seq;
+    ed.seen_mA = cf.mA;
+  }
+  if (ed.drafted && cf.seq != ed.seen_seq) {
+    if (cf.mA != ed.seen_mA && !ed.sent_session) {
+      ilim::formatAmps(cf.mA, amt, sizeof(amt));
+      snprintf(ed.note, sizeof(ed.note), "Host now reports %s A (changed outside this editor). Draft kept.", amt);
+      ed.note_color = UiTheme::kAccentWarn;
+    }
+    ed.seen_seq = cf.seq;
+    ed.seen_mA = cf.mA;
+  }
+  if (!ed.drafted && live && !tx_mine && !out_cmd.pending &&
+      (!ed.get_sent || (now_ms - ed.get_sent_ms) >= kLimitGetRetryMs)) {
+    char cmd[16];
+    snprintf(cmd, sizeof(cmd), "GET ILIM CH%u", chn);
+    if (disp_link_slave::sendCommand(cmd)) {
+      ed.get_sent = true;
+      ed.get_sent_ms = now_ms;
+    }
+  }
+  const bool no_reply = ed.get_sent && (now_ms - ed.get_sent_ms) >= kLimitGetRetryMs;
+
+  setHidden(edui.slider_view, ed.view != EditView::Slider);
+  setHidden(edui.keypad_view, ed.view != EditView::Keypad);
+
+  const Block blk = edApplyBlock(live, demo);
+  const bool locked = !ed.drafted || tx_mine;
+
+  if (ed.view == EditView::Keypad) {
+    ilim::formatAmps(ed.draft_mA, amt, sizeof(amt));
+    char buf[40];
+    snprintf(buf, sizeof(buf), "Draft now: %s A", amt);
+    setLabel(edui.k_draft_lbl, buf);
+    setLabel(edui.k_entry, ed.entry[0] ? ed.entry : "-.---");
+    setTextOpa(edui.k_entry, ed.entry[0] ? LV_OPA_COVER : LV_OPA_40);
+    edSetMsg(edui.k_msg, ed.entry_msg, ed.entry_msg_color);
+    return;
+  }
+
+  // Confirmed (host) value row.
+  char buf[104];
+  if (cf.have) {
+    ilim::formatAmps(cf.mA, amt, sizeof(amt));
+    snprintf(buf, sizeof(buf), "Confirmed limit: %s A%s", amt, cf.fresh ? "" : " (stale)");
+  } else {
+    copyText(buf, sizeof(buf), "Confirmed limit: -.--- A");
+  }
+  setLabel(edui.conf_lbl, buf);
+
+  // State chip.
+  const char* chip = "";
+  uint32_t chip_c = UiTheme::kUnknown;
+  if (tx_mine && limit_tx.state == ilim::TxState::Pending) {
+    chip = "PENDING";
+    chip_c = UiTheme::kAccentWarn;
+  } else if (tx_mine) {
+    chip = "UNCONFIRMED";
+    chip_c = UiTheme::kAccentWarn;
+  } else if (!ed.drafted) {
+    if (demo) { chip = "DEMO - NO CONTROL"; chip_c = UiTheme::kDemo; }
+    else if (!live || no_reply) { chip = "UNAVAILABLE"; chip_c = UiTheme::kAccentWarn; }
+    else chip = "LOADING...";
+  } else if (!live) {
+    chip = "LINK NOT LIVE";
+    chip_c = UiTheme::kAccentWarn;
+  } else if (!cf.fresh) {
+    chip = "REFRESHING";
+  } else if (ed.draft_mA == cf.mA) {
+    chip = "NO CHANGE";
+  } else {
+    chip = "DRAFT - NOT APPLIED";
+    chip_c = UiTheme::kAccentWarn;
+  }
+  setChip(edui.state_chip, chip, chip_c);
+
+  // Draft field and slider.
+  if (ed.drafted) {
+    ilim::formatAmps(ed.draft_mA, amt, sizeof(amt));
+    setLabel(edui.field_val, amt);
+    const int32_t pos = ilim::sliderFromMa(ed.draft_mA, ed.ch);
+    if (lv_slider_get_value(edui.slider) != pos && !lv_slider_is_dragged(edui.slider)) {
+      lv_slider_set_value(edui.slider, pos, LV_ANIM_OFF);  // does not fire VALUE_CHANGED, so no draft change
+    }
+  } else {
+    setLabel(edui.field_val, "-.---");
+  }
+  setTextOpa(edui.field_val, ed.drafted ? LV_OPA_COVER : LV_OPA_40);
+  edSetEnabled(edui.slider, !locked);
+  edSetEnabled(edui.field_btn, !locked);
+
+  // Message line, most important first.
+  char req[16];
+  char rep[16];
+  char cur[16];
+  ilim::formatAmps(limit_tx.requested_mA, req, sizeof(req));
+  ilim::formatAmps(limit_tx.reported_mA, rep, sizeof(rep));
+  ilim::formatAmps(cf.mA, cur, sizeof(cur));
+  uint32_t msg_c = UiTheme::kTextMuted;
+  if (tx_mine && limit_tx.state == ilim::TxState::Pending) {
+    snprintf(buf, sizeof(buf), "PENDING: ILIM CH%u %s A sent. Waiting for the host ACK. Closing does not undo it.", chn, req);
+    msg_c = UiTheme::kAccentWarn;
+  } else if (tx_mine) {
+    const char* why = limit_tx.why == ilim::Why::Timeout ? "no reply in time"
+                      : limit_tx.why == ilim::Why::LinkLost ? "link lost" : "reply lost";
+    snprintf(buf, sizeof(buf), "UNCONFIRMED (%s): it may have applied. Reading back; Apply stays locked.", why);
+    msg_c = UiTheme::kAccentWarn;
+  } else if (tx_open) {
+    snprintf(buf, sizeof(buf), "CH%u limit write is unresolved. Wait for its result before writing CH%u.",
+             static_cast<unsigned>(limit_tx.ch) + 1u, chn);
+    msg_c = UiTheme::kAccentWarn;
+  } else if (ed.sent_session && limit_tx.ch == ed.ch && limit_tx.result != ilim::TxResult::None) {
+    switch (limit_tx.result) {
+      case ilim::TxResult::Confirmed:
+        snprintf(buf, sizeof(buf), "CONFIRMED by host: limit is now %s A.", req);
+        msg_c = UiTheme::kAccentOk;
+        break;
+      case ilim::TxResult::ConfirmedLate:
+        snprintf(buf, sizeof(buf), "CONFIRMED by readback: limit is now %s A.", req);
+        msg_c = UiTheme::kAccentOk;
+        break;
+      case ilim::TxResult::Rejected:
+        snprintf(buf, sizeof(buf), "ERR from host (%.40s). Confirmed limit unchanged: %s A.", limit_tx.err, cur);
+        msg_c = UiTheme::kError;
+        break;
+      case ilim::TxResult::NotApplied:
+        snprintf(buf, sizeof(buf), "NOT APPLIED: host still reports %s A. You may retry.", rep);
+        msg_c = UiTheme::kAccentWarn;
+        break;
+      default:
+        snprintf(buf, sizeof(buf), "NOT SENT: %.50s. Nothing was written.", limit_refusal);
+        msg_c = UiTheme::kError;
+        break;
+    }
+  } else if (!ed.drafted) {
+    if (demo) copyText(buf, sizeof(buf), "DEMO DATA: no host control, so the limit cannot be edited.");
+    else if (!live) copyText(buf, sizeof(buf), "Link not live: cannot read the host limit. Tap REFRESH when it is back.");
+    else if (no_reply) copyText(buf, sizeof(buf), "No reply from the host yet. Retrying; tap REFRESH to retry now.");
+    else copyText(buf, sizeof(buf), "Reading the current limit from the host...");
+    if (demo || !live || no_reply) msg_c = UiTheme::kAccentWarn;
+  } else if (blk == Block::Invalid) {
+    ilim::formatAmps(ed.draft_mA, amt, sizeof(amt));
+    if (ed.draft_mA < ilim::kMinWriteMa) {
+      snprintf(buf, sizeof(buf), "Draft %s A: zero writes are blocked. Choose 0.001 A or more.", amt);
+    } else {
+      snprintf(buf, sizeof(buf), "Draft %s A is above the CH%u editor range.", amt, chn);
+    }
+    msg_c = UiTheme::kError;
+  } else if (blk == Block::Demo || blk == Block::LinkDown) {
+    copyText(buf, sizeof(buf), blk == Block::Demo ? "DEMO DATA: Apply is disabled."
+                                                    : "Link not live: Apply is disabled.");
+    msg_c = UiTheme::kAccentWarn;
+  } else if (blk == Block::Refreshing) {
+    copyText(buf, sizeof(buf), "Refreshing the limit from the host. Apply is disabled until it answers.");
+    msg_c = UiTheme::kAccentWarn;
+  } else if (blk == Block::OutputBusy) {
+    copyText(buf, sizeof(buf), "An OUTPUT command is pending. Apply is disabled until it finishes.");
+    msg_c = UiTheme::kAccentWarn;
+  } else if (ed.note[0] != '\0') {
+    copyText(buf, sizeof(buf), ed.note);
+    msg_c = ed.note_color;
+  } else if (blk == Block::NoChange) {
+    copyText(buf, sizeof(buf), "No change from the confirmed limit. Drag the slider or tap the value.");
+  } else {
+    copyText(buf, sizeof(buf), "Draft only: nothing is sent until you tap Apply.");
+  }
+  edSetMsg(edui.msg_lbl, buf, msg_c);
+
+  // Buttons.
+  const char* apply_txt = "Apply";
+  if (tx_mine && limit_tx.state == ilim::TxState::Pending) apply_txt = "PENDING...";
+  else if (tx_mine) apply_txt = "LOCKED";
+  setLabel(edui.apply_lbl, apply_txt);
+  edSetEnabled(edui.apply_btn, blk == Block::None);
+  edSetEnabled(edui.refresh_btn, live && !demo && !(tx_mine && limit_tx.state == ilim::TxState::Pending));
+  setLabel(edui.cancel_lbl, (tx_mine || ed.sent_session) ? "CLOSE" : "CANCEL");
+}
+
+void limitEditorClose() {
+  if (ed.view == EditView::Closed) return;
+  ed.view = EditView::Closed;
+  ed.entry[0] = '\0';
+  setHidden(edui.scrim, true);
+}
+
+void limitEditorOpen() {
+  if (!edui.scrim) return;
+  const uint8_t ch = (detail_channel == 1u) ? 1u : 0u;
+  ed = {};
+  ed.view = EditView::Slider;
+  ed.ch = ch;
+  ed.seq_at_open = limit_confirmed[ch].seq;
+  ed.seen_seq = ed.seq_at_open;
+  ed.entry_msg_color = UiTheme::kTextMuted;
+  ed.note_color = UiTheme::kTextMuted;
+
+  const RailSpec& r = kRails[ch];
+  static const char* const kChipText[2] = {"CH1  +5V Supply", "CH2  +3.3V Supply"};
+  lv_obj_set_style_border_color(edui.popup, lv_color_hex(r.color), LV_PART_MAIN);
+  setLabel(edui.ch_chip.lbl, kChipText[ch]);
+  fillChip(edui.ch_chip, r.color);
+  setLabel(edui.k_ch_chip.lbl, kChipText[ch]);
+  fillChip(edui.k_ch_chip, r.color);
+  lv_obj_set_style_bg_color(edui.slider, lv_color_hex(r.color), LV_PART_INDICATOR);
+  lv_obj_set_style_border_color(lv_obj_get_parent(edui.k_entry), lv_color_hex(r.color), LV_PART_MAIN);
+
+  char amt[16];
+  char buf[24];
+  ilim::formatAmps(ilim::maFromSlider(ilim::sliderMin()), amt, sizeof(amt));
+  snprintf(buf, sizeof(buf), "%s A", amt);
+  setLabel(edui.min_lbl, buf);
+  ilim::formatAmps(ilim::kMaxMa[ch], amt, sizeof(amt));
+  snprintf(buf, sizeof(buf), "%s A", amt);
+  setLabel(edui.max_lbl, buf);
+  lv_slider_set_range(edui.slider, ilim::sliderMin(), ilim::sliderMax(ch));
+  lv_slider_set_value(edui.slider, ilim::sliderMin(), LV_ANIM_OFF);
+  char range[48];
+  snprintf(range, sizeof(range), "Range 0.001 - %s A, 3 decimals", amt);
+  setLabel(edui.k_range_lbl, range);
+
+  setHidden(edui.scrim, false);
+  limitEditorRefresh();
+}
+
+void ed_open_cb(lv_event_t* /*e*/) { limitEditorOpen(); }
+
+void ed_cancel_cb(lv_event_t* /*e*/) {
+  limitEditorClose();  // never sends; a write already sent keeps being tracked
+}
+
+void ed_slider_cb(lv_event_t* /*e*/) {
+  if (ed.view != EditView::Slider || !ed.drafted) return;
+  if (limit_tx.state != ilim::TxState::Idle && limit_tx.ch == ed.ch) return;
+  ed.draft_mA = ilim::maFromSlider(lv_slider_get_value(edui.slider));
+  ed.note[0] = '\0';
+  limitEditorRefresh();
+}
+
+void ed_field_cb(lv_event_t* /*e*/) {
+  if (ed.view != EditView::Slider || !ed.drafted) return;
+  if (limit_tx.state != ilim::TxState::Idle && limit_tx.ch == ed.ch) return;
+  ed.view = EditView::Keypad;
+  ed.entry[0] = '\0';
+  edEntryHint();
+  limitEditorRefresh();
+}
+
+void ed_back_cb(lv_event_t* /*e*/) {
+  if (ed.view != EditView::Keypad) return;
+  ed.view = EditView::Slider;  // the draft was never touched by keypad typing
+  ed.entry[0] = '\0';
+  limitEditorRefresh();
+}
+
+void ed_key_cb(lv_event_t* e) {
+  if (ed.view != EditView::Keypad) return;
+  const char code = static_cast<char>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+  if (code == 'B') {
+    ilim::entryBackspace(ed.entry);
+    edEntryHint();
+  } else if (code == 'K') {
+    if (ed.entry[0] == '\0') {
+      edParseText(ilim::Parse::Empty, ed.entry_msg, sizeof(ed.entry_msg));
+      ed.entry_msg_color = UiTheme::kAccentWarn;
+    } else {
+      const ilim::ParseResult r = ilim::parseAmps(ed.entry, ed.ch);
+      if (r.status != ilim::Parse::Ok) {
+        edParseText(r.status, ed.entry_msg, sizeof(ed.entry_msg));
+        ed.entry_msg_color = UiTheme::kError;
+      } else {
+        ed.draft_mA = r.mA;  // exact: not rounded to the slider step
+        char amt[16];
+        ilim::formatAmps(r.mA, amt, sizeof(amt));
+        snprintf(ed.note, sizeof(ed.note), "Draft set to %s A from the keypad. Not applied yet.", amt);
+        ed.note_color = UiTheme::kTextMuted;
+        ed.view = EditView::Slider;
+        ed.entry[0] = '\0';
+      }
+    }
+  } else {
+    const ilim::Entry r = ilim::entryAppend(ed.entry, sizeof(ed.entry), code);
+    if (r == ilim::Entry::Ok) {
+      edEntryHint();
+    } else {
+      switch (r) {
+        case ilim::Entry::SecondPoint:
+          copyText(ed.entry_msg, sizeof(ed.entry_msg), "Only one decimal point.");
+          break;
+        case ilim::Entry::TooManyDecimals:
+          copyText(ed.entry_msg, sizeof(ed.entry_msg), "At most 3 decimals (1 mA). Extra digit ignored.");
+          break;
+        case ilim::Entry::TooManyIntDigits:
+          copyText(ed.entry_msg, sizeof(ed.entry_msg), "At most 2 digits before the point.");
+          break;
+        default:
+          copyText(ed.entry_msg, sizeof(ed.entry_msg), "Entry is full.");
+          break;
+      }
+      ed.entry_msg_color = UiTheme::kAccentWarn;
+    }
+  }
+  limitEditorRefresh();
+}
+
+void ed_refresh_cb(lv_event_t* /*e*/) {
+  if (ed.view != EditView::Slider) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  if (linkStateOf(t, now_ms, nullptr) != LinkState::Live) return;
+  char cmd[16];
+  snprintf(cmd, sizeof(cmd), "GET ILIM CH%u", static_cast<unsigned>(ed.ch) + 1u);
+  if (limit_tx.state == ilim::TxState::Unconfirmed && limit_tx.ch == ed.ch) {
+    if (ilim::reconcileDue(limit_tx, now_ms, true, true) && disp_link_slave::sendCommand(cmd)) {
+      ilim::markReconcileSent(limit_tx, now_ms);
+    }
+  } else if (limit_tx.state == ilim::TxState::Idle && !out_cmd.pending) {
+    if (disp_link_slave::sendCommand(cmd)) {
+      ed.get_sent = true;
+      ed.get_sent_ms = now_ms;
+    }
+  }
+  limitEditorRefresh();
+}
+
+void ed_apply_cb(lv_event_t* /*e*/) {
+  if (ed.view != EditView::Slider) return;
+  const uint32_t now_ms = millis();
+  const DisplayTelemetry t = get_display_telemetry();
+  const LinkState link = linkStateOf(t, now_ms, nullptr);
+  if (edApplyBlock(link == LinkState::Live, link == LinkState::Demo) != Block::None) {
+    limitEditorRefresh();
+    return;
+  }
+  char why[56];
+  limitWrite(ed.ch, ed.draft_mA, why, sizeof(why));  // success or refusal is shown from limit_tx
+  ed.sent_session = true;
+  ed.note[0] = '\0';
+  limitEditorRefresh();
+}
+
+lv_obj_t* edWrapLabel(lv_obj_t* parent, int x, int y, int w, int h, const lv_font_t* font, uint32_t color) {
+  lv_obj_t* l = lv_label_create(parent);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_pos(l, x, y);
+  lv_obj_set_size(l, w, h);
+  lv_label_set_text(l, "");
+  lv_obj_set_style_text_font(l, font, LV_PART_MAIN);
+  lv_obj_set_style_text_color(l, lv_color_hex(color), LV_PART_MAIN);
+  return l;
+}
+
+lv_obj_t* edKey(lv_obj_t* parent, int x, int y, int w, int h, const char* text, char code,
+                uint32_t bg, uint32_t border, const lv_font_t* font) {
+  lv_obj_t* b = makeButton(parent, x, y, w, h, bg, border, 2, 8);
+  lv_obj_add_event_cb(b, ed_key_cb, LV_EVENT_CLICKED,
+                      reinterpret_cast<void*>(static_cast<uintptr_t>(static_cast<unsigned char>(code))));
+  makeLabel(b, 0, 0, w - 4, h - 4, text, font, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  return b;
+}
+
+// Built once at boot on the top layer; the scrim swallows every touch while the editor is shown.
+void createLimitEditor() {
+  lv_obj_t* scrim = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(scrim, kDisplayWidth, kDisplayHeight);
+  lv_obj_set_pos(scrim, 0, 0);
+  lv_obj_set_style_radius(scrim, 0, LV_PART_MAIN);
+  lv_obj_set_style_border_width(scrim, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(scrim, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(scrim, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_clear_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
+  edui.scrim = scrim;
+
+  lv_obj_t* pop = makeBox(scrim, kEdX, kEdY, kEdW, kEdH, UiTheme::kPanel, UiTheme::kCh1, 3, 12);
+  edui.popup = pop;
+
+  // Slider view.
+  lv_obj_t* sv = makeBox(pop, 0, 0, kEdInnerW, kEdInnerH, UiTheme::kPanel, UiTheme::kPanel, 0, 0);
+  lv_obj_set_style_bg_opa(sv, LV_OPA_TRANSP, LV_PART_MAIN);
+  edui.slider_view = sv;
+  makeChip(sv, 16, 10, 290, 36, &lv_font_montserrat_28, edui.ch_chip);
+  makeLabel(sv, 318, 6, 340, 26, "CURRENT LIMIT (Iset)", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+  makeLabel(sv, 318, 30, 340, 20, "Set limit - not measured current", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  edui.conf_lbl = makeLabel(sv, 16, 58, 400, 30, "Confirmed limit: -.--- A", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+  makeChip(sv, 420, 56, 238, 34, &lv_font_montserrat_16, edui.state_chip);
+  setChip(edui.state_chip, "LOADING...", UiTheme::kUnknown);
+
+  edui.field_btn = makeButton(sv, 187, 98, kEdFieldW, kEdFieldH, UiTheme::kScope, UiTheme::kAccentI, 2, 10);
+  lv_obj_add_event_cb(edui.field_btn, ed_field_cb, LV_EVENT_CLICKED, nullptr);
+  edui.field_val = makeLabel(edui.field_btn, 6, 0, 236, kEdFieldH - 4, "-.---", &lv_font_montserrat_48,
+                             UiTheme::kAccentI, LV_TEXT_ALIGN_RIGHT);
+  makeLabel(edui.field_btn, 250, 0, 44, kEdFieldH - 4, "A", &lv_font_montserrat_28, UiTheme::kAccentI);
+  lv_obj_t* hint = edWrapLabel(sv, 16, 104, 164, 60, &lv_font_montserrat_16, UiTheme::kTextMuted);
+  lv_label_set_text(hint, "Tap the value to type an exact amount");
+
+  edui.slider = lv_slider_create(sv);
+  lv_obj_set_pos(edui.slider, 44, 200);
+  lv_obj_set_size(edui.slider, 586, kEdSliderH);
+  lv_obj_set_ext_click_area(edui.slider, kEdSliderClickPad);
+  lv_obj_set_style_bg_color(edui.slider, lv_color_hex(UiTheme::kBorder), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(edui.slider, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(edui.slider, lv_color_hex(UiTheme::kCh1), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(edui.slider, lv_color_hex(UiTheme::kTextPrimary), LV_PART_KNOB);
+  lv_obj_set_style_pad_all(edui.slider, 14, LV_PART_KNOB);
+  lv_slider_set_range(edui.slider, ilim::sliderMin(), ilim::sliderMax(0));
+  lv_obj_add_event_cb(edui.slider, ed_slider_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+  edui.min_lbl = makeLabel(sv, 16, 246, 200, 22, "0.010 A", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  makeLabel(sv, 220, 246, 234, 22, "step 0.010 A", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+  edui.max_lbl = makeLabel(sv, 458, 246, 200, 22, "3.000 A", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
+  edui.msg_lbl = edWrapLabel(sv, 16, 274, 642, 54, &lv_font_montserrat_20, UiTheme::kTextMuted);
+
+  edui.cancel_btn = makeButton(sv, 16, 336, kEdBtnW, kEdBtnH, UiTheme::kPanelSoft, UiTheme::kTextMuted, 2, 8);
+  lv_obj_add_event_cb(edui.cancel_btn, ed_cancel_cb, LV_EVENT_CLICKED, nullptr);
+  edui.cancel_lbl = makeLabel(edui.cancel_btn, 0, 0, kEdBtnW - 4, kEdBtnH - 4, "CANCEL", &lv_font_montserrat_28,
+                              UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  edui.refresh_btn = makeButton(sv, 232, 336, kEdBtnW, kEdBtnH, UiTheme::kPanelSoft, UiTheme::kAccentI, 2, 8);
+  lv_obj_add_event_cb(edui.refresh_btn, ed_refresh_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(edui.refresh_btn, 0, 0, kEdBtnW - 4, kEdBtnH - 4, "REFRESH", &lv_font_montserrat_28,
+            UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  edui.apply_btn = makeButton(sv, 448, 336, kEdApplyW, kEdBtnH, 0x1E4A33, UiTheme::kAccentOk, 2, 8);
+  lv_obj_add_event_cb(edui.apply_btn, ed_apply_cb, LV_EVENT_CLICKED, nullptr);
+  edui.apply_lbl = makeLabel(edui.apply_btn, 0, 0, kEdApplyW - 4, kEdBtnH - 4, "Apply", &lv_font_montserrat_28,
+                             UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+
+  // Keypad view.
+  lv_obj_t* kv = makeBox(pop, 0, 0, kEdInnerW, kEdInnerH, UiTheme::kPanel, UiTheme::kPanel, 0, 0);
+  lv_obj_set_style_bg_opa(kv, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_add_flag(kv, LV_OBJ_FLAG_HIDDEN);
+  edui.keypad_view = kv;
+  lv_obj_t* back = makeButton(kv, 16, 10, kEdBackW, kEdBackH, UiTheme::kPanelSoft, UiTheme::kTextMuted, 2, 8);
+  lv_obj_add_event_cb(back, ed_back_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(back, 0, 0, kEdBackW - 4, kEdBackH - 4, LV_SYMBOL_LEFT " Back", &lv_font_montserrat_20,
+            UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
+  makeChip(kv, 160, 12, 290, 36, &lv_font_montserrat_28, edui.k_ch_chip);
+  makeLabel(kv, 464, 14, 196, 32, "ENTER Iset", &lv_font_montserrat_20, UiTheme::kTextPrimary);
+
+  lv_obj_t* entry_box = makeBox(kv, 16, 68, kEdFieldW, 84, UiTheme::kScope, UiTheme::kCh1, 2, 10);
+  edui.k_entry = makeLabel(entry_box, 6, 0, 236, 80, "-.---", &lv_font_montserrat_48, UiTheme::kAccentI,
+                           LV_TEXT_ALIGN_RIGHT);
+  makeLabel(entry_box, 250, 0, 44, 80, "A", &lv_font_montserrat_28, UiTheme::kAccentI);
+  edui.k_draft_lbl = makeLabel(kv, 16, 158, 304, 22, "Draft now: -.--- A", &lv_font_montserrat_16, UiTheme::kTextPrimary);
+  edui.k_range_lbl = makeLabel(kv, 16, 180, 304, 22, "Range 0.001 - 3.000 A, 3 decimals", &lv_font_montserrat_16,
+                               UiTheme::kTextMuted);
+  edui.k_msg = edWrapLabel(kv, 16, 212, 306, 116, &lv_font_montserrat_20, UiTheme::kTextMuted);
+  makeLabel(kv, 16, 346, 642, 24, "Keypad edits the draft only. Nothing is sent until Apply.", &lv_font_montserrat_16,
+            UiTheme::kTextMuted);
+
+  constexpr int kGx = 336;
+  constexpr int kGy = 68;
+  constexpr int kPitchX = kEdKeyW + kEdKeyGap;
+  constexpr int kPitchY = kEdKeyH + kEdKeyGap;
+  const uint32_t kb = UiTheme::kPanelSoft;
+  const uint32_t kd = UiTheme::kBorder;
+  const lv_font_t* kf = &lv_font_montserrat_28;
+  edKey(kv, kGx + 0 * kPitchX, kGy + 0 * kPitchY, kEdKeyW, kEdKeyH, "7", '7', kb, kd, kf);
+  edKey(kv, kGx + 1 * kPitchX, kGy + 0 * kPitchY, kEdKeyW, kEdKeyH, "8", '8', kb, kd, kf);
+  edKey(kv, kGx + 2 * kPitchX, kGy + 0 * kPitchY, kEdKeyW, kEdKeyH, "9", '9', kb, kd, kf);
+  edKey(kv, kGx + 3 * kPitchX, kGy + 0 * kPitchY, kEdKeyW, kEdKeyH, "DEL", 'B', kb, UiTheme::kAccentWarn,
+        &lv_font_montserrat_20);
+  edKey(kv, kGx + 0 * kPitchX, kGy + 1 * kPitchY, kEdKeyW, kEdKeyH, "4", '4', kb, kd, kf);
+  edKey(kv, kGx + 1 * kPitchX, kGy + 1 * kPitchY, kEdKeyW, kEdKeyH, "5", '5', kb, kd, kf);
+  edKey(kv, kGx + 2 * kPitchX, kGy + 1 * kPitchY, kEdKeyW, kEdKeyH, "6", '6', kb, kd, kf);
+  edKey(kv, kGx + 3 * kPitchX, kGy + 1 * kPitchY, kEdKeyW, 3 * kEdKeyH + 2 * kEdKeyGap, "OK", 'K', 0x1E4A33,
+        UiTheme::kAccentOk, kf);
+  edKey(kv, kGx + 0 * kPitchX, kGy + 2 * kPitchY, kEdKeyW, kEdKeyH, "1", '1', kb, kd, kf);
+  edKey(kv, kGx + 1 * kPitchX, kGy + 2 * kPitchY, kEdKeyW, kEdKeyH, "2", '2', kb, kd, kf);
+  edKey(kv, kGx + 2 * kPitchX, kGy + 2 * kPitchY, kEdKeyW, kEdKeyH, "3", '3', kb, kd, kf);
+  edKey(kv, kGx + 0 * kPitchX, kGy + 3 * kPitchY, 2 * kEdKeyW + kEdKeyGap, kEdKeyH, "0", '0', kb, kd, kf);
+  edKey(kv, kGx + 2 * kPitchX, kGy + 3 * kPitchY, kEdKeyW, kEdKeyH, ".", '.', kb, kd, kf);
+}
+
 void create_main_screen(lv_obj_t* root) {
   screen_main = makeScreen(root);
   createTopBar(screen_main, false, main_bar);
@@ -2102,13 +2995,17 @@ void create_detail_screen(lv_obj_t* root) {
             UiTheme::kTextPrimary, LV_TEXT_ALIGN_RIGHT);
   makeLabel(detail_graph_panel, 392, 242, 52, 22, "now", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_RIGHT);
 
-  // Footer: read-only nominal voltage, confirmed Iset (read-only here), and the existing Setup editor.
+  // Footer: read-only nominal voltage, confirmed Iset (tap opens the editor), and the last ILIM result.
   lv_obj_t* fixed = makeBox(screen_detail, 8, 366, 170, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
   makeLabel(fixed, 10, 2, 150, 20, "FIXED - READ-ONLY", &lv_font_montserrat_16, UiTheme::kTextMuted);
   detail_fixed_val = makeLabel(fixed, 10, 20, 150, 32, "", &lv_font_montserrat_28, UiTheme::kTextPrimary);
 
-  lv_obj_t* iset = makeBox(screen_detail, 186, 366, 322, 56, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
-  makeLabel(iset, 10, 2, 150, 20, "Iset LIMIT", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  lv_obj_t* iset = makeBox(screen_detail, 186, 366, 322, 56, UiTheme::kPanelSoft, UiTheme::kAccentI, 2, 8);
+  lv_obj_add_flag(iset, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_bg_color(iset, lv_color_mix(lv_color_hex(0xFFFFFF), lv_color_hex(UiTheme::kPanelSoft), 32),
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
+  lv_obj_add_event_cb(iset, ed_open_cb, LV_EVENT_CLICKED, nullptr);
+  makeLabel(iset, 10, 2, 150, 20, "Iset LIMIT " LV_SYMBOL_EDIT, &lv_font_montserrat_16, UiTheme::kTextMuted);
   detail_iset_val = makeLabel(iset, 10, 20, 150, 32, "-.--- A", &lv_font_montserrat_28, UiTheme::kAccentI);
   makeChip(iset, 162, 12, 152, 32, &lv_font_montserrat_16, detail_iset_chip);
   setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
@@ -2119,11 +3016,9 @@ void create_detail_screen(lv_obj_t* root) {
   makeLabel(micro, 0, 2, kMicroBtnW - 4, 26, "MICRO", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
   makeLabel(micro, 0, 28, kMicroBtnW - 4, 22, "V / A zoom", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
 
-  lv_obj_t* edit = makeButton(screen_detail, 656, 366, kEditBtnW, kEditBtnH, UiTheme::kPanelSoft,
-                              UiTheme::kAccentI, 2, 8);
-  lv_obj_add_event_cb(edit, dash_edit_limit_cb, LV_EVENT_CLICKED, nullptr);
-  makeLabel(edit, 0, 2, kEditBtnW - 4, 26, "EDIT LIMIT", &lv_font_montserrat_20, UiTheme::kTextPrimary, LV_TEXT_ALIGN_CENTER);
-  makeLabel(edit, 0, 28, kEditBtnW - 4, 22, "in Setup", &lv_font_montserrat_16, UiTheme::kTextMuted, LV_TEXT_ALIGN_CENTER);
+  lv_obj_t* res = makeBox(screen_detail, 656, 366, kResultBoxW, kResultBoxH, UiTheme::kPanelSoft, UiTheme::kBorder, 1, 8);
+  detail_res_l1 = makeLabel(res, 4, 4, kResultBoxW - 8, 22, "LAST ILIM", &lv_font_montserrat_16, UiTheme::kTextMuted);
+  detail_res_l2 = makeLabel(res, 4, 28, kResultBoxW - 8, 22, "--", &lv_font_montserrat_16, UiTheme::kTextMuted);
 
   createBottomNav(screen_detail);
   createNotice(screen_detail, detail_bar);
@@ -2137,6 +3032,7 @@ struct RailData {
   bool enabled;
   uint8_t trip_flags;
   bool have_limit;
+  uint8_t limit_flag;  // kLimitConfirmed / kLimitRefreshing / kLimitPending / kLimitUnconfirmed
   int32_t v_mV;
   int32_t i_mA;
   uint16_t limit_mA;
@@ -2147,6 +3043,23 @@ struct RailStatus {
   const char* note;
   uint32_t color;
 };
+
+constexpr uint8_t kLimitConfirmed = 0;
+constexpr uint8_t kLimitRefreshing = 1;
+constexpr uint8_t kLimitPending = 2;
+constexpr uint8_t kLimitUnconfirmed = 3;
+
+// The confirmed limit plus whether a write for this channel is in flight; never a draft value.
+void fillLimit(RailData& d, int ch) {
+  const LimitConfirmed& c = limit_confirmed[ch];
+  d.have_limit = c.have;
+  d.limit_mA = c.mA;
+  d.limit_flag = c.fresh ? kLimitConfirmed : kLimitRefreshing;
+  if (limit_tx.ch == ch) {
+    if (limit_tx.state == ilim::TxState::Pending) d.limit_flag = kLimitPending;
+    else if (limit_tx.state == ilim::TxState::Unconfirmed) d.limit_flag = kLimitUnconfirmed;
+  }
+}
 
 // CH1 = fixed +5 V (legacy "v12" fields alias the 5 V rail); CH2 = fixed +3.3 V (extended frames only).
 RailData railData(int ch, const DisplayTelemetry& t, LinkState link) {
@@ -2163,8 +3076,6 @@ RailData railData(int ch, const DisplayTelemetry& t, LinkState link) {
       if (t.protection_flags & 0x40u) d.trip_flags |= kTripOcp;
       if (t.protection_flags & 0x08u) d.trip_flags |= kTripOtp;
     }
-    d.have_limit = setup_binding.have_ch1_limit;
-    d.limit_mA = setup_binding.ch1_limit_mA;
   } else {
     d.have_reading = frame && t.has_extended;
     d.v_mV = t.last_v3v3_mV;
@@ -2175,9 +3086,8 @@ RailData railData(int ch, const DisplayTelemetry& t, LinkState link) {
       if (t.protection_flags & 0x10u) d.trip_flags |= kTripOcp;
       if (t.protection_flags & 0x04u) d.trip_flags |= kTripOtp;
     }
-    d.have_limit = setup_binding.have_ch2_limit;
-    d.limit_mA = setup_binding.ch2_limit_mA;
   }
+  fillLimit(d, ch);
   return d;
 }
 
@@ -2202,6 +3112,26 @@ RailStatus railStatus(const RailData& d, LinkState link, char* note_buf, size_t 
     return {"AT LIMIT", "I >= limit - CC not verified", UiTheme::kAccentWarn};
   }
   return {"ON - BELOW LIMIT", "CV/CC not verified (#77)", UiTheme::kAccentOk};
+}
+
+// Chip text/color for the confirmed-limit state; PENDING and UNCONFIRMED stay distinct from CONFIRMED.
+void limitChipFor(const RailData& d, const char** text, uint32_t* color) {
+  if (d.limit_flag == kLimitPending) {
+    *text = "PENDING";
+    *color = UiTheme::kAccentWarn;
+  } else if (d.limit_flag == kLimitUnconfirmed) {
+    *text = "UNCONFIRMED";
+    *color = UiTheme::kAccentWarn;
+  } else if (!d.have_limit) {
+    *text = "NO VALUE";
+    *color = UiTheme::kUnknown;
+  } else if (d.limit_flag == kLimitRefreshing) {
+    *text = "STALE";
+    *color = UiTheme::kUnknown;
+  } else {
+    *text = "CONFIRMED";
+    *color = UiTheme::kAccentOk;
+  }
 }
 
 void refreshRailCard(RailCard& c, const RailData& d, LinkState link, bool main_layout) {
@@ -2239,7 +3169,11 @@ void refreshRailCard(RailCard& c, const RailData& d, LinkState link, bool main_l
   else strcpy(lim, "-.--- A");
   setLabel(c.limit_val, lim);
   setTextOpa(c.limit_val, (link == LinkState::Stale || !d.have_limit) ? LV_OPA_50 : LV_OPA_COVER);
-  setHidden(c.limit_chip.box, d.have_limit);
+  const char* chip_text = "";
+  uint32_t chip_color = UiTheme::kUnknown;
+  limitChipFor(d, &chip_text, &chip_color);
+  setChip(c.limit_chip, chip_text, chip_color);
+  setHidden(c.limit_chip.box, d.have_limit && d.limit_flag == kLimitConfirmed);
 }
 
 void setLinkChip(Chip& chip, LinkState link, uint32_t age_ms) {
@@ -2274,6 +3208,10 @@ void refreshTopBar(TopBar& b, const DisplayTelemetry& t, LinkState link, uint32_
   if (out_cmd.pending) {
     main_txt = on ? "OUTPUT ON" : "OUTPUT OFF";
     sub_txt = "sent - waiting";
+    style = 1;
+  } else if (limit_tx.state != ilim::TxState::Idle && link == LinkState::Live) {
+    main_txt = have_state ? (on ? "OUTPUT ON" : "OUTPUT OFF") : "OUTPUT ?";
+    sub_txt = "ILIM write pending";
     style = 1;
   } else if (link == LinkState::Demo) {
     main_txt = "OUTPUT (DEMO)";
@@ -2350,14 +3288,18 @@ void serviceOutputCommand(uint32_t now_ms) {
   }
 }
 
-// Host-confirmed limits come only from GET ILIM / ILIM ACK+EVT; ask for any that are still missing.
+// Host-confirmed limits come only from GET ILIM / ILIM ACK+EVT. Ask for any that are missing or
+// went stale after a link loss, one at a time, and never while a write or OUTPUT command is in flight.
 void requestMissingLimits(LinkState link, uint32_t now_ms) {
   static uint32_t last_req_ms = 0;
   if (link != LinkState::Live) return;
-  if (setup_binding.have_ch1_limit && setup_binding.have_ch2_limit) return;
+  if (limit_tx.state != ilim::TxState::Idle || out_cmd.pending) return;
+  const bool ok0 = limit_confirmed[0].have && limit_confirmed[0].fresh;
+  const bool ok1 = limit_confirmed[1].have && limit_confirmed[1].fresh;
+  if (ok0 && ok1) return;
   if ((now_ms - last_req_ms) < kLimitGetRetryMs) return;
   last_req_ms = now_ms;
-  disp_link_slave::sendCommand(!setup_binding.have_ch1_limit ? "GET ILIM CH1" : "GET ILIM CH2");
+  disp_link_slave::sendCommand(!ok0 ? "GET ILIM CH1" : "GET ILIM CH2");
 }
 
 void applyDetailChannelStyle(int ch) {
@@ -2435,8 +3377,13 @@ void refreshDetail(const DisplayTelemetry& t, LinkState link, uint32_t age_ms,
   else strcpy(lim, "-.--- A");
   setLabel(detail_iset_val, lim);
   setTextOpa(detail_iset_val, (link == LinkState::Stale || !d[ch].have_limit) ? LV_OPA_50 : LV_OPA_COVER);
-  if (d[ch].have_limit) setChip(detail_iset_chip, "CONFIRMED", UiTheme::kAccentOk);
-  else setChip(detail_iset_chip, "NO VALUE", UiTheme::kUnknown);
+  {
+    const char* chip_text = "";
+    uint32_t chip_color = UiTheme::kUnknown;
+    limitChipFor(d[ch], &chip_text, &chip_color);
+    setChip(detail_iset_chip, chip_text, chip_color);
+  }
+  refreshLimitResultBox();
 
   static int32_t last_limit_key = -2;
   static bool last_demo = false;
@@ -3223,6 +4170,7 @@ void create_dashboard() {
   create_micro_screen(scr);
   create_settings_screen(scr);
   createOutputConfirm();
+  createLimitEditor();
   set_active_screen(UiScreen::Splash);
 }
 
@@ -3461,26 +4409,14 @@ void sendUdiOutputCommand(bool enabled) {
 }
 
 void sendUdiCurrentLimitCommand(const String& channel, uint16_t limit_mA) {
-  const uint16_t max_mA = channel.equalsIgnoreCase("CH1") ? 3000u : 2000u;
-  if (limit_mA > max_mA) {
-    Serial.printf("ERR UDI_ILIM: %s out of range (0..%u mA)\n",
-                  channel.c_str(),
-                  static_cast<unsigned>(max_mA));
+  const uint8_t ch = channel.equalsIgnoreCase("CH1") ? 0u : 1u;
+  char why[56];
+  // Same tracked, serialized path as the editor; the host reply is reported by the "ilim tx:" log lines.
+  if (!limitWrite(ch, limit_mA, why, sizeof(why))) {
+    Serial.printf("ERR UDI_ILIM: not sent: %s\n", why);
     return;
   }
-
-  char payload[48];
-  snprintf(payload,
-           sizeof(payload),
-           "ILIM %s %u",
-           channel.c_str(),
-           static_cast<unsigned>(limit_mA));
-  const bool ok = disp_link_slave::sendCommand(payload);
-  if (!ok) {
-    Serial.println("ERR UDI_ILIM: link not ready");
-    return;
-  }
-  Serial.printf("ACK UDI_ILIM %s %u\n", channel.c_str(), static_cast<unsigned>(limit_mA));
+  Serial.printf("ACK UDI_ILIM %s %u sent (pending host reply)\n", channel.c_str(), static_cast<unsigned>(limit_mA));
 }
 
 void printOtaStatus() {
@@ -3810,8 +4746,8 @@ void handleCommand(const String& rawLine) {
       return;
     }
     const long parsed_mA = limit_text.toInt();
-    if (parsed_mA < 0) {
-      Serial.println("ERR UDI_ILIM: mA must be >= 0");
+    if (parsed_mA < 0 || parsed_mA > 65535L) {
+      Serial.println("ERR UDI_ILIM: mA must be 0..65535");
       return;
     }
     sendUdiCurrentLimitCommand(channel, static_cast<uint16_t>(parsed_mA));
@@ -3923,6 +4859,8 @@ void loop() {
   }
 
   updateSetupBindingsFromUdi();
+  serviceLimitLink();
+  limitEditorRefresh();
   if (active_screen == UiScreen::Setup) {
     refreshSetupScreenLabels();
   } else if (active_screen == UiScreen::Settings) {

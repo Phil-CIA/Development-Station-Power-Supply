@@ -31,9 +31,14 @@ constexpr size_t  kFrameSizeLegacy = 10;
 constexpr size_t  kFrameSizeExtMin = 17;
 constexpr size_t  kFrameSizeMax    = 40;
 
+constexpr size_t kControlQueueLen = 16;
+
 portMUX_TYPE       s_mux   = portMUX_INITIALIZER_UNLOCKED;
 volatile Telemetry s_state = {};
 CommandLink        s_cmd   = {};
+ControlLine        s_ctrl_q[kControlQueueLen] = {};
+size_t             s_ctrl_head = 0;
+size_t             s_ctrl_count = 0;
 bool               s_begun = false;
 Stream*            s_rx_stream = nullptr;
 Print*             s_tx_stream = nullptr;
@@ -76,6 +81,20 @@ void copyBounded(char* dst, size_t dst_len, const char* src) {
   dst[i] = '\0';
 }
 
+// Caller holds s_mux. A full queue drops the newest line and counts it; the consumer treats a
+// changed drop count as "a reply may be missing".
+void pushControlLineLocked(ControlKind kind, uint32_t now_ms, const char* payload) {
+  if (s_ctrl_count >= kControlQueueLen) {
+    s_cmd.ctrl_dropped++;
+    return;
+  }
+  ControlLine& slot = s_ctrl_q[(s_ctrl_head + s_ctrl_count) % kControlQueueLen];
+  slot.kind = kind;
+  slot.rx_ms = now_ms;
+  copyBounded(slot.text, sizeof(slot.text), payload);
+  s_ctrl_count++;
+}
+
 void consumeControlLine(const char* line) {
   if (line == nullptr || line[0] == '\0') return;
 
@@ -85,6 +104,7 @@ void consumeControlLine(const char* line) {
     s_cmd.ack_count++;
     s_cmd.last_rx_ms = now_ms;
     copyBounded(s_cmd.last_ack, sizeof(s_cmd.last_ack), line + 4);
+    pushControlLineLocked(ControlKind::Ack, now_ms, line + 4);
     portEXIT_CRITICAL(&s_mux);
     return;
   }
@@ -93,6 +113,7 @@ void consumeControlLine(const char* line) {
     s_cmd.err_count++;
     s_cmd.last_rx_ms = now_ms;
     copyBounded(s_cmd.last_err, sizeof(s_cmd.last_err), line + 4);
+    pushControlLineLocked(ControlKind::Err, now_ms, line + 4);
     portEXIT_CRITICAL(&s_mux);
     return;
   }
@@ -101,6 +122,7 @@ void consumeControlLine(const char* line) {
     s_cmd.evt_count++;
     s_cmd.last_rx_ms = now_ms;
     copyBounded(s_cmd.last_evt, sizeof(s_cmd.last_evt), line + 4);
+    pushControlLineLocked(ControlKind::Evt, now_ms, line + 4);
     portEXIT_CRITICAL(&s_mux);
     return;
   }
@@ -261,6 +283,20 @@ TransportMode transportMode() {
 
 bool telemetryOnConsoleSerial() {
   return kTransportMode == TransportMode::Uart0;
+}
+
+bool popControlLine(ControlLine* out) {
+  if (out == nullptr) return false;
+  bool have = false;
+  portENTER_CRITICAL(&s_mux);
+  if (s_ctrl_count > 0) {
+    *out = s_ctrl_q[s_ctrl_head];
+    s_ctrl_head = (s_ctrl_head + 1) % kControlQueueLen;
+    s_ctrl_count--;
+    have = true;
+  }
+  portEXIT_CRITICAL(&s_mux);
+  return have;
 }
 
 Telemetry snapshot() {

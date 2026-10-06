@@ -303,10 +303,10 @@ while a modal is open.
 **Open questions for the reviewer** (baseline visual approval does not answer
 these; items 1-4 stay UNRESOLVED until their implementation phase):
 
-1. UNRESOLVED (slider/editor phase): slider step 10 mA vs coarser (for
-   example 50 mA)? Keypad covers exact values.
-2. UNRESOLVED (slider/editor phase, gated on #77): is a 0.000 A limit allowed
-   from the UI? Its firmware meaning is part of #77.
+1. RESOLVED 2026-10-06 (user): slider step 10 mA. Keypad covers exact 1 mA values.
+2. RESOLVED 2026-10-06 (user): zero writes are blocked from the UI (slider minimum
+   0.010 A, keypad minimum 0.001 A); a host-reported 0.000 A is still shown
+   honestly. Zero's hardware meaning is still unverified (#77); see SESSION 5.
 3. UNRESOLVED: keep the top-bar OUTPUT button identical on Main and detail
    (current), or add a confirm step before turning OUTPUT ON? The first
    dashboard PR preserves existing OUTPUT confirmation/error handling as-is.
@@ -1027,3 +1027,52 @@ When returning to this session for a status sync:
     Recovery-only fallback is UART0 data with Blue Pill power/UART isolation during upload.
   - FOLLOW-UP (next revision only, non-blocking): investigate CrowPanel UDI wiring and power paths in #95;
     this does not reopen or block #93.
+- 2026-10-06 SESSION 5 (Iset slider/keypad editor, #74/#75, Bucket 4; branch `display/touch-current-limit-editor`
+  off `main` `1841a21`, which includes #96; PR #71 was closed unmerged and is not used):
+  - USER DECISIONS: slider step 10 mA; zero writes blocked (slider min 0.010 A, keypad min 0.001 A; a host-reported
+    0.000 A is still displayed, never clamped or hidden).
+  - HOST CONTRACT (read from `stm32-bluepill-bringup/src/main.cpp`): `CMD:ILIM CHn <integer mA>`; CH1 0..3000, CH2
+    0..2000 mA (protocol ranges, not proven hardware ratings); success replies `ACK:ILIM CHn N` then `EVT:ILIM CHn N mA`;
+    errors `ERR:ILIM mA >=0` or `ERR:ILIM CHn range a..b mA`; `GET ILIM CHn` replies `ACK:ILIM CHn N`. 1 mA exact entry is
+    supported. FINDING: the STM32 stores the limit in RAM only (defaults 2500/1500 mA after every reset, not persisted)
+    and uses it only for the CV/CC status bit (`ch_cc = |I| >= limit`, so 0 means always "at limit"); it is not written to
+    any ISET pin. Writing ILIM therefore does not change a real hardware current limit on this firmware. Zero's meaning
+    beyond that status bit is unverified (#77).
+  - IMPLEMENTED (`crowpanel-43-bringup/src/`): `ilim_core.h` (exact decimal parsing, keypad entry rules, slider
+    mapping, one-write transaction state machine) with `ilim_core_checks.h` (`static_assert` vectors compiled into the
+    firmware build); `disp_link_slave.*` now queues every ACK/ERR/EVT line in order (16-line FIFO + drop counter) instead
+    of last-line-wins; `main.cpp`: Detail Iset box is tappable and opens a modal on the top layer (scrim swallows all
+    touches; built once at boot and shown/hidden, so open/close allocates nothing and adds no timers). Modal: channel
+    chip, "Set limit - not measured current", confirmed value, state chip (LOADING / UNAVAILABLE / NO CHANGE / DRAFT - NOT
+    APPLIED / PENDING / UNCONFIRMED), value field (tap = keypad), slider (10 mA, 48 px touch height), CANCEL/CLOSE,
+    REFRESH, Apply. Keypad: digits, `.`, DEL, OK, Back; exact value is never rounded to the slider step (the slider only
+    shows the nearest position); Back leaves the draft untouched. Reopening always re-reads the limit from the host and
+    starts the draft only from a report that arrives after opening.
+  - WRITE RULES: one shared transaction for the editor, Setup and the `UDI_ILIM` console aid. Apply sends exactly one
+    command; only a matching ACK/EVT confirms. Timeout (1.5 s), link loss or a dropped control line make it UNCONFIRMED:
+    no automatic resend, a read-only `GET ILIM CHn` readback is sent instead (retried every 2 s, REFRESH forces it) and
+    Apply stays locked until it answers (confirmed late / not applied). Only `ERR:ILIM...` lines are claimed as the write's
+    rejection. While a write is unresolved, OUTPUT and further ILIM writes are refused; the editor never sends OUTPUT.
+    The confirmed value is separate from Setup's edit copy (previously Setup edits overwrote the value Main/Detail showed).
+    After a link loss values are marked STALE and re-read. Detail footer: Iset chip shows CONFIRMED / PENDING / UNCONFIRMED
+    / STALE / NO VALUE and a LAST ILIM result box replaced the temporary `EDIT LIMIT in Setup` button (Setup is still
+    reachable from the bottom nav).
+  - BUILD: `pio run -d crowpanel-43-bringup -e crowpanel43` succeeds (RAM 1.9 %, flash 3.8 %). The `static_assert` vectors
+    cover both channels, min/max, zero, empty/malformed/negative/excess precision/out-of-range input, keypad rules,
+    slider mapping, and the transaction paths (confirm, ERR, timeout + readback, late ACK, link loss, late ERR, dropped
+    line, refused write not disturbing a pending one). A negative control (a wrong assertion) fails to compile.
+    Host-side glyph-advance measurement of the new strings found and fixed two overflows; real clipping still needs photos.
+  - NOT DONE / PENDING (no hardware was touched this session; nothing was flashed or written to the host): panel photos of
+    Detail, the slider modal and the keypad; touch usability and 44 px targets on the real panel; modal isolation;
+    repeated open/close with the `lvgl heap:` boot line and no leak; command-path check (`GET ILIM CH1/CH2`, one
+    user-approved unchanged-value write with outputs safely off, confirmed readback); ERR, timeout, late-reply and
+    disconnect/reconnect behaviour on real hardware; UART1 ACK/ERR round-trip evidence (still pending from #93). An
+    ERR cannot be provoked from the UI (range and zero are checked before sending).
+  - LIMITATIONS: the host's OUTPUT ACK matching is still the older last-line check (gated against ILIM writes, not
+    rewritten); the 16-line FIFO drops the newest line if not drained; a host that answers a GET with an old value
+    before the write is processed cannot be told from an external change; limit semantics remain #77. Setup's own
+    layout and #75's other affordance items (mode badges, strong highlight) are unchanged.
+  - RESUME POINT: review the code and the PR, then (with the user's approval for each) flash the panel with the guarded
+    script (`PYTHONUTF8=1`, log to file, expects COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08), collect photos, run the
+    command-path check, and fill in only observed results. Stop for the user's slider/keypad panel review before any
+    unrelated work.
