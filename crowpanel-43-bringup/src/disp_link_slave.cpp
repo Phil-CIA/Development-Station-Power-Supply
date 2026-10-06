@@ -4,10 +4,10 @@
 #include <soc/usb_serial_jtag_reg.h>
 
 // Compile-time transport switch:
-//   0 = UART1 (IO19/IO20, requires K1 switch path)
-//   1 = UART0 (IO44/IO43 on UART0-IN)
+//   0 = UART1 (IO19/IO20, requires K1 switch path); default, keeps the host off the CH340K programmer UART (#93)
+//   1 = UART0 (IO44/IO43 on UART0-IN); shares the CH340K, Blue Pill must be off during uploads
 #ifndef DISP_LINK_SLAVE_USE_UART0
-#define DISP_LINK_SLAVE_USE_UART0 1
+#define DISP_LINK_SLAVE_USE_UART0 0
 #endif
 
 // UART1 wiring to HAT (CrowPanel side of HY2.0-4P UART1-OUT, K1=0,1):

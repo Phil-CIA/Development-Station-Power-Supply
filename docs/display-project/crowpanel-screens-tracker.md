@@ -975,3 +975,22 @@ When returning to this session for a status sync:
     host-side. (4) #92 and #93 have identical titles and bodies, so #92 duplicates #93; propose closing
     one as a duplicate of the other once the user decides (neither closed). (5) After that: D6-D8, #71
     reconciliation and Iset editor (#74/#75), #82 time, #84 CSV.
+- 2026-10-06 SESSION 3 (#93, branch `firmware/crowpanel-flash-quiet-mode`, NOT pushed, NO hardware touched):
+  - DECISION (user): no firmware quiet lease and no STM32 change. Move the host link to CrowPanel UART1 (IO19/IO20,
+    3.3 V) and leave UART0 (IO44/IO43) to the CH340K programmer. UART0-IN carries only 5 V power for now; the next
+    HAT/panel revision should use UART1 alone. A console QUIET lease was built first (commit `60aef07`, reverted in
+    `fc482f8`, recoverable from history) and dropped because it cost 916 B of the STM32's 1.2 KB headroom.
+  - Change: `DISP_LINK_SLAVE_USE_UART0` now defaults to 0 in `crowpanel-43-bringup/src/disp_link_slave.cpp`
+    (`-DDISP_LINK_SLAVE_USE_UART0=1` restores the old path). `guarded-flash.ps1` and the STM32 are unchanged.
+  - Builds: `crowpanel43` succeeds; `bluepill_f103c8` 64296 / 65536 B (98.1 %), unchanged.
+  - WIRING (to be done by the user; table and pin sources in DISPLAY_INTERFACE_STANDARD.md): J21 +5V -> UART0-IN pin 1,
+    GND -> UART0-IN pin 2 and UART1-OUT pin 1, PB10 TX -> UART1-OUT pin 3 (IO19 RX), PB11 RX <- UART1-OUT pin 4
+    (IO20 TX); UART0-IN pins 3/4 stay unconnected; K1 set to UART1_OUT (S1=0, S0=1). Pin numbers come from the old
+    V1.1 handoffs and are NOT yet checked on the current replacement panel (MAC 80:B5:4E:E2:E4:08).
+  - Caution: 5 V reaches the panel from J21 pin 1 (+5V_Boot LDO, earlier judged marginal for 2 A) and USB-C is also
+    connected while flashing; confirm that is acceptable before connecting both.
+  - NOT PROVEN: no upload, no telemetry check on UART1 for this panel, no repeat-upload evidence. Pending (ask before each):
+    flash the CrowPanel once the data pins are off UART0 (Blue Pill powered, guarded script, `PYTHONUTF8=1`, captured
+    log); confirm normal 500 ms telemetry with no STALE flicker; repeat uploads; wrong-target rejection; command
+    ACK/ERR handling over UART1. If UART1 receive fails on this panel (older V1.1 notes show IO19/IO20 shared with the
+    I2S MIC), stop and report; do not fall back silently. Do not close #93 until the uploads are proven.
