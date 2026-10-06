@@ -97,6 +97,20 @@ The CrowPanel UART0 is also its CH340K programmer UART, so a Blue Pill on UART0 
 - Firmware: `DISP_LINK_SLAVE_USE_UART0 = 0` is the default; `-DDISP_LINK_SLAVE_USE_UART0=1` restores the UART0 path, which again needs the Blue Pill powered off or isolated for every upload.
 - Pin numbers come from `docs/handoff-archive/root-handoffs/HANDOFF_2026-05-29.md` and `HANDOFF_2026-05-30.md` (Elecrow wiki, V1.1 panel); they are not yet re-verified on the current replacement panel.
 
+### Upload Procedure (current #93 closeout path)
+
+1. Keep the split connector mapping above (UART1-OUT carries data, UART0-IN carries power only).
+2. Verify K1 is set for UART1_OUT before connecting the host/display link.
+3. Run guarded upload only: `powershell -ExecutionPolicy Bypass -File scripts/guarded-flash.ps1 -Target crowpanel -Action upload`.
+4. If prechecks fail (wrong port/chip/MAC), stop and correct wiring/target selection before retrying.
+
+User-reported bench evidence for closeout: repeated successful guarded CrowPanel uploads with both CrowPanel and Blue Pill connected and powered. This evidence is user-reported in the tracker and is sufficient for issue #93 closure for the present configuration.
+
+### Fallback (keep as recovery-only)
+
+If the split-connector UART1 path is unavailable on a specific panel revision, temporary fallback is to restore UART0 data (`-DDISP_LINK_SLAVE_USE_UART0=1`) and keep the Blue Pill powered off or UART-isolated during every CrowPanel upload.
+This fallback is for recovery only; do not treat it as the normal path.
+
 ---
 
 ## Compatible Display Devices
