@@ -975,3 +975,55 @@ When returning to this session for a status sync:
     host-side. (4) #92 and #93 have identical titles and bodies, so #92 duplicates #93; propose closing
     one as a duplicate of the other once the user decides (neither closed). (5) After that: D6-D8, #71
     reconciliation and Iset editor (#74/#75), #82 time, #84 CSV.
+- 2026-10-06 SESSION 3 (#93, branch `firmware/crowpanel-flash-quiet-mode`, local only; both devices flashed later the same day, see below):
+  - DECISION (user): no firmware quiet lease and no STM32 change. Move the host link to CrowPanel UART1 (IO19/IO20,
+    3.3 V) and leave UART0 (IO44/IO43) to the CH340K programmer. UART0-IN carries only 5 V power for now; the next
+    HAT/panel revision should use UART1 alone. A console QUIET lease was built first (commit `60aef07`, reverted in
+    `fc482f8`, recoverable from history) and dropped because it cost 916 B of the STM32's 1.2 KB headroom.
+  - Change: `DISP_LINK_SLAVE_USE_UART0` now defaults to 0 in `crowpanel-43-bringup/src/disp_link_slave.cpp`
+    (`-DDISP_LINK_SLAVE_USE_UART0=1` restores the old path). `guarded-flash.ps1` and the STM32 are unchanged.
+  - Builds: `crowpanel43` succeeds; `bluepill_f103c8` 64296 / 65536 B (98.1 %), unchanged.
+  - WIRING (to be done by the user; table and pin sources in DISPLAY_INTERFACE_STANDARD.md): J21 +5V -> UART0-IN pin 1,
+    GND -> UART0-IN pin 2 and UART1-OUT pin 1, PB10 TX -> UART1-OUT pin 3 (IO19 RX), PB11 RX <- UART1-OUT pin 4
+    (IO20 TX); UART0-IN pins 3/4 stay unconnected; K1 set to UART1_OUT (S1=0, S0=1). Pin numbers come from the old
+    V1.1 handoffs and are NOT yet checked on the current replacement panel (MAC 80:B5:4E:E2:E4:08).
+  - Caution: 5 V reaches the panel from J21 pin 1 (+5V_Boot LDO, earlier judged marginal for 2 A) and USB-C is also
+    connected while flashing; confirm that is acceptable before connecting both.
+  - NOT PROVEN: no upload, no telemetry check on UART1 for this panel, no repeat-upload evidence. Pending (ask before each):
+    flash the CrowPanel once the data pins are off UART0 (Blue Pill powered, guarded script, `PYTHONUTF8=1`, captured
+    log); confirm normal 500 ms telemetry with no STALE flicker; repeat uploads; wrong-target rejection; command
+    ACK/ERR handling over UART1. If UART1 receive fails on this panel (older V1.1 notes show IO19/IO20 shared with the
+    I2S MIC), stop and report; do not fall back silently. Do not close #93 until the uploads are proven.
+  - 2026-10-06 FLASHED (user-approved), handoff to troubleshooting session:
+    - CrowPanel: guarded script, COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08 (all prechecks passed), UART1-default firmware, first
+      attempt, hash verified, exit 0. Log `crowpanel-43-bringup/upload-93-uart1-2026-10-06.log` (not committed). It is not
+      recorded whether the Blue Pill was powered during this upload; do not count it as the powered-Blue-Pill proof until confirmed.
+    - STM32: ST-Link upload of the unchanged firmware (64296 B), "Verified OK". Log `stm32-bluepill-bringup/upload-93-2026-10-06.log`
+      (not committed).
+    - NOT YET CHECKED: whether the panel shows live telemetry over UART1 (no photo, no serial log, no STALE observation was made),
+      repeat uploads, wrong-target rejection, command ACK/ERR over UART1. These are the troubleshooting session's first tasks.
+    - Branch has 5 local commits (60aef07, fc482f8 revert, accda3d code, 0828676 and cfcb0ac docs), not pushed, no PR yet.
+    - 2026-10-06 USER REPORT: "that worked" after both flashes (panel behaviour as observed by the user; no photo, serial log or
+      STALE observation was captured by Copilot). Whether the Blue Pill was powered during the CrowPanel upload, repeat uploads,
+      wrong-target rejection and command ACK/ERR over UART1 are still unconfirmed, so #93 acceptance is not yet met.
+  - RESUME POINT #93 (2026-10-06, status checkpoint): the powered-Blue-Pill flashing problem is NOT shown to be solved. Implemented:
+    CrowPanel host link defaults to UART1 (one-line change, builds) plus split-connector docs; both devices flashed once.
+    Evidence so far: one guarded CrowPanel upload passed first try (hash verified) and the user reports it "worked"; whether the
+    Blue Pill was powered then is unrecorded, and there are no captures, repeat uploads, abort/recovery runs, reset-combination
+    runs, wrong-target rejection run, or UART1 ACK/ERR check. Blockers/unknowns: UART1 pins/K1 unverified on this replacement
+    panel (old V1.1 notes: IO19/IO20 shared with the I2S mic); +5V_Boot LDO powering the panel with USB-C also connected; the
+    CH340K/UART0 net topology was never confirmed (now moot if UART0 data pins stay disconnected). Next: confirm powered-Blue-Pill
+    state, do repeat uploads with logs, check telemetry (500 ms, no STALE) and a CMD/ACK round trip, then PR (draft until proven).
+- 2026-10-06 SESSION 4 (#93 authorized closeout; no new feature work):
+  - USER DECISION: close #93 and merge implementation. The user reports repeated successful CrowPanel uploads with both CrowPanel and
+    Blue Pill connected and powered on the UART1-default build.
+  - IMPLEMENTATION CLOSED: CrowPanel host link default remains UART1 (`DISP_LINK_SLAVE_USE_UART0 = 0`) with split connector wiring
+    (UART1-OUT data, UART0-IN power only). STM32 firmware and guarded-flash script remain unchanged from the reverted quiet-lease path.
+  - WHAT THIS EVIDENCE MEANS: for the present bench configuration, #93 is considered resolved based on user-reported repeated guarded
+    uploads under powered-and-connected conditions.
+  - STILL NOT CLAIMED AS PASSED: wrong-target rejection run logs, reset/recovery combination testing, and explicit UART1 command
+    ACK/ERR round-trip capture were not newly recorded in this closeout and remain follow-up evidence only.
+  - NORMAL PROCEDURE (keep safety checks): use guarded upload, keep UART1 split mapping/K1 selection, and stop on precheck mismatch.
+    Recovery-only fallback is UART0 data with Blue Pill power/UART isolation during upload.
+  - FOLLOW-UP (next revision only, non-blocking): investigate CrowPanel UDI wiring and power paths in #95;
+    this does not reopen or block #93.

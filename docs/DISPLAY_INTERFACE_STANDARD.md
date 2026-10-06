@@ -80,11 +80,44 @@ EVT:<event>\n         Host → Display  (unsolicited event/state update)
 
 ---
 
+## CrowPanel Interim Split Connector (UART1 data, UART0-IN power only)
+
+The CrowPanel UART0 is also its CH340K programmer UART, so a Blue Pill on UART0 corrupts uploads (#93). Interim fix (hardware decision, no firmware lease): data goes to the UART1-OUT connector (3.3 V logic), UART0-IN carries only 5 V power. Next HAT/panel revision should use UART1 (3.3 V) alone.
+
+| J21 (HAT) | Signal | CrowPanel connector | Pin |
+|---|---|---|---|
+| 1 | +5V | UART0-IN | 1 (+5V) |
+| 2 | GND | UART0-IN and UART1-OUT | 2 (GND) and 1 (GND) |
+| 3 | DISP_UART_TX (PB10) | UART1-OUT (HY2.0-4P) | 3 = RX (IO19) |
+| 4 | DISP_UART_RX (PB11) | UART1-OUT (HY2.0-4P) | 4 = TX (IO20) |
+| - | - | UART0-IN pins 3, 4 | **leave unconnected** (IO44/IO43 stay on the CH340K only) |
+| - | - | UART1-OUT pin 2 (3V3) | leave unconnected |
+
+- CrowPanel K1 must select UART1_OUT (silkscreen: S1 = 0, S0 = 1; verify on the physical panel).
+- Firmware: `DISP_LINK_SLAVE_USE_UART0 = 0` is the default; `-DDISP_LINK_SLAVE_USE_UART0=1` restores the UART0 path, which again needs the Blue Pill powered off or isolated for every upload.
+- Pin numbers come from `docs/handoff-archive/root-handoffs/HANDOFF_2026-05-29.md` and `HANDOFF_2026-05-30.md` (Elecrow wiki, V1.1 panel); they are not yet re-verified on the current replacement panel.
+
+### Upload Procedure (current #93 closeout path)
+
+1. Keep the split connector mapping above (UART1-OUT carries data, UART0-IN carries power only).
+2. Verify K1 is set for UART1_OUT before connecting the host/display link.
+3. Run guarded upload only: `powershell -ExecutionPolicy Bypass -File scripts/guarded-flash.ps1 -Target crowpanel -Action upload`.
+4. If prechecks fail (wrong port/chip/MAC), stop and correct wiring/target selection before retrying.
+
+User-reported bench evidence for closeout: repeated successful guarded CrowPanel uploads with both CrowPanel and Blue Pill connected and powered. This evidence is user-reported in the tracker and is sufficient for issue #93 closure for the present configuration.
+
+### Fallback (keep as recovery-only)
+
+If the split-connector UART1 path is unavailable on a specific panel revision, temporary fallback is to restore UART0 data (`-DDISP_LINK_SLAVE_USE_UART0=1`) and keep the Blue Pill powered off or UART-isolated during every CrowPanel upload.
+This fallback is for recovery only; do not treat it as the normal path.
+
+---
+
 ## Compatible Display Devices
 
 | Device | Connector | Display MCU | Notes |
 |---|---|---|---|
-| Elecrow CrowPanel Advance 4.3" | UART0-IN (XH2.54-4P) | ESP32-S3-WROOM-1-N16R8 | Runs LVGL 9.2 natively; GPIO44=RX, GPIO43=TX |
+| Elecrow CrowPanel Advance 4.3" | UART1-OUT (HY2.0-4P) data + UART0-IN (XH2.54-4P) power, interim | ESP32-S3-WROOM-1-N16R8 | Runs LVGL 9.2 natively; data on IO19=RX, IO20=TX (3.3 V). IO44/IO43 (UART0) are reserved for the CH340K programmer. |
 | Custom front-panel board (future rev) | J3 (XH2.54-4P) | ESP32-C6 | To be redesigned to LVGL+UART; currently legacy SPI design |
 
 > **CrowPanel cable note:** Verify pin 3/4 polarity from Elecrow Eagle schematic before building cable. Power (5V/2A) is on pin 1 — incorrect polarity will damage the display.
