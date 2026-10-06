@@ -1003,3 +1003,6 @@ When returning to this session for a status sync:
     - NOT YET CHECKED: whether the panel shows live telemetry over UART1 (no photo, no serial log, no STALE observation was made),
       repeat uploads, wrong-target rejection, command ACK/ERR over UART1. These are the troubleshooting session's first tasks.
     - Branch has 3 local commits, not pushed, no PR yet.
+    - 2026-10-06 USER REPORT: "that worked" after both flashes (panel behaviour as observed by the user; no photo, serial log or
+      STALE observation was captured by Copilot). Whether the Blue Pill was powered during the CrowPanel upload, repeat uploads,
+      wrong-target rejection and command ACK/ERR over UART1 are still unconfirmed, so #93 acceptance is not yet met.
