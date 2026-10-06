@@ -1076,3 +1076,19 @@ When returning to this session for a status sync:
     script (`PYTHONUTF8=1`, log to file, expects COM12 / ESP32-S3 / MAC 80:B5:4E:E2:E4:08), collect photos, run the
     command-path check, and fill in only observed results. Stop for the user's slider/keypad panel review before any
     unrelated work.
+  - CHECKPOINT (2026-10-06, paused for a fresh session; supersedes the RESUME POINT above):
+    - State: branch `display/touch-current-limit-editor`, HEAD `e51daaa` (editor commit) plus this note's commit; both
+      LOCAL ONLY (branch not on origin, no PR). Changed files: `crowpanel-43-bringup/src/main.cpp`, `disp_link_slave.cpp/.h`,
+      new `ilim_core.h` and `ilim_core_checks.h`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md`, this tracker. Untracked, not
+      committed: `crowpanel-43-bringup/build-iset-editor.log` and three older upload logs.
+    - Decisions (user): slider step 10 mA; zero writes blocked (slider min 0.010 A, keypad min 0.001 A).
+    - Implemented: modal slider + keypad editor on Detail, tracked single-write ILIM transaction (shared with Setup and
+      the `UDI_ILIM` console aid), ordered ACK/ERR/EVT queue, confirmed value separated from Setup's edit copy, LAST ILIM
+      result box.
+    - Pending: everything on hardware (see NOT DONE above), PR, user review of panel photos.
+    - Build result: `pio run -d crowpanel-43-bringup -e crowpanel43` succeeds; `static_assert` logic checks pass (negative
+      control fails as expected).
+    - Bench result: none. No upload, no host write, no photos.
+    - Next action: user decides on push + draft PR (#74/#75/#65, no closing keywords) and on a guarded flash.
+    - Permission requests pending: push of this branch; CrowPanel flash; bench conditions for `GET ILIM` and one
+      unchanged-value write. None granted.
