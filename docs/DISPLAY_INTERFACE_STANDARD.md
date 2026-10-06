@@ -80,23 +80,6 @@ EVT:<event>\n         Host → Display  (unsolicited event/state update)
 
 ---
 
-## Programming Quiet Lease (CrowPanel UART0 sharing)
-
-When the display programmer shares the host UART (CrowPanel UART0 = CH340K), the host can be told to stop transmitting for a bounded time. This is a host **console** feature, not part of the UDI link:
-
-| Console command (STM32 USB/USART1) | Reply (console only) | Effect |
-|---|---|---|
-| `QUIET <1..30>` | `ACK QUIET ON rem=<ms> up=<ms>` | Start or renew a lease of that many seconds |
-| `QUIET OFF` | `ACK QUIET OFF up=<ms>` | Resume now |
-| `QUIET` | either reply | Query only |
-
-- While quiet, the host sends no telemetry, `ACK:`, `ERR:` or `EVT:`, ignores UDI RX, and releases the TX pin (PB10, high-Z). Outputs, limits, faults and calibration are untouched.
-- The lease expires on its own; the programming script renews it while the uploader runs. `up` lets the caller detect a host reset.
-- On resume the fault state is re-announced with `EVT:FAULT TRIP|CLEAR`.
-- The host no longer prints non-`CMD:` boot text on the UDI link.
-
----
-
 ## Compatible Display Devices
 
 | Device | Connector | Display MCU | Notes |
