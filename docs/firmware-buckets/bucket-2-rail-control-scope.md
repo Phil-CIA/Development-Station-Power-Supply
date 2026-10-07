@@ -348,12 +348,23 @@ This entry is **observation-only** and does not satisfy formal acceptance criter
 | Test ID | Rail | Range | Load/current | Command + actual bits | Ref V | Ref I | INA/display V/I | Other rail impact | Settling/soak | Capture path | Criterion | Verdict |
 |---|---|---|---|---|---:|---:|---|---|---|---|---|---|
 | P0-OBS-001 | CH1 +5V / CH2 +3.3V | N/A (baseline, no range command) | No external load; PSU set 12.09 VDC; PSU current limit 800 mA; idle input current 138 mA | `QSTATE`: `range: p0=0x00 c0=0xC0 Q1=0 Q2=0 Q3=0 Q4=0 Q5=0 Q9=0` | CH1 terminal: 0.00034 V; CH2 terminal: 0.00034 V | Input current observed: 138 mA (idle) | Not captured in this step | Not assessed in this step | Steady unloaded snapshot only | User-reported live bench record (2026-10-07) | Baseline observation only; no cold boot/reset/transient/load criterion exercised | NOT ASSESSED |
+| P0-OBS-002 | CH1 +5V / CH2 +3.3V | N/A (baseline, no range command) | Controller (Blue Pill) powered only from bench-powered board per operator report; no independent USB/supply power reported | `INARAILS` response captured (verbatim; see log snippet below) | PSU display reference unchanged from P0-OBS-001 (12.09 V, 138 mA idle) | INA incoming monitor reports 11.488 V, 95.56 mA (`rail 3V3 ... in`) | `rail 5V: hi 0.008V 0.00mA \| lo 0.000V 0.00mA`; `rail 3V3: hi 0.000V 0.00mA \| lo 0.000V 0.00mA \| in 11.488V 95.56mA`; `rail note: 0x41 CH3 is incoming rail monitor on this rev.` | No enable/load/reset action in this step | Steady unloaded snapshot only | User-reported live bench record (2026-10-07) | Observation-only logging; no formal accuracy/tolerance criterion executed | NOT ASSESSED |
 
 Notes for this entry:
 - No cold-boot/reset/transient/load test executed in this record.
 - No build/assembly confirmation bundle captured in this record.
 - Do **not** infer all internal buck rails OFF from latch bits alone (Q3/Q9 low is not equivalent to proven buck-disable state).
 - The recorded 800 mA value is the configured **input PSU current limit only**; it is not an approved output load-test current/protection threshold.
+- Input monitor mismatch (PSU display vs INA incoming monitor) is logged as an **unassessed reference-location/accuracy observation only**; it is not recorded as a failure diagnosis or calibration claim.
+- No channel enable/load/reset tests are included in these two P0 observation rows.
+
+Verbatim `INARAILS` capture for P0-OBS-002:
+
+```text
+rail 5V: hi 0.008V 0.00mA | lo 0.000V 0.00mA
+rail 3V3: hi 0.000V 0.00mA | lo 0.000V 0.00mA | in 11.488V 95.56mA
+rail note: 0x41 CH3 is incoming rail monitor on this rev.
+```
 
 ### Copy-paste VS Code Copilot execution prompt (single sequential bench session)
 
