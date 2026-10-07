@@ -204,6 +204,20 @@ authorize protection testing, overloads, or persistent calibration changes.
   installed physical shunt. It reads INA registers without changing INA
   configuration or persistent calibration. Read failures are reported per
   device; do not interpret failed reads as zero.
+- **Exact read-only capture packet (next operator run):**
+  run only `HELP`, `CFGSHOW`, `CALSHOW`, `INAPROBE`, `INANOW`, `INARAILS`,
+  `INADIAG` (in that order). Do not run `CALSET`, `CFGSAVE`, `CFGLOAD`,
+  `CFGRESET`, or `CFGERASE`. Capture literal output lines matching:
+  - `ina raw 0x40 CHn shunt=0x....(<signed_counts>) <shunt_mV>mV bus=0x.... <bus_V>V Rused=<mOhm>mOhm Icalc=<mA>mA`
+  - `ina raw 0x41 CHn shunt=0x....(<signed_counts>) <shunt_mV>mV bus=0x.... <bus_V>V Rused=<mOhm>mOhm Icalc=<mA>mA`
+  - failure lines: `ina raw 0x..: no ACK` and/or
+    `ina raw 0x.. CHn read fail sh=0x..(ERR|OK) bus=0x..(ERR|OK)`
+  - calibration readback lines for both rails:
+    `cal 5V vg=<...> voff_mV=<...> ig=<...> ioff_mA=<...>` and
+    `cal 3V3 vg=<...> voff_mV=<...> ig=<...> ioff_mA=<...>`
+  Keep any mismatch visible in notes (for example HIGH-range channels still
+  using 200mOhm, incoming monitor using 18mOhm) and do not normalize values by
+  hand in the log.
 - **Bounded read-only INADIAG capture after authorized STM32 flash (operator
   session, 2026-10-07):** The STM32 helper controller was flashed on COM7 with
   the branch build that includes `INADIAG`, then queried with read-only
@@ -262,6 +276,8 @@ authorize protection testing, overloads, or persistent calibration changes.
    issue `CALSET`, `CFGSAVE`, `CFGRESET`, `CFGERASE`, or legacy `RCAL`/
    `SHUNT` commands. Record sensor-read failures and config-recovery status;
    a fallback frame is not a valid channel reading.
+  Physical shunt identity/mapping verification remains required before
+  treating any derived current as measurement evidence.
 4. **Set limits before energizing.** Use only the operator-approved supply
    current limit, output-current ceiling, load, test duration, and acceptable
    rail-voltage band. Test one output at a time with a stable, known load.
@@ -296,6 +312,13 @@ authorize protection testing, overloads, or persistent calibration changes.
    controller-versus-display comparison are verified may calibration be
    proposed. Present the evidence and proposed coefficients first; obtain
    explicit operator approval before any persistent write.
+
+Unmeasured/blocked items (must remain explicit in notes):
+- Physical board population identity and range-to-shunt wiring have not been
+  independently re-inspected in this workflow step.
+- Repeatability across multiple loads/ranges and temperature states is NOT
+  MEASURED.
+- Protection behavior (OCP/short/overload/transient) is NOT MEASURED.
 
 ## Safe preflight before any calibration action
 

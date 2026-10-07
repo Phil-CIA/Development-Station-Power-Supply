@@ -917,40 +917,61 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
 }
 
 void printInaRawDiagnostics() {
-  Ina3221Reading ina_5v = {};
-  Ina3221Reading ina_3v3 = {};
-  const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v, false);
-  const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3, false);
-  const Ina3221Reading* readings[] = {&ina_5v, &ina_3v3};
-  const bool present[] = {ok_5v, ok_3v3};
+  const uint8_t addresses[] = {INA3221_ADDR_5V, INA3221_ADDR_3V3};
 
-  for (size_t device = 0; device < 2; ++device) {
-    if (!present[device]) {
+  for (size_t device = 0; device < (sizeof(addresses) / sizeof(addresses[0])); ++device) {
+    const uint8_t address = addresses[device];
+    if (!i2cPing(address)) {
       char msg[48];
-      snprintf(msg, sizeof(msg), "ina raw 0x%02X: read failed", readings[device]->address);
+      snprintf(msg, sizeof(msg), "ina raw 0x%02X: no ACK", address);
       logBoth(msg);
       continue;
     }
 
-    const Ina3221Reading& reading = *readings[device];
     for (int channel = 0; channel < 3; ++channel) {
-      const Ina3221ChannelReading& sample = reading.channel[channel];
-      const int16_t shunt_counts = static_cast<int16_t>(sample.raw_shunt) >> 3;
+      const uint8_t shunt_reg = INA3221_REG_SHUNTVOLTAGE_1 + static_cast<uint8_t>(channel * 2);
+      const uint8_t bus_reg = INA3221_REG_BUSVOLTAGE_1 + static_cast<uint8_t>(channel * 2);
+      uint16_t raw_shunt = 0;
+      uint16_t raw_bus = 0;
+      const bool shunt_ok = i2cReadReg16(address, shunt_reg, raw_shunt);
+      const bool bus_ok = i2cReadReg16(address, bus_reg, raw_bus);
+
+      if (!shunt_ok || !bus_ok) {
+        char msg[96];
+        snprintf(msg,
+                 sizeof(msg),
+                 "ina raw 0x%02X CH%d read fail sh=0x%02X(%s) bus=0x%02X(%s)",
+                 address,
+                 channel + 1,
+                 static_cast<unsigned>(shunt_reg),
+                 shunt_ok ? "OK" : "ERR",
+                 static_cast<unsigned>(bus_reg),
+                 bus_ok ? "OK" : "ERR");
+        logBoth(msg);
+        continue;
+      }
+
+      const int16_t shunt_counts = static_cast<int16_t>(raw_shunt) >> 3;
+      const float shunt_mV = inaShuntMillivolts(raw_shunt);
+      const float bus_V = inaBusVoltageV(raw_bus);
+      const float shunt_ohms = inaShuntOhmsFor(address, channel);
+      const float current_mA = shunt_mV / shunt_ohms;
+
       char shunt_mv[16], bus_v[16], msg[160];
-      formatFixedValue(sample.shunt_mV, 1000, 3, shunt_mv, sizeof(shunt_mv));
-      formatVoltageValue(sample.bus_V, bus_v, sizeof(bus_v));
+      formatFixedValue(shunt_mV, 1000, 3, shunt_mv, sizeof(shunt_mv));
+      formatVoltageValue(bus_V, bus_v, sizeof(bus_v));
       snprintf(msg,
                sizeof(msg),
                "ina raw 0x%02X CH%d shunt=0x%04X(%d) %smV bus=0x%04X %sV Rused=%dmOhm Icalc=%dmA",
-               reading.address,
+               address,
                channel + 1,
-               static_cast<unsigned>(sample.raw_shunt),
+               static_cast<unsigned>(raw_shunt),
                static_cast<int>(shunt_counts),
                shunt_mv,
-               static_cast<unsigned>(sample.raw_bus),
+               static_cast<unsigned>(raw_bus),
                bus_v,
-               static_cast<int>(inaShuntOhmsFor(reading.address, channel) * 1000.0f + 0.5f),
-               static_cast<int>(sample.current_mA + (sample.current_mA >= 0.0f ? 0.5f : -0.5f)));
+               static_cast<int>(shunt_ohms * 1000.0f + 0.5f),
+               static_cast<int>(current_mA + (current_mA >= 0.0f ? 0.5f : -0.5f)));
       logBoth(msg);
     }
   }
