@@ -259,7 +259,13 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 - Raw command/state logs corresponding to each voltage capture row.
 - Photo/notes confirming installed assembly points used for each probe in the `Q1/Q2/U9/R7/L1` path.
 
-**Issue #62 closure state:** **Pending**. No fix claim is allowed from this session because fresh physical measurements and revision-locked node mapping are not yet available.
+**Issue #62 closure state (user decision, 2026-10-07):** **Closed as functionally resolved for the original pass-through symptom** based on bounded operator bench evidence now captured in PR #63 docs.
+- Closure basis recorded by operator includes:
+  - Four commanded range paths reported working ON/OFF in operation-first bench flow.
+  - CH1 HIGH loaded terminal points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
+  - CH2 HIGH loaded terminal point recorded at `3.3141V` (10 ohm load).
+  - Concurrent CH1+CH2 operation recorded with panel/PSU values and confirmed return to near-zero output with final `p0=0x00` OFF state.
+- Root cause and corrective-action mechanism remain **not established**; closure is functional/operational against the original symptom, not a design-root-cause proof.
 
 **Current posture update (2026-10-07, user-directed):**
 - User reports hardware now **appears operational** and wants operation testing resumed first.
@@ -267,7 +273,8 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 - Active draft operation plan and execution prompt are tracked in:
   - `docs/firmware-buckets/bucket-2-rail-control-scope.md`
   - Section: **Regulator Rev-C operational acceptance plan (draft, 2026-10-07)**
-- Keep #62 and PR #63 as **related/pending evidence gates** until formal acceptance evidence is recorded.
+- #62 is now closed by user direction; keep PR #63 open for documentation cleanup/follow-on evidence only.
+- Remaining follow-up gaps (Bucket 2 scope), including current/power telemetry consistency, loaded LOW coverage, protection behavior, and transient/coldboot characterization, are tracked as separate work and do **not** block #62 closure.
 
 **Next Step:** Execute the operation-first draft plan with operator-approved limits and capture evidence; keep troubleshooting scope exception-only and user-authorized.
 

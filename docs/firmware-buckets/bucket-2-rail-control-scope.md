@@ -211,7 +211,8 @@ Bucket 2 bench evidence handoff (2026-09-26):
 **Posture:** Operation-first acceptance testing (not MOSFET fault-campaign-first).  
 **User-reported state:** Hardware appears to be working.  
 **Verification state:** Not independently bench-verified in this session.  
-**Issue state:** #62 remains pending formal acceptance evidence.
+**Issue state:** #62 was operator-closed on 2026-10-07 as functionally resolved for the original pass-through symptom.  
+**Boundary:** Broader Bucket 2 acceptance (telemetry consistency/current-power accuracy, loaded LOW coverage, protection behavior, transient/coldboot characterization) remains follow-up work and is tracked separately from #62 closure.
 
 ### Governing source and boundaries
 
@@ -468,7 +469,7 @@ Guardrails:
 - No reflashing, power changes, or port-shopping unattended.
 - Use existing guarded target/port tasks only.
 - No firmware/schematic/PCB edits in this run.
-- Keep #62/#63 open; do not close/merge or claim fix.
+- Keep PR #63 open until this documentation update is reviewed/merged; #62 is already closed and should not be re-scoped automatically by this prompt.
 
 Direction settled by user:
 - Hardware appears to be working; prioritize OPERATION TESTING.
