@@ -229,20 +229,27 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 
 **Interim interpretation:** The measured gate-source headroom is too small for robust enhancement at this operating point, so the high-side path may remain only weakly on (or behave as if off under load). Continue pinout/orientation and gate-drive-path validation before closing RB-003.
 
-**Next diagnostic matrix (minimum bench set to disambiguate root cause):**
+**Revision/source reconciliation status (2026-10-07):**
+- **Regulator Rev-C netlist source** (`hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net`) contains `Q3`, `Q12`, and `U4` references associated with LM2596 ON/OFF control-path nets.
+- **HAT Rev-C netlist source** (`hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net`) shows `Q9` on fan-path nets and does **not** provide the same `Q3`/`Q12`/`U4` reference set used above.
+- A separate screenshot/report path references `Q9` as a BSS138 ISET-driven device. That mapping is **not yet reconciled** to a single verified board revision/netlist export in this tracker.
+- **Rule for ongoing issue #62 evidence:** do not merge designators across board revisions or screenshots until the operator identifies the exact board revision and source file used for each measurement.
 
-| Test | Probe points / setup | Pass signature | Failing signature | Points to |
-|---|---|---|---|---|
-| T1 — ON/OFF state voltage table | In both commanded states, capture `Q3-D` (U2 pin 5), `GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`, `V_OUT +5V` with same load | ON state shows clear gate-overdrive margin above source and expected rail transfer trend at `V_OUT` | `VGS` remains small (for example around current 0.74V) while source/output stay near partial level | Gate-overdrive/topology mismatch |
-| T2 — Q3 body-diode orientation check (power off) | DMM diode mode across Q3 S-D in both polarities; record forward direction and drop | Measured forward direction matches intended schematic orientation | Forward direction opposite expected, or abnormal short/open behavior | Orientation/pin mapping or damaged MOSFET |
-| T3 — Path isolation via temporary D-S bypass (current-limited) | With conservative PSU current limit, temporarily jumper Q3 drain-to-source and re-measure `+5V_HI_RANGE` and `V_OUT +5V` | `V_OUT` rises to expected transfer when bypassed | `V_OUT` still low with bypass in place | Downstream continuity/path fault beyond gate drive |
+**Next operator bench checklist (identity-gated, no hardware modifications):**
+1. **Identify source before power-on:** record board silkscreen revision and photo of the measured board area; attach the exact design source path used for designator mapping (for example one netlist file path + export timestamp).
+2. **Map each probe node to that source:** for every planned measurement label (`Q3-D`, `GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`, `V_OUT +5V`), provide the matching net/designator from the selected source or mark `UNRESOLVED`.
+3. **Capture conservative ON/OFF voltage table only:** with existing wiring unchanged and conservative PSU current limit, measure the same node set in OFF then ON command states (same load condition both states).
+4. **Capture control-state evidence:** log the exact command(s)/state readback used to request OFF and ON so node voltages can be tied to an explicit control state.
+5. **Flag unresolved identity immediately:** if any measured label cannot be traced to the selected source without cross-revision inference, stop interpretation at that point and log as `IDENTITY BLOCKED`.
 
-**Issue #62 closure acceptance criteria (must all pass in one documented run):**
-1. T1 demonstrates a valid ON/OFF truth table with deterministic state separation at `Q3-D`, `GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`, and `V_OUT +5V`.
-2. In ON state, measured gate-source margin is sufficient for robust enhancement under the tested load (not a near-threshold condition).
-3. T2 confirms physical MOSFET orientation/pin mapping is consistent with intended schematic behavior (or mismatch is corrected and re-verified).
-4. T3 localizes the fault unambiguously: either Q3 gate-drive/topology is confirmed as root cause, or a downstream continuity fault is proven and logged.
-5. After corrective action, repeat T1 and show expected pass-through to `V_OUT` with no weak/partial conduction symptom.
+**Evidence package required before any closure decision:**
+- Board identity photo(s) and revision marking.
+- One authoritative design source reference (file path + export date/time).
+- Node-to-source mapping table (including any `UNRESOLVED` rows).
+- OFF/ON voltage capture table for the mapped node set.
+- Raw command/state logs corresponding to each voltage capture row.
+
+**Issue #62 closure state:** **Pending**. No fix claim is allowed from this session because fresh physical measurements and revision-locked node mapping are not yet available.
 
 **Next Step:** Scope gate voltage, drain voltage, and load response during ON → OFF → ON cycles; document switching specs; consider pull-up/pull-down resistor optimization.
 
