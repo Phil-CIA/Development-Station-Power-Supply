@@ -230,9 +230,11 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 **Interim interpretation:** The measured gate-source headroom is too small for robust enhancement at this operating point, so the high-side path may remain only weakly on (or behave as if off under load). Continue pinout/orientation and gate-drive-path validation before closing RB-003.
 
 **Revision/source reconciliation status (2026-10-07):**
+- **Operator-confirmed fault board identity (issue #62):** Regulator Rev-C physical board.
 - **Regulator Rev-C netlist source** (`hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net`) contains `Q3`, `Q12`, and `U4` references associated with LM2596 ON/OFF control-path nets.
 - **HAT Rev-C netlist source** (`hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net`) shows `Q9` on fan-path nets and does **not** provide the same `Q3`/`Q12`/`U4` reference set used above.
 - A separate screenshot/report path references `Q9` as a BSS138 ISET-driven device. That mapping is **not yet reconciled** to a single verified board revision/netlist export in this tracker.
+- Exact assembly variant/export timestamp and per-node mapping for the above operator-confirmed board are **still unverified** in this record.
 - **Rule for ongoing issue #62 evidence:** do not merge designators across board revisions or screenshots until the operator identifies the exact board revision and source file used for each measurement.
 
 **Next operator bench checklist (identity-gated, no hardware modifications):**
