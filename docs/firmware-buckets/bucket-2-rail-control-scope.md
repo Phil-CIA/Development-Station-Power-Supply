@@ -349,6 +349,7 @@ This entry is **observation-only** and does not satisfy formal acceptance criter
 |---|---|---|---|---|---:|---:|---|---|---|---|---|---|
 | P0-OBS-001 | CH1 +5V / CH2 +3.3V | N/A (baseline, no range command) | No external load; PSU set 12.09 VDC; PSU current limit 800 mA; idle input current 138 mA | `QSTATE`: `range: p0=0x00 c0=0xC0 Q1=0 Q2=0 Q3=0 Q4=0 Q5=0 Q9=0` | CH1 terminal: 0.00034 V; CH2 terminal: 0.00034 V | Input current observed: 138 mA (idle) | Not captured in this step | Not assessed in this step | Steady unloaded snapshot only | User-reported live bench record (2026-10-07) | Baseline observation only; no cold boot/reset/transient/load criterion exercised | NOT ASSESSED |
 | P0-OBS-002 | CH1 +5V / CH2 +3.3V | N/A (baseline, no range command) | Controller (Blue Pill) powered only from bench-powered board per operator report; no independent USB/supply power reported | `INARAILS` response captured (verbatim; see log snippet below) | PSU display reference unchanged from P0-OBS-001 (12.09 V, 138 mA idle) | INA incoming monitor reports 11.488 V, 95.56 mA (`rail 3V3 ... in`) | `rail 5V: hi 0.008V 0.00mA \| lo 0.000V 0.00mA`; `rail 3V3: hi 0.000V 0.00mA \| lo 0.000V 0.00mA \| in 11.488V 95.56mA`; `rail note: 0x41 CH3 is incoming rail monitor on this rev.` | No enable/load/reset action in this step | Steady unloaded snapshot only | User-reported live bench record (2026-10-07) | Observation-only logging; no formal accuracy/tolerance criterion executed | NOT ASSESSED |
+| P1-OBS-001 | CH1 +5V / CH2 +3.3V | N/A (warm-reset observation only) | No channel enable/load step run in this record; coldboot capture unavailable because bench power OFF drops serial | Warm-reset boot log captured (verbatim; see snippet below). Key lines include `aw95xx boot: p0 forced low (0x00)` and later config restore `d9: aw95xx P1.0 forced ON`, `cfg d9=ON 5V[   ] 3V3[   ]` | Post-reset terminal readings reported by operator as unchanged near-zero relative to baseline (qualitative only; no new numeric values provided) | Warm-reset status lines report incoming monitor samples `Vin=11.480 Iin=95.56` then `Vin=11.480 Iin=97.78` | Warm-reset status stream captured; no post-reset `INARAILS`/final `QSTATE` row yet in this step | No explicit non-target activation observed in supplied text, but no transient capture provided | Warm-reset steady-state observation only | User-reported live bench reset log + qualitative post-reset terminal report (2026-10-07) | Warm-reset evidence only; default-OFF policy acceptance not proven without coldboot + transient capture + final post-reset state capture | NOT ASSESSED |
 
 Notes for this entry:
 - No cold-boot/reset/transient/load test executed in this record.
@@ -357,6 +358,9 @@ Notes for this entry:
 - The recorded 800 mA value is the configured **input PSU current limit only**; it is not an approved output load-test current/protection threshold.
 - Input monitor mismatch (PSU display vs INA incoming monitor) is logged as an **unassessed reference-location/accuracy observation only**; it is not recorded as a failure diagnosis or calibration claim.
 - No channel enable/load/reset tests are included in these two P0 observation rows.
+- Coldboot capture remains pending/unavailable in current setup; warm-reset evidence is not a substitute for coldboot acceptance.
+- Do **not** label default-OFF policy proven from this warm-reset sample alone (`P0 low at boot` + later `D9 restored ON`; no transient capture; no final post-reset `QSTATE` in this step).
+- Operation testing can continue with bounded read-only post-reset state collection next.
 
 Verbatim `INARAILS` capture for P0-OBS-002:
 
@@ -364,6 +368,31 @@ Verbatim `INARAILS` capture for P0-OBS-002:
 rail 5V: hi 0.008V 0.00mA | lo 0.000V 0.00mA
 rail 3V3: hi 0.000V 0.00mA | lo 0.000V 0.00mA | in 11.488V 95.56mA
 rail note: 0x41 CH3 is incoming rail monitor on this rev.
+```
+
+Verbatim warm-reset boot log for P1-OBS-001:
+
+```text
+stm32-bluepill bringup: boot
+fault path: AW9523 INT PB7
+aw95xx boot: p0 forced low (0x00)
+awmode gcr=0x10(pp) c0=0xC0 c1=0xFE m0=0xFF m1=0xFF
+stm32-bluepill usart3: ready
+cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*
+udi: CMD:OUTPUT|ILIM|GET*
+flash: begin bring-up test
+flash: JEDEC ID mfg=0xEF type=0x40 cap=0x18
+flash: SR1 before=0x00
+flash: erase/program/readback PASS
+[CFG] Loaded
+[CFG] REC r=O d=0 s=0
+d9: aw95xx P1.0 forced ON
+cfg d9=ON 5V[   ] 3V3[   ]
+aht20: startup probe PASS
+ina: 0x40=ACK 0x41=ACK
+ina: incoming rail sample PASS
+st f=PASS aw=PASS aht=PASS Vin=11.480 Iin=95.56 T=25.69 RH=50.60 n=1
+st f=PASS aw=PASS aht=PASS Vin=11.480 Iin=97.78 T=25.73 RH=50.46 n=1
 ```
 
 ### Copy-paste VS Code Copilot execution prompt (single sequential bench session)
