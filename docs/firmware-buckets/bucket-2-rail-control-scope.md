@@ -340,6 +340,21 @@ Do not auto-expand troubleshooting; seek operator authorization for any exceptio
 
 Allowed verdict values: `PASS`, `FAIL`, `HOLD`, `NOT RUN`, `NOT ASSESSED`.
 
+### Operation evidence log (Regulator Rev-C, 2026-10-07)
+
+Initial P0 baseline entry captured from live operator measurements.  
+This entry is **observation-only** and does not satisfy formal acceptance criteria yet.
+
+| Test ID | Rail | Range | Load/current | Command + actual bits | Ref V | Ref I | INA/display V/I | Other rail impact | Settling/soak | Capture path | Criterion | Verdict |
+|---|---|---|---|---|---:|---:|---|---|---|---|---|---|
+| P0-OBS-001 | CH1 +5V / CH2 +3.3V | N/A (baseline, no range command) | No external load; PSU set 12.09 VDC; PSU current limit 800 mA; idle input current 138 mA | `QSTATE`: `range: p0=0x00 c0=0xC0 Q1=0 Q2=0 Q3=0 Q4=0 Q5=0 Q9=0` | CH1 terminal: 0.00034 V; CH2 terminal: 0.00034 V | Input current observed: 138 mA (idle) | Not captured in this step | Not assessed in this step | Steady unloaded snapshot only | User-reported live bench record (2026-10-07) | Baseline observation only; no cold boot/reset/transient/load criterion exercised | NOT ASSESSED |
+
+Notes for this entry:
+- No cold-boot/reset/transient/load test executed in this record.
+- No build/assembly confirmation bundle captured in this record.
+- Do **not** infer all internal buck rails OFF from latch bits alone (Q3/Q9 low is not equivalent to proven buck-disable state).
+- The recorded 800 mA value is the configured **input PSU current limit only**; it is not an approved output load-test current/protection threshold.
+
 ### Copy-paste VS Code Copilot execution prompt (single sequential bench session)
 
 ```md
