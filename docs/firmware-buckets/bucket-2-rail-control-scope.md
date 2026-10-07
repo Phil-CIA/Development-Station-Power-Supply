@@ -202,3 +202,194 @@ Bucket 2 bench evidence handoff (2026-09-26):
 - No scope/logic captures attached; do not claim switched-path electrical proof.
 - Remaining gap: attach capture evidence before claiming B2 switched-path closure.
 ```
+
+---
+
+## Regulator Rev-C operational acceptance plan (draft, 2026-10-07)
+
+**Status:** Draft for operator approval before live execution.  
+**Posture:** Operation-first acceptance testing (not MOSFET fault-campaign-first).  
+**User-reported state:** Hardware appears to be working.  
+**Verification state:** Not independently bench-verified in this session.  
+**Issue state:** #62 remains pending formal acceptance evidence.
+
+### Governing source and boundaries
+
+- Board under test: **Regulator Rev-C**.
+- Authoritative staged design export: `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net` (export header date `2026-10-07T05:31:09`, tool `Eeschema 10.0.6`).
+- Scope limited to **CH1 fixed +5V** and **CH2 fixed +3.3V** only.
+- Out of scope for this draft run:
+  - CH3/adjustable rail
+  - Redesign actions
+  - Firmware edits/reflash by default
+  - Calibration writes or destructive persistence tests
+  - Overload/OCP injection, short-circuit tests, CV/CC claims
+  - Automatic range sweeps or make-before-break switching
+- OUTPUT is shared user-facing control. Do **not** invent per-channel UI behavior.
+- "Isolation" in this plan means one physical rail/range is intentionally under test while the other is unloaded/known-safe; if hardware/firmware cannot provide true physical isolation, mark **LIMITED/BLOCKED** explicitly.
+
+### Command/bit/net table to verify before powered steps
+
+Use this table to prevent alias/designator confusion. These command names are software aliases and are **not** literal regulator Q-reference ownership claims.
+
+| CLI command | AW9523 P0 bit | Netlist signal (Rev-C export) | Hardware path intent | Bench rule |
+|---|---:|---|---|---|
+| `Q2ON/Q2OFF` | P0.1 | `ESP- GPIO 5V Hi` (`U5 P0_1_6` -> `U9 EN_UVLO_1`) | CH1 high-range driver enable input path | Verify electrical effect with measurements; do not trust command ACK alone |
+| `Q1ON/Q1OFF` | P0.2 | `ESP- GPIO 5V Low` (`U5 P0_2_7` -> `U14 EN_UVLO_1`) | CH1 low-range control path | Same |
+| `Q5ON/Q5OFF` | P0.3 | `ESP- GPIO 3.3V High` (`U5 P0_3_8` -> `U15 EN_UVLO_1`) | CH2 high-range control path | Same |
+| `Q4ON/Q4OFF` | P0.4 | `ESP- GPIO 3.3V Low` (`U5 P0_4_10` -> `U16 EN_UVLO_1`) | CH2 low-range control path | Same |
+| `Q3ON/Q3OFF` | P0.0 | `ISET_MPU_5V` (`U5 P0_0_5`) -> BSS138 control (`Q3`) | Buck ON/OFF control branch (not high-range pass FET) | Treat as control-path-only unless measured at U2.5 and rail nodes |
+| `Q9ON/Q9OFF` | P0.5 | `ISET_MPU_3V3` (`U5 P0_5_11`) -> BSS138 control (`Q9`) | Buck ON/OFF control branch (not high-range pass FET) | Same |
+| `QSTATE` | Readback | Alias print (`Q1/Q2/Q3/Q4/Q5/Q9/Q6`) from P0 register bits | Software state visibility | Not proof of electrical pass/fail |
+
+**Important polarity note (must be resolved before live pass/fail claims):**
+- The buck ON/OFF branch can be reverse-sense at the functional level (for example, a logic-high control could disable a buck path depending on regulator ON/OFF polarity and transistor stage).  
+- Do **not** infer final ON/OFF polarity from netlist labels or command names alone; validate by paired bit-state + node-voltage evidence.
+- Avoid legacy combined recipes (`QSEQ`, `Q39*`, `Q612*`) for acceptance gating unless explicitly re-authorized for a bounded purpose.
+
+### P0 — preflight record (required before power-cycling)
+
+Record all items before live execution:
+1. Hardware revision markings and board photos.
+2. Firmware repo commit/build ID and dirty/clean state.
+3. Controller serial device path and instrument IDs.
+4. Bench PSU set voltage and current limit.
+5. Feedback/sense/jumper/bypass physical state.
+6. Baseline command/log record:
+   - `HELP`
+   - `AWPROBE` (if supported)
+   - `AWMODE` (if supported)
+   - `QSTATE`
+   - `INARAILS`
+7. Confirm active link is **live hardware**, not demo/simulated path.
+
+### P1 — cold boot and warm reset default-state check
+
+1. Power cycle with no rail-control command; record:
+   - Bit/readback state (`QSTATE` + any available mode info)
+   - Terminal voltages (both rails)
+   - Observation timestamps
+2. Perform warm reset; repeat same captures.
+3. Separate residual discharge observations from steady-state OFF expectations.
+4. If safe inactive defaults cannot be demonstrated, mark **HOLD** and do not continue unattended.
+
+### P2 — CH1 high-range operation sequence (+5V path)
+
+1. Controlled sequence: OFF -> ON -> steady -> OFF under one agreed light load.
+2. Capture for each step:
+   - Reference DMM terminal voltage/current
+   - Independent load/ref current reading
+   - INA/controller/display reported values
+   - Actual command and bit state
+3. After first complete pass, repeat cycle **x5** under same conditions.
+
+### P3 — CH1 low-range operation sequence
+
+1. Run only within operator-approved low-range load.
+2. Ensure load disabled and output off before selecting range.
+3. Confirm safe OFF/discharge before switching path.
+4. Never enable simultaneous opposing paths.
+5. Capture same evidence set as P2.
+
+### P4/P5 — repeat for CH2 (+3.3V)
+
+- P4: CH2 high-range sequence with CH1 monitored as non-target.
+- P5: CH2 low-range sequence with CH1 monitored as non-target.
+- Record any cross-coupling/non-target movement explicitly.
+
+### P6 — both channels selected ranges, shared OUTPUT behavior
+
+1. Use verified ranges from earlier steps.
+2. Apply light loads incrementally (within approved limits only).
+3. Run shared OUTPUT cycle **x5** and capture rail stability/cross-coupling.
+4. Include:
+   - Initial settle observation target: ~60 s
+   - Proposed light-load soak target: ~5 min (operator-approved)
+5. End with confirmed physical OFF and safe load removal.
+
+### Draft gates (require operator approval before PASS)
+
+These are **proposed functional acceptance gates**, not final product limits:
+- CH1 nominal voltage band: **4.75 V to 5.25 V** (+/-5%)
+- CH2 nominal voltage band: **3.135 V to 3.465 V** (+/-5%)
+
+Operator must approve before run:
+1. Input current limit.
+2. High/low range test currents by hardware rating.
+3. Settling/discharge/OFF thresholds.
+4. Instrument-based telemetry error tolerance.
+
+If thresholds are unresolved, mark results **NOT ASSESSED** (not PASS).
+
+### Stop/HOLD conditions
+
+Stop and mark **HOLD** immediately on any of:
+- Input current-limit hit
+- Unexpected heating/smell/noise
+- Out-of-approved-band terminal voltage
+- Fault/reset events
+- Non-target path activation
+
+If safe, set OUTPUT off and capture logs. If not safe, bench input off.  
+Do not auto-expand troubleshooting; seek operator authorization for any exception diagnostics.
+
+### Evidence table schema (use for all run rows)
+
+| Test ID | Rail | Range | Load/current | Command + actual bits | Ref V | Ref I | INA/display V/I | Other rail impact | Settling/soak | Capture path | Criterion | Verdict |
+|---|---|---|---|---|---:|---:|---|---|---|---|---|---|
+
+Allowed verdict values: `PASS`, `FAIL`, `HOLD`, `NOT RUN`, `NOT ASSESSED`.
+
+### Copy-paste VS Code Copilot execution prompt (single sequential bench session)
+
+```md
+Execute a single-session, operation-first bench acceptance run for Regulator Rev-C using PR #63 latest docs/netlist state. Do not split into parallel bench agents.
+
+Read first (authoritative context):
+1) README.md
+2) docs/SYSTEM_DEVELOPMENT_WORKFLOW.md
+3) docs/FIRMWARE_DEVELOPMENT_PLAN.md
+4) docs/firmware-buckets/bucket-2-rail-control-scope.md (including "Regulator Rev-C operational acceptance plan (draft, 2026-10-07)")
+5) docs/REGULATOR_BOARD_CHANGE_TRACKER.md (RB-003 posture)
+6) docs/DISPLAY_INTERFACE_STANDARD.md
+7) hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net (fresh export in PR #63)
+8) stm32-bluepill-bringup/src/main.cpp (actual command/bit behavior)
+
+Guardrails:
+- Verify this checkout includes PR #63 latest netlist/plan updates before running.
+- Never assume main branch has these updates.
+- If checkout is dirty, report it and ask before touching unrelated files.
+- Never switch/reset branches blindly.
+- Never commit to main.
+- No reflashing, power changes, or port-shopping unattended.
+- Use existing guarded target/port tasks only.
+- No firmware/schematic/PCB edits in this run.
+- Keep #62/#63 open; do not close/merge or claim fix.
+
+Direction settled by user:
+- Hardware appears to be working; prioritize OPERATION TESTING.
+- Test order: boot/reset defaults -> each rail and range path -> light-load regulation -> telemetry correlation -> both channels together.
+- Current-limit/protection remains gated (no overload/short/OCP injection).
+- Scope only CH1 fixed +5V and CH2 fixed +3.3V.
+- No CH3/adjustable rail, no auto range sweep, no make-before-break claims.
+- Shared OUTPUT is shared; do not invent per-channel UI.
+
+Before powered steps, present for operator approval:
+1) Verified command/bit/net mapping table from source + netlist (including alias caveats and reverse-sense possibility on buck control paths).
+2) Proposed load/current/tolerance gates (explicit numbers) and stop conditions.
+3) Any unresolved instrument/load/threshold inputs needed from operator.
+
+Execution behavior:
+- Perform one measurement step at a time.
+- Wait for actual operator-provided measurements at each step.
+- Never invent measurements or infer electrical pass from command ACK alone.
+- Treat historical D9/CSV evidence as historical only; bounded claims only.
+- If limits/thresholds are unresolved, use NOT ASSESSED rather than PASS.
+- On anomaly, mark HOLD and stop for operator decision before scope expansion.
+
+Evidence handling:
+- Record results in existing tracker docs (no root-level dated handoff files).
+- Keep timestamps aligned across command logs and measurements.
+- Distinguish observation-only notes from formal criterion pass/fail.
+- End by reporting completed checks, incomplete checks, and explicit remaining evidence gates.
+```

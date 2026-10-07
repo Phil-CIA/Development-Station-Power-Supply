@@ -261,7 +261,15 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 
 **Issue #62 closure state:** **Pending**. No fix claim is allowed from this session because fresh physical measurements and revision-locked node mapping are not yet available.
 
-**Next Step:** Scope gate voltage, drain voltage, and load response during ON → OFF → ON cycles; document switching specs; consider pull-up/pull-down resistor optimization.
+**Current posture update (2026-10-07, user-directed):**
+- User reports hardware now **appears operational** and wants operation testing resumed first.
+- This report is **not independently bench-verified in this session**.
+- Active draft operation plan and execution prompt are tracked in:
+  - `docs/firmware-buckets/bucket-2-rail-control-scope.md`
+  - Section: **Regulator Rev-C operational acceptance plan (draft, 2026-10-07)**
+- Keep #62 and PR #63 as **related/pending evidence gates** until formal acceptance evidence is recorded.
+
+**Next Step:** Execute the operation-first draft plan with operator-approved limits and capture evidence; keep troubleshooting scope exception-only and user-authorized.
 
 ---
 
