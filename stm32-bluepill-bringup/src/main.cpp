@@ -201,6 +201,8 @@ struct Aht20Sample {
 };
 
 struct Ina3221ChannelReading {
+  uint16_t raw_shunt;
+  uint16_t raw_bus;
   float bus_V;
   float shunt_mV;
   float current_mA;
@@ -224,7 +226,7 @@ PersistentConfigPayload g_config = {};
 
 bool runFlashBringupTest();
 bool readAht20Now(Aht20Sample& out);
-bool readIna3221(uint8_t address, Ina3221Reading& out);
+bool readIna3221(uint8_t address, Ina3221Reading& out, bool configure = true);
 bool refreshIncomingRailSample();
 void runShiftRegisterSelfTest();
 void logHealthSummary();
@@ -294,11 +296,13 @@ void formatFixedValue(float value, uint32_t scale, uint8_t digits, char* out, si
   const uint32_t whole = scaled / scale;
   const uint32_t frac = scaled % scale;
 
-  if (digits == 3) {
-    snprintf(out, out_len, "%s%lu.%03lu", negative ? "-" : "", static_cast<unsigned long>(whole), static_cast<unsigned long>(frac));
-  } else {
-    snprintf(out, out_len, "%s%lu.%02lu", negative ? "-" : "", static_cast<unsigned long>(whole), static_cast<unsigned long>(frac));
-  }
+  snprintf(out,
+           out_len,
+           "%s%lu.%0*lu",
+           negative ? "-" : "",
+           static_cast<unsigned long>(whole),
+           static_cast<int>(digits),
+           static_cast<unsigned long>(frac));
 }
 
 void formatVoltageValue(float value, char* out, size_t out_len) {
@@ -307,6 +311,103 @@ void formatVoltageValue(float value, char* out, size_t out_len) {
 
 void formatCurrentValue(float value, char* out, size_t out_len) {
   formatFixedValue(value, 100, 2, out, out_len);
+}
+
+bool parseFloatToken(const char* token, float& out_value) {
+  if (token == nullptr || *token == '\0') {
+    return false;
+  }
+
+  size_t i = 0;
+  bool negative = false;
+  if (token[i] == '+' || token[i] == '-') {
+    negative = token[i] == '-';
+    ++i;
+  }
+
+  uint32_t whole = 0;
+  uint32_t frac = 0;
+  uint32_t frac_div = 1;
+  bool has_digit = false;
+  bool seen_dot = false;
+
+  for (; token[i] != '\0'; ++i) {
+    const char ch = token[i];
+    if (ch == '.') {
+      if (seen_dot) {
+        return false;
+      }
+      seen_dot = true;
+      continue;
+    }
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+
+    has_digit = true;
+    const uint8_t digit = static_cast<uint8_t>(ch - '0');
+    if (!seen_dot) {
+      whole = (whole * 10u) + digit;
+    } else {
+      // Limit precision to keep arithmetic bounded and predictable.
+      if (frac_div < 1000000u) {
+        frac = (frac * 10u) + digit;
+        frac_div *= 10u;
+      }
+    }
+  }
+
+  if (!has_digit) {
+    return false;
+  }
+
+  out_value = static_cast<float>(whole) +
+              (frac_div > 1u ? static_cast<float>(frac) / static_cast<float>(frac_div) : 0.0f);
+  if (negative) {
+    out_value = -out_value;
+  }
+  return true;
+}
+
+bool parseCalsetCommand(const String& cmd,
+                        char* rail_token,
+                        size_t rail_token_len,
+                        float& v_gain,
+                        float& v_off_mV,
+                        float& i_gain,
+                        float& i_off_mA) {
+  if (rail_token == nullptr || rail_token_len == 0) {
+    return false;
+  }
+
+  char line[UDI_MAX_LINE + 1] = {0};
+  strncpy(line, cmd.c_str(), UDI_MAX_LINE);
+  line[UDI_MAX_LINE] = '\0';
+
+  char* ctx = nullptr;
+  char* token = strtok_r(line, " ", &ctx);
+  if (token == nullptr || strcmp(token, "CALSET") != 0) {
+    return false;
+  }
+
+  const char* rail = strtok_r(nullptr, " ", &ctx);
+  const char* vg = strtok_r(nullptr, " ", &ctx);
+  const char* vo = strtok_r(nullptr, " ", &ctx);
+  const char* ig = strtok_r(nullptr, " ", &ctx);
+  const char* io = strtok_r(nullptr, " ", &ctx);
+  const char* extra = strtok_r(nullptr, " ", &ctx);
+
+  if (rail == nullptr || vg == nullptr || vo == nullptr || ig == nullptr || io == nullptr || extra != nullptr) {
+    return false;
+  }
+
+  strncpy(rail_token, rail, rail_token_len - 1);
+  rail_token[rail_token_len - 1] = '\0';
+
+  return parseFloatToken(vg, v_gain) &&
+         parseFloatToken(vo, v_off_mV) &&
+         parseFloatToken(ig, i_gain) &&
+         parseFloatToken(io, i_off_mA);
 }
 
 float applyVoltageCalibration(float raw_bus_v, const RailCalibrationConfig& cal) {
@@ -410,14 +511,14 @@ bool initIna3221(uint8_t address) {
   return i2cWriteReg16(address, INA3221_REG_CONFIG, INA3221_CONFIG_CONTINUOUS);
 }
 
-bool readIna3221(uint8_t address, Ina3221Reading& out) {
+bool readIna3221(uint8_t address, Ina3221Reading& out, bool configure) {
   out.address = address;
   out.present = false;
 
   if (!i2cPing(address)) {
     return false;
   }
-  if (!initIna3221(address)) {
+  if (configure && !initIna3221(address)) {
     return false;
   }
 
@@ -433,6 +534,8 @@ bool readIna3221(uint8_t address, Ina3221Reading& out) {
       return false;
     }
 
+    out.channel[channel].raw_shunt = raw_shunt;
+    out.channel[channel].raw_bus = raw_bus;
     out.channel[channel].bus_V = inaBusVoltageV(raw_bus);
     out.channel[channel].shunt_mV = inaShuntMillivolts(raw_shunt);
     out.channel[channel].current_mA = out.channel[channel].shunt_mV / inaShuntOhmsFor(address, channel);
@@ -811,6 +914,61 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
   } else {
     logBoth("rail 3V3: INA 0x41 unavailable");
   }
+}
+
+void printInaRawDiagnostics() {
+  Ina3221Reading ina_5v = {};
+  Ina3221Reading ina_3v3 = {};
+  const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v, false);
+  const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3, false);
+  const Ina3221Reading* readings[] = {&ina_5v, &ina_3v3};
+  const bool present[] = {ok_5v, ok_3v3};
+
+  for (size_t device = 0; device < 2; ++device) {
+    if (!present[device]) {
+      char msg[48];
+      snprintf(msg, sizeof(msg), "ina raw 0x%02X: read failed", readings[device]->address);
+      logBoth(msg);
+      continue;
+    }
+
+    const Ina3221Reading& reading = *readings[device];
+    for (int channel = 0; channel < 3; ++channel) {
+      const Ina3221ChannelReading& sample = reading.channel[channel];
+      const int16_t shunt_counts = static_cast<int16_t>(sample.raw_shunt) >> 3;
+      char shunt_mv[16], bus_v[16], msg[160];
+      formatFixedValue(sample.shunt_mV, 1000, 3, shunt_mv, sizeof(shunt_mv));
+      formatVoltageValue(sample.bus_V, bus_v, sizeof(bus_v));
+      snprintf(msg,
+               sizeof(msg),
+               "ina raw 0x%02X CH%d shunt=0x%04X(%d) %smV bus=0x%04X %sV Rused=%dmOhm Icalc=%dmA",
+               reading.address,
+               channel + 1,
+               static_cast<unsigned>(sample.raw_shunt),
+               static_cast<int>(shunt_counts),
+               shunt_mv,
+               static_cast<unsigned>(sample.raw_bus),
+               bus_v,
+               static_cast<int>(inaShuntOhmsFor(reading.address, channel) * 1000.0f + 0.5f),
+               static_cast<int>(sample.current_mA + (sample.current_mA >= 0.0f ? 0.5f : -0.5f)));
+      logBoth(msg);
+    }
+  }
+
+  char vg[20], vo[20], ig[20], io[20], msg[128];
+  formatFixedValue(g_config.rail_5v.voltage_gain, 100000, 5, vg, sizeof(vg));
+  formatFixedValue(g_config.rail_5v.voltage_offset_mV, 100, 2, vo, sizeof(vo));
+  formatFixedValue(g_config.rail_5v.current_gain, 100000, 5, ig, sizeof(ig));
+  formatFixedValue(g_config.rail_5v.current_offset_mA, 100, 2, io, sizeof(io));
+  snprintf(msg, sizeof(msg), "cal 5V vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
+  logBoth(msg);
+
+  formatFixedValue(g_config.rail_3v3.voltage_gain, 100000, 5, vg, sizeof(vg));
+  formatFixedValue(g_config.rail_3v3.voltage_offset_mV, 100, 2, vo, sizeof(vo));
+  formatFixedValue(g_config.rail_3v3.current_gain, 100000, 5, ig, sizeof(ig));
+  formatFixedValue(g_config.rail_3v3.current_offset_mA, 100, 2, io, sizeof(io));
+  snprintf(msg, sizeof(msg), "cal 3V3 vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
+  logBoth(msg);
 }
 
 void sendUdiAck(const char* payload) {
@@ -1215,6 +1373,11 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+  if (cmd == "INADIAG") {
+    printInaRawDiagnostics();
+    return;
+  }
+
   if (cmd == "CALSHOW" || cmd == "CFGSHOW") {
     printPersistentConfig();
     return;
@@ -1226,7 +1389,7 @@ void handleCommand(const String& cmd_in) {
     float v_off_mV = 0.0f;
     float i_gain = 1.0f;
     float i_off_mA = 0.0f;
-    if (sscanf(cmd.c_str(), "CALSET %7s %f %f %f %f", rail_token, &v_gain, &v_off_mV, &i_gain, &i_off_mA) != 5) {
+    if (!parseCalsetCommand(cmd, rail_token, sizeof(rail_token), v_gain, v_off_mV, i_gain, i_off_mA)) {
       logBoth("[CFG] CALSET 5V|3V3 vg vo ig io");
       return;
     }
@@ -2252,19 +2415,24 @@ bool erasePersistentConfig(bool verbose) {
 }
 
 void printPersistentConfig() {
-  char msg[192];
-  snprintf(msg,
-           sizeof(msg),
-           "cfg d9=%s 5V[%.5f %.2f %.5f %.2f] 3V3[%.5f %.2f %.5f %.2f]",
-           g_config.d9_path_enabled ? "ON" : "OFF",
-           g_config.rail_5v.voltage_gain,
-           g_config.rail_5v.voltage_offset_mV,
-           g_config.rail_5v.current_gain,
-           g_config.rail_5v.current_offset_mA,
-           g_config.rail_3v3.voltage_gain,
-           g_config.rail_3v3.voltage_offset_mV,
-           g_config.rail_3v3.current_gain,
-           g_config.rail_3v3.current_offset_mA);
+  char msg[128];
+  char vg[20], vo[20], ig[20], io[20];
+
+  snprintf(msg, sizeof(msg), "cfg d9=%s", g_config.d9_path_enabled ? "ON" : "OFF");
+  logBoth(msg);
+
+  formatFixedValue(g_config.rail_5v.voltage_gain, 100000, 5, vg, sizeof(vg));
+  formatFixedValue(g_config.rail_5v.voltage_offset_mV, 100, 2, vo, sizeof(vo));
+  formatFixedValue(g_config.rail_5v.current_gain, 100000, 5, ig, sizeof(ig));
+  formatFixedValue(g_config.rail_5v.current_offset_mA, 100, 2, io, sizeof(io));
+  snprintf(msg, sizeof(msg), "cal 5V vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
+  logBoth(msg);
+
+  formatFixedValue(g_config.rail_3v3.voltage_gain, 100000, 5, vg, sizeof(vg));
+  formatFixedValue(g_config.rail_3v3.voltage_offset_mV, 100, 2, vo, sizeof(vo));
+  formatFixedValue(g_config.rail_3v3.current_gain, 100000, 5, ig, sizeof(ig));
+  formatFixedValue(g_config.rail_3v3.current_offset_mA, 100, 2, io, sizeof(io));
+  snprintf(msg, sizeof(msg), "cal 3V3 vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
   logBoth(msg);
 }
 

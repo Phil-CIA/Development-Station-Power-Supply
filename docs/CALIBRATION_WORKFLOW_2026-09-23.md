@@ -218,6 +218,23 @@ authorize protection testing, overloads, or persistent calibration changes.
   `CFGRESET`, or `CFGERASE` command was issued in this session. This capture is
   command-path and firmware-state evidence only; no load-step, range-switch,
   protection, or current-accuracy measurement was performed in this step.
+- **Bounded calibration apply + single-point validation (operator session,
+  2026-10-07):** After explicit operator approval, coefficients were applied
+  and saved on the STM32 helper using `CALSET` and `CFGSAVE`:
+  `5V vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00`,
+  `3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`. `CFGSHOW` and
+  `INADIAG` confirmed persistence. Validation was run one channel at a time
+  with the other channel forced off and readback captured using
+  `QSTATE`/`INARAILS`/`INADIAG`:
+  CH2 (Q5 ON, CH1 OFF): controller raw `3.320V, 45.00mA` with applied 3V3
+  coefficients gives `Vcal=3.2335V`, `Ical=319.0mA`; operator reference was
+  `3.23V`, `319mA` (errors: `+0.0035V` / `+0.11%`, `0.0mA` / `0.00%`).
+  CH1 (Q2 ON, CH2 OFF): controller raw `5.024V, 64.80mA` with applied 5V
+  coefficients gives `Vcal=4.8553V`, `Ical=480.0mA`; operator reference was
+  `4.86V`, `479mA` (errors: `-0.0047V` / `-0.10%`, `+1.0mA` / `+0.21%`).
+  Both channels were returned OFF after captures. Scope limits: single-point
+  validation per channel, Dupont/breadboard wiring, and no repeatability sweep,
+  multi-point fit, or protection testing in this closeout step.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.
