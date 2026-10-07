@@ -231,18 +231,25 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 
 **Revision/source reconciliation status (2026-10-07):**
 - **Operator-confirmed fault board identity (issue #62):** Regulator Rev-C physical board.
-- **Regulator Rev-C netlist source** (`hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net`) contains `Q3`, `Q12`, and `U4` references associated with LM2596 ON/OFF control-path nets.
-- **HAT Rev-C netlist source** (`hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net`) shows `Q9` on fan-path nets and does **not** provide the same `Q3`/`Q12`/`U4` reference set used above.
-- A separate screenshot/report path references `Q9` as a BSS138 ISET-driven device. That mapping is **not yet reconciled** to a single verified board revision/netlist export in this tracker.
-- Exact assembly variant/export timestamp and per-node mapping for the above operator-confirmed board are **still unverified** in this record.
+- **Authoritative source now staged in this PR:** `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net` copied from operator attachment (design source path in file header points to OneDrive Rev-C schematic; export date `2026-10-07T05:31:09`; tool `Eeschema 10.0.6`).
+- **Regulator Rev-C namespace from this export (do not mix with older exports):**
+  - `Q3` and `Q9` are BSS138 ON/OFF-control devices.
+  - `Net-(Q3-D)` ties `Q3.3` and `Q6.3` to `U2.5`.
+  - `Net-(Q12-D)` ties `Q9.3` and `Q12.3` to `U4.5`.
+  - The 5V high-pass pair is `Q1/Q2` (PSMN5R2-60YL) with `U9` (LM74502DDFR) driver path.
+  - `Gate _5_High` (note spacing) is Q1/Q2 gate net via `R75.2`; `SRC 5_HIGH` is Q1/Q2 source-side net including `U9.8`.
+  - `+5V_reg` connects Q1 drain (`Q1.5`); Q2 drain (`Q2.5`) feeds shunt `R7` then `L1` to `V_out +5V` (`J1.2` path).
+  - `+5V_Hi_Range ` (trailing space) is a filtered sense net, not the direct power-transfer node.
+- Exact **installed assembly population** and probe-point correspondence to this export remain **operator-verified pending** at bench.
 - **Rule for ongoing issue #62 evidence:** do not merge designators across board revisions or screenshots until the operator identifies the exact board revision and source file used for each measurement.
 
 **Next operator bench checklist (identity-gated, no hardware modifications):**
 1. **Identify source before power-on:** record board silkscreen revision and photo of the measured board area; attach the exact design source path used for designator mapping (for example one netlist file path + export timestamp).
-2. **Map each probe node to that source:** for every planned measurement label (`Q3-D`, `GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`, `V_OUT +5V`), provide the matching net/designator from the selected source or mark `UNRESOLVED`.
-3. **Capture conservative ON/OFF voltage table only:** with existing wiring unchanged and conservative PSU current limit, measure the same node set in OFF then ON command states (same load condition both states).
-4. **Capture control-state evidence:** log the exact command(s)/state readback used to request OFF and ON so node voltages can be tied to an explicit control state.
-5. **Flag unresolved identity immediately:** if any measured label cannot be traced to the selected source without cross-revision inference, stop interpretation at that point and log as `IDENTITY BLOCKED`.
+2. **Confirm installed assembly vs export before interpretation:** visually verify that the measured area/populated parts match this netlist’s designators and part families (`Q1/Q2/U9/R75/R7/L1` path). If mismatch is found, stop and mark `IDENTITY BLOCKED`.
+3. **Map probe nodes using exact exported net names:** include `+5V_Boot` (U9 VS), `ESP- GPIO 5V Hi` (U9 EN_UVLO pin 1 net), `Net-(U9-VCAP)` (U9 pin 4), `Net-(U9-OV)` (U9 pin 7 divider), `Gate _5_High`, `SRC 5_HIGH`, `+5V_reg`, `R7.2`/post-shunt node, and `V_out +5V`. Keep shorthand labels (`GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`) marked **provisional mapping** until physically confirmed.
+4. **Capture conservative ON/OFF table only (no rework):** with unchanged wiring and conservative PSU current limit, record the node set above in both commanded states under the same load condition.
+5. **Capture control-state evidence only, not inferred polarity:** log the exact command/state readback used for each row; do not infer firmware polarity or root cause from netlist alone.
+6. **Flag unresolved identity immediately:** if any measured label cannot be traced to the selected source without cross-revision inference, stop interpretation at that point and log as `IDENTITY BLOCKED`.
 
 **Evidence package required before any closure decision:**
 - Board identity photo(s) and revision marking.
@@ -250,6 +257,7 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 - Node-to-source mapping table (including any `UNRESOLVED` rows).
 - OFF/ON voltage capture table for the mapped node set.
 - Raw command/state logs corresponding to each voltage capture row.
+- Photo/notes confirming installed assembly points used for each probe in the `Q1/Q2/U9/R7/L1` path.
 
 **Issue #62 closure state:** **Pending**. No fix claim is allowed from this session because fresh physical measurements and revision-locked node mapping are not yet available.
 
