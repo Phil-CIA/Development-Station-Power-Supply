@@ -217,7 +217,66 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 
 **Current State:** Board powers up and runs; switch behavior not yet characterized under load transients.
 
-**Next Step:** Scope gate voltage, drain voltage, and load response during ON → OFF → ON cycles; document switching specs; consider pull-up/pull-down resistor optimization.
+**Latest bench evidence (2026-09-27):**
+- U2 VIN: 11.44V
+- U2 pin 5 (`Q3-D`): 0V
+- `+5V_REG`: 5.0778V
+- `SRC_5_HIGH`: 4.39V
+- `GATE_5_HIGH`: 5.13V
+- `+5V_HI_RANGE`: 4.000V
+- `V_OUT +5V`: 4.000V
+- Derived check: `VGS` ≈ 0.74V (`5.13V - 4.39V`)
+
+**Interim interpretation:** The measured gate-source headroom is too small for robust enhancement at this operating point, so the high-side path may remain only weakly on (or behave as if off under load). Continue pinout/orientation and gate-drive-path validation before closing RB-003.
+
+**Revision/source reconciliation status (2026-10-07):**
+- **Operator-confirmed fault board identity (issue #62):** Regulator Rev-C physical board.
+- **Authoritative source now staged in this PR:** `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net` copied from operator attachment (design source path in file header points to OneDrive Rev-C schematic; export date `2026-10-07T05:31:09`; tool `Eeschema 10.0.6`).
+- **Regulator Rev-C namespace from this export (do not mix with older exports):**
+  - `Q3` and `Q9` are BSS138 ON/OFF-control devices.
+  - `Net-(Q3-D)` ties `Q3.3` and `Q6.3` to `U2.5`.
+  - `Net-(Q12-D)` ties `Q9.3` and `Q12.3` to `U4.5`.
+  - The 5V high-pass pair is `Q1/Q2` (PSMN5R2-60YL) with `U9` (LM74502DDFR) driver path.
+  - `Gate _5_High` (note spacing) is Q1/Q2 gate net via `R75.2`; `SRC 5_HIGH` is Q1/Q2 source-side net including `U9.8`.
+  - `+5V_reg` connects Q1 drain (`Q1.5`); Q2 drain (`Q2.5`) feeds shunt `R7` then `L1` to `V_out +5V` (`J1.2` path).
+  - `+5V_Hi_Range ` (trailing space) is a filtered sense net, not the direct power-transfer node.
+- Exact **installed assembly population** and probe-point correspondence to this export remain **operator-verified pending** at bench.
+- **Rule for ongoing issue #62 evidence:** do not merge designators across board revisions or screenshots until the operator identifies the exact board revision and source file used for each measurement.
+
+**Next operator bench checklist (identity-gated, no hardware modifications):**
+1. **Identify source before power-on:** record board silkscreen revision and photo of the measured board area; attach the exact design source path used for designator mapping (for example one netlist file path + export timestamp).
+2. **Confirm installed assembly vs export before interpretation:** visually verify that the measured area/populated parts match this netlist’s designators and part families (`Q1/Q2/U9/R75/R7/L1` path). If mismatch is found, stop and mark `IDENTITY BLOCKED`.
+3. **Map probe nodes using exact exported net names:** include `+5V_Boot` (U9 VS), `ESP- GPIO 5V Hi` (U9 EN_UVLO pin 1 net), `Net-(U9-VCAP)` (U9 pin 4), `Net-(U9-OV)` (U9 pin 7 divider), `Gate _5_High`, `SRC 5_HIGH`, `+5V_reg`, `R7.2`/post-shunt node, and `V_out +5V`. Keep shorthand labels (`GATE_5_HIGH`, `SRC_5_HIGH`, `+5V_HI_RANGE`) marked **provisional mapping** until physically confirmed.
+4. **Capture conservative ON/OFF table only (no rework):** with unchanged wiring and conservative PSU current limit, record the node set above in both commanded states under the same load condition.
+5. **Capture control-state evidence only, not inferred polarity:** log the exact command/state readback used for each row; do not infer firmware polarity or root cause from netlist alone.
+6. **Flag unresolved identity immediately:** if any measured label cannot be traced to the selected source without cross-revision inference, stop interpretation at that point and log as `IDENTITY BLOCKED`.
+
+**Evidence package required before any closure decision:**
+- Board identity photo(s) and revision marking.
+- One authoritative design source reference (file path + export date/time).
+- Node-to-source mapping table (including any `UNRESOLVED` rows).
+- OFF/ON voltage capture table for the mapped node set.
+- Raw command/state logs corresponding to each voltage capture row.
+- Photo/notes confirming installed assembly points used for each probe in the `Q1/Q2/U9/R7/L1` path.
+
+**Issue #62 closure state (user decision, 2026-10-07):** **Closed as functionally resolved for the original pass-through symptom** based on bounded operator bench evidence now captured in PR #63 docs.
+- Closure basis recorded by operator includes:
+  - Four commanded range paths reported working ON/OFF in operation-first bench flow.
+  - CH1 HIGH loaded terminal points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
+  - CH2 HIGH loaded terminal point recorded at `3.3141V` (10 ohm load).
+  - Concurrent CH1+CH2 operation recorded with panel/PSU values and confirmed return to near-zero output with final `p0=0x00` OFF state.
+- Root cause and corrective-action mechanism remain **not established**; closure is functional/operational against the original symptom, not a design-root-cause proof.
+
+**Current posture update (2026-10-07, user-directed):**
+- User reports hardware now **appears operational** and wants operation testing resumed first.
+- This report is **not independently bench-verified in this session**.
+- Active draft operation plan and execution prompt are tracked in:
+  - `docs/firmware-buckets/bucket-2-rail-control-scope.md`
+  - Section: **Regulator Rev-C operational acceptance plan (draft, 2026-10-07)**
+- #62 is now closed by user direction; keep PR #63 open for documentation cleanup/follow-on evidence only.
+- Remaining follow-up gaps (Bucket 2 scope), including current/power telemetry consistency, loaded LOW coverage, protection behavior, and transient/coldboot characterization, are tracked as separate work and do **not** block #62 closure.
+
+**Next Step:** Execute the operation-first draft plan with operator-approved limits and capture evidence; keep troubleshooting scope exception-only and user-authorized.
 
 ---
 
@@ -454,4 +513,5 @@ Primary buck control loops appear functional when enabled; failure remains in do
 | 2026-08-14 | Implemented dual INA2180A2/TLV1702 four-channel Rev-C OCP, corrected supply and open-collector definitions, validated ERC/netlist, and added mandatory PCB completion gate | Rev-C OCP design session |
 | 2026-09-21 | Logged Rev-C first-power continuation HOLD: +5V_reg about 4.08V, +5V about 4.01V, +3.3V rails collapsed, with R11/R35 removed bypass state | Rev-C bench continuation session |
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
+| 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
 | TBD | Design review and next-iter file creation | TBD |
