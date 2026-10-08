@@ -302,6 +302,19 @@ build evidence only; **no experimental image was flashed or bench-tested**.
 - Treat this revision's optimization as a bridge: recover enough headroom
   to finish and bench-validate Rev-C bring-up features, without investing in
   deep size refactors that a new controller would make unnecessary.
+- Bring-up debug commands can be trimmed during bring-up and removed after
+  it closes. Gate bench-only commands (Q-path/range-pair tests, AW9523
+  P1.0 heartbeat/mode pokes, `D9FLASH`, `SRTEST`, `INADIAG`, `QSEQ`,
+  `Q9DIAG`, etc.) behind a compile-time bring-up flag first, so they can
+  be switched off without deleting code still needed for bench evidence.
+  Delete them once the corresponding bucket evidence is captured.
+  Rough code-only estimate from the baseline symbol table: about 3-4 KB of
+  these functions plus their strings and `handleCommand` branches; the
+  real saving must be measured after gating.
+- Keep in every build: safe startup, AW9523 fault IRQ/EVT, telemetry,
+  the UDI command channel, config/calibration commands needed for
+  provisioning (`CALSET`/`CFG*`), and actionable boot/recovery messages
+  (Bucket 6 still requires an operator-visible failure path).
 
 ### Prioritized implementation sequence
 
@@ -322,10 +335,11 @@ build evidence only; **no experimental image was flashed or bench-tested**.
 5. Consider bounded buffers instead of `String` only if incremental savings
    justify the change. Preserve normalization, line limits, overflow/error
    recovery and existing console/UDI command behavior.
-6. Only if still needed, introduce explicit full-bench versus compact
-   diagnostic profiles. Keep the full bench command set available and
-   retain safe startup, faults, calibration/persistence and actionable
-   recovery messages in every profile. No silent diagnostic removal.
+6. Gate bench-only debug commands behind a compile-time bring-up flag
+   (user-approved 2026-10-08), measure the saving, and remove them after
+   bring-up evidence is captured. Retain safe startup, faults,
+   telemetry/UDI, calibration/persistence and actionable recovery
+   messages in every build. Document each removed command in the PR.
 7. Add a CI flash ceiling and remaining-feature budget. Proposed initial
    ceiling: **52,428 B** (80% of 65,536 B, rounded down), reserving at least
    **13,108 B**. This is a proposed engineering budget, not an existing
