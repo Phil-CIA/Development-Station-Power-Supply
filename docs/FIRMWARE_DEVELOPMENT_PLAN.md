@@ -35,7 +35,7 @@ This closes the gap between "tickets closed" and "current hardware proven."
 | Target | Path | MCU | Role |
 |---|---|---|---|
 | HAT reference implementation (legacy) | `src/rev1/main.cpp` (`env:esp32dev`) | ESP32 (generic dev board) | Mature prototype of measurement/control logic. Wrong MCU for the current board — being superseded by STM32 — but it's the most complete implementation of several features and is the porting source for them. |
-| HAT controller-of-record | `stm32-bluepill-bringup/` | STM32F103C8T6 "Blue Pill" | The actual bench controller going forward per `platformio.ini`. Currently the least complete and doesn't build (issue #3). |
+| HAT controller-of-record | `stm32-bluepill-bringup/` | STM32F103C8T6 "Blue Pill" | The actual bench controller going forward per `platformio.ini`. Builds; internal flash headroom is the active constraint (see the flash budget below). |
 | Front-panel display, primary path | `crowpanel-43-bringup/` | ESP32-S3 (CrowPanel Advance 4.3") | Active development target for the display. Furthest along of the display paths. |
 | Front-panel display, secondary path | `src/rev1/display_main.cpp` (`env:display_board`) | ESP32-C6 (custom board) | Paused. Still at raw hardware bring-up (byte-swap/DC-invert diagnostics), predates the UDI UART standard. |
 
@@ -149,6 +149,7 @@ PR description.
 | #25 Add OTA and Wi-Fi | Bucket 5 | Out of scope for Rev-C bench bring-up unless explicitly re-scoped |
 | #17 Milestone 4 custom panel UDI+LVGL rewrite | Bucket 4 | Out of scope now (secondary/paused path) |
 | #3 STM32 HardwareSerial compile mismatch (closed) | Bucket 1 | Regression watch: reopen/new issue if compile break reappears |
+| #101 STM32 flash headroom and size budget | Bucket 6 | In scope now; measurement and optimization plan below, with Bucket 4 parsing/console and Bucket 5 persistence dependencies; preserve Bucket 3 fault behavior |
 
 ## Six bucket scoping PRs (documentation-first, bench execution prep)
 
@@ -183,8 +184,166 @@ expansion until the scoping PR for the relevant bucket is merged.
 | Display → host command channel (`CMD:`/`ACK:`/`ERR:`/`EVT:`) | ⚠️ Expanded and in use | `stm32-bluepill-bringup/src/main.cpp` + `crowpanel-43-bringup/src/disp_link_slave.*` + `crowpanel-43-bringup/src/main.cpp` | Parser/framing is now wired to Setup UI flow: `OUTPUT`/`ILIM` write commands plus `GET OUTPUT`, `GET ILIM CH1|CH2`, `GET STATE`, and additive `GET CFGREC` readback commands with ACK/ERR/EVT parsing on the display. Fault transitions now emit immediate `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` from the AW9523 interrupt path. Bench validation remains open. |
 | Bring-up diagnostics + recovery hints (Bucket 6) | ⚠️ In progress | `stm32-bluepill-bringup/src/main.cpp` | Startup and manual `DIAG` now emit compact contract/health snapshots (including Rev-C AW9523 fault-path mode) for repeatable bench log capture; richer recovery-path coverage remains open for follow-on work. |
 | Custom front-panel board (ESP32-C6) UDI + LVGL rewrite | ❌ Not started | `src/rev1/display_main.cpp` | Paused/secondary path. Needs the Phase 3 rewrite described in `docs/display-project/README.md` before it reaches parity with CrowPanel. |
-| STM32 build | ✅ Builds | `stm32-bluepill-bringup/` | `bluepill_f103c8` builds in the current tree (64296 / 65536 B, 98.1%). Flash headroom is tight (~1.2 KB), so new features should stay size-conscious. |
+| STM32 build | ✅ Builds | `stm32-bluepill-bringup/` | Baseline at `92699b9`, reproduced 2026-10-08: 64892 / 65536 B (99.0%), only 644 B free. Isolated USB/LTO trials recovered substantial space but are not production changes or bench evidence; see the flash budget below and #101. |
 | CrowPanel host link transport (#93, Bucket 4) | ✅ Implemented; user-reported repeated powered/connected uploads | `crowpanel-43-bringup/src/disp_link_slave.cpp` (`DISP_LINK_SLAVE_USE_UART0 = 0`) | Default moved to UART1 (IO19/IO20) so the Blue Pill no longer shares UART0 with the CH340K programmer; requires the split-connector cable and K1 setting in `docs/DISPLAY_INTERFACE_STANDARD.md`. Current closeout evidence is user-reported repeated guarded uploads with CrowPanel + Blue Pill both connected and powered. Structured stress checks (wrong-target rejection, reset/recovery combinations, and explicit UART1 ACK/ERR round-trip capture) are still open follow-up evidence, not pass criteria for this closure. |
+
+## STM32 flash budget and optimization plan
+
+Tracking: [#101](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101).
+Primary owner: Bucket 6; dependencies: Buckets 4 and 5, with Bucket 3 fault
+behavior preserved. The user's estimate of roughly 80% feature completion is
+planning context, not a measured forecast of remaining code size.
+
+### Reproduced baseline
+
+On 2026-10-08, source commit
+`92699b9055c234a5c3ab6e01942a42af69880efa` built with:
+
+```powershell
+python -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8
+```
+
+Internal program flash: **64,892 / 65,536 B (99.0%)**, leaving **644 B**.
+Static RAM: **5,536 / 20,480 B**. Static RAM reports exclude runtime stack
+and heap use. The previous inventory's 64,296 B figure is superseded by
+this source-specific measurement.
+
+| Flash allocation | Bytes |
+|---|---:|
+| `.text` | 56,504 |
+| `.rodata` (strings and other constants, whole image) | 7,876 |
+| `.data` initializers stored in flash | 512 |
+| Vector table, ARM metadata, init/fini arrays | 356 |
+| Total | 64,892 |
+
+`.bss` consumes RAM, not program flash. Debug sections in the ELF are not
+flashed; ELF file size is not a useful flash budget. Use the linked loadable
+sections and PlatformIO flash usage instead.
+
+Tools/dependencies resolved for this measurement: PlatformIO Core 6.1.19,
+`ststm32@19.7.0`, STM32 Arduino core 2.12.0
+(`framework-arduinoststm32@4.21200.0`), GCC 12.3.1,
+Adafruit AW9523 1.0.5 and Adafruit BusIO 1.17.4. The library dependencies
+are not currently pinned in the production configuration; record/freeze
+them before future comparisons.
+
+The constraint is the STM32F103C8's **64 KiB internal executable flash**,
+not the CrowPanel's 16 MB flash or U11 W25Q128 external SPI data storage.
+W25Q128 does not directly extend this MCU's memory-mapped instruction
+space. Do not change the board limit to 128 KiB based on undocumented
+extra capacity in some Blue Pill devices.
+
+### Measured size influences
+
+The baseline already uses `-Os`, function/data sections, linker garbage
+collection, and newlib nano. Adding those again is not a new optimization.
+Neither floating-point printf/scanf support nor `_dtoa_r` is linked;
+`formatFixedValue` and `parseFloatToken` already avoid float stdio.
+
+USB CDC is explicitly enabled in `platformio.ini`; it retains the USB
+device/endpoint/queue/HAL stack alongside the existing CH340 USART1 debug
+path. Cross-module framework code is another opportunity because the
+baseline does not enable LTO.
+
+Other candidates are command/help/diagnostic strings and repeated formatting,
+the one ILIM `sscanf` call, and Arduino `String` command handling. Unique
+named scan-function bodies occupy 1,520 B; unique `String` method bodies
+occupy 606 B. These symbol subsets exclude shared runtime and are **not
+promised savings**. The 7,876 B `.rodata` total is not all expendable logging.
+I2C/SPI/UART drivers and software float arithmetic also consume flash, but
+support current hardware and calibration; do not rewrite them speculatively.
+
+### Isolated build-only experiments
+
+Same source and dependency versions, using a temporary configuration and
+separate build directory outside the repository. Only the listed build
+flags changed; no source, production configuration, or hardware changed.
+
+| Variant | Flash B | Free B | Saved vs baseline B | Static RAM B |
+|---|---:|---:|---:|---:|
+| Baseline: CDC enabled | 64,892 | 644 | 0 | 5,536 |
+| Omit `-DPIO_FRAMEWORK_ARDUINO_ENABLE_CDC` | 51,944 | 13,592 | 12,948 | 2,280 |
+| Keep CDC; add `-flto` | 58,500 | 7,036 | 6,392 | 5,648 |
+| Omit CDC; add `-flto` | 46,388 | 19,148 | 18,504 | 2,392 |
+
+For reproduction, use the production environment's platform/board/framework
+and the resolved libraries above in a temporary PlatformIO configuration;
+replace `build_flags` with each table variant and set an isolated
+`[platformio] build_dir`. Run with `python -m platformio run -d
+stm32-bluepill-bringup -c <temporary-config> -e <trial-environment>`.
+Inspect `firmware.elf` and `firmware.map` with the installed toolchain's
+`arm-none-eabi-size -A` and `arm-none-eabi-nm -S --size-sort -C`.
+
+**USB removal is not safe as a flag-only production change.** With CDC
+disabled, the framework aliases `Serial` to USART1 `Serial1`; the trial
+still links both that object and the application's separate USART1
+`SerialDbg(PA10, PA9)`. Consolidate initialization, logging and command
+polling onto one USART1 object before shipping a UART-only configuration.
+USART3 `SerialU3` remains the dedicated UDI channel. Native USB console
+retention is an explicit user decision, not an assumed feature removal.
+
+LTO retains the intended feature set but still requires bench checks of
+startup, interrupt behavior and peripheral timing. The linker emitted a
+serial-LTRANS compilation warning, not a failed build. Independent savings
+are not additive: use the measured combined result. These figures are
+build evidence only; **no experimental image was flashed or bench-tested**.
+
+### Direction update (2026-10-08, user decision)
+
+- Native USB CDC is not used on the current Blue Pill HAT path. Planned USB
+  functionality is deferred to a future HAT revision, so removing CDC (with
+  USART1 console consolidation) is the preferred first optimization for
+  this revision, ahead of LTO.
+- A next HAT revision with a more capable controller than the STM32F103C8
+  is likely, partly to add a Wi-Fi module (related: #25). This is a planning
+  direction only: no MCU, Wi-Fi module, or schedule is selected, and no
+  hardware redesign has started. Do not port to or design against a new
+  MCU until the hardware docs record that decision.
+- Treat this revision's optimization as a bridge: recover enough headroom
+  to finish and bench-validate Rev-C bring-up features, without investing in
+  deep size refactors that a new controller would make unnecessary.
+
+### Prioritized implementation sequence
+
+1. Establish reproducible measurements: pin the direct/transitive libraries,
+   retain source/tool versions and ELF/map evidence, and report before/after
+   flash and static RAM for every optimization PR.
+2. Trial LTO in the maintained target first. It recovered 6,392 B without an
+   intentional feature removal; verify boot-safe outputs, fault IRQ/EVT,
+   sensor reads, external flash, telemetry and console/UDI behavior.
+3. Decide whether native USB CDC is required. If not, consolidate the console
+   onto the existing CH340/USART1 path, then measure with/without LTO.
+   The combined compile-only trial leaves 19,148 B free; the corrected
+   console implementation must be measured again.
+4. Replace ILIM `sscanf` with a bounded integer/token parser and measure its
+   incremental benefit. Cover channels, sign, whitespace, invalid/overflow
+   values, range endpoints and trailing-input policy; preserve ACK/ERR/EVT
+   responses and document any intentional tightening of accepted input.
+5. Consider bounded buffers instead of `String` only if incremental savings
+   justify the change. Preserve normalization, line limits, overflow/error
+   recovery and existing console/UDI command behavior.
+6. Only if still needed, introduce explicit full-bench versus compact
+   diagnostic profiles. Keep the full bench command set available and
+   retain safe startup, faults, calibration/persistence and actionable
+   recovery messages in every profile. No silent diagnostic removal.
+7. Add a CI flash ceiling and remaining-feature budget. Proposed initial
+   ceiling: **52,428 B** (80% of 65,536 B, rounded down), reserving at least
+   **13,108 B**. This is a proposed engineering budget, not an existing
+   CI gate or proof that all remaining features will fit. Revisit it using
+   actual unimplemented-feature estimates before further scope expansion.
+
+Do not begin with a fixed-point calibration rewrite, raw replacement
+peripheral drivers, or a hardware redesign. If measured low-risk changes
+cannot fit the agreed feature inventory plus reserve, raise an explicit
+scope/hardware decision instead of inflating the capacity limit.
+
+Exit evidence: agreed flash ceiling met in the maintained build; per-change
+byte deltas; no regression in boot-safe outputs, AW9523 fault IRQ/EVT,
+telemetry, console/UDI contracts, or versioned config/calibration recovery.
+Bench capture must include normal boot, induced failure/recovery, command
+round trips, fault transitions and persistence cold boot; also assess
+runtime stack/heap and timing. Optimization implementation and bench
+evidence remain open.
 
 ## Milestones and branches
 
