@@ -90,6 +90,76 @@ AW9523 mode notes:
 
 `platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
 
+## Issue #101 Step 1 Baseline (2026-10-08)
+
+Measured on branch `phil-cia-stm32-flash-headroom` at commit `cbeee06`.
+
+- Build (unchanged target): `python -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Flash usage: 64,892 / 65,536 bytes (free: 644 bytes)
+- Static RAM usage: 5,536 / 20,480 bytes
+
+Resolved tooling and package versions used for this baseline:
+
+- PlatformIO Core: 6.1.19
+- Platform: `ststm32` 19.7.0
+- Arduino core package: `framework-arduinoststm32` 4.21200.0 (core 2.12.0)
+- Toolchain package: `toolchain-gccarmnoneeabi` 1.120301.0 (GCC 12.3.1)
+- Direct library: `Adafruit AW9523` 1.0.5
+- Transitive library (pinned for reproducibility): `Adafruit BusIO` 1.17.4
+
+Reproducibility pinning for STM32 target (`stm32-bluepill-bringup/platformio.ini`):
+
+- `adafruit/Adafruit AW9523@1.0.5`
+- `adafruit/Adafruit BusIO@1.17.4`
+
+Python runtime note for reproducibility on this workstation:
+
+- `python -m platformio ...` under Python 3.14 fails package constraints for this target.
+- `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8` succeeds on the same source/dependencies.
+- Verified with PlatformIO Core 6.2.0 on Python 3.13: flash and RAM remain 64,892 and 5,536 bytes.
+
+Evidence artifacts (ELF, map, section/symbol reports, and build logs) were captured to:
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-1`
+
+Bench evidence status: NOT bench-tested in this step (build and static artifact analysis only).
+
+## Issue #101 Gate A Proposals - Pending Coordinator Review
+
+These are Step 1 proposals only. Approval and Step 2 execution authority belong to the coordinator.
+
+### Console ownership proposal for Step 2
+
+- Proposed single USART1 console owner: `SerialDbg` on PA10/PA9 (CH340 path), 115200 8N1.
+- Keep UDI on `SerialU3` (USART3 PB11/PB10) unchanged.
+- This ownership model is not implemented in Step 1.
+
+Core/linkage evidence from the Step 1 ELF confirms why consolidation is required before CDC removal:
+
+- CDC-enabled image links USB CDC and USB serial symbols (`SerialUSB`, `USBSerial`, `USBD_CDC*`, `CDC_*`).
+- The same image also links core `Serial1` and app-defined `SerialDbg`/`SerialU3`.
+- Symbol evidence file: `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-1\serial-symbols-after-pin.txt`.
+
+Step 2 should avoid duplicate USART1 ownership after CDC removal by routing all console init/print/poll paths through one USART1 object and removing the parallel path, while leaving USART3 UDI independent.
+
+### Command-scope proposal for compact profile planning
+
+No gating/deletion is done in Step 1.
+
+- Proposed must-remain commands in compact builds: `HELP`, `DIAG`, `D9ON`, `D9OFF`, `CALSHOW`, `CFGSHOW`, `CALSET`, `CFGSAVE`, `CFGLOAD`, `CFGRESET`, `CFGERASE`, plus UDI contract handlers (`CMD:OUTPUT`, `CMD:GET OUTPUT`, `CMD:GET STATE`, `CMD:GET CFGREC`, `CMD:GET ILIM`, `CMD:ILIM`).
+- Proposed bench-focused candidates behind a bring-up flag: `FTEST`, `AHTNOW`, `AHTRESET`, `SRTEST`, `D9FLASH`, `HBON`, `HBOFF`, `Q1ON/OFF`, `Q2ON/OFF`, `Q3ON/OFF`, `Q4ON/OFF`, `Q5ON/OFF`, `Q9ON/OFF`, `Q39ON/OFF`, `Q612ON/OFF`, `QSTATE`, `QSEQ`, `INAPROBE`, `INANOW`, `INARAILS`, `INADIAG`, `AWPROBE`, `AWMODE`, `AWHB`, `AWP10ON`, `AWP10OFF`, `Q9DIAG`.
+
+### Shared-helper analysis (what must remain ungated)
+
+Some bench-facing commands call helpers that are also used by startup, periodic runtime, output control, fault handling, telemetry, or persistence. Gate command entry points only; do not gate these shared runtime helpers:
+
+- Boot and periodic runtime helpers that must remain ungated: `logHealthSummary()`, `refreshIncomingRailSample()`, `readIna3221()`, `readAht20Now()`, `publishTelemetry()`, `serviceAw9523FaultPath()`, `isFaultCriticalActive()`, `is3v3PathEnabled()`, and boot sequencing in `setup()`.
+- Output-control helpers that must remain ungated: `setD9PathEnabled()` and `g_output_enabled` state flow, because they are used by startup restore and UDI `CMD:OUTPUT` handling.
+- Persistence helpers that must remain ungated: `initPersistentConfigAtBoot()`, `loadPersistentConfig()`, `savePersistentConfig()`, `erasePersistentConfig()`, `printPersistentConfig()`, `configRecoveryReasonCode()`, and CAL/CFG data structures used by startup recovery and UDI-visible state.
+- Fault/UDI contract helpers that must remain ungated: `sendUdiAck()`, `sendUdiErr()`, `sendUdiEvt()`, `handleUdiCommandLine()`, `pollUdiCommands()`, and AW9523 fault-event signaling (`EVT:FAULT TRIP/CLEAR`).
+
+Bench-only command handlers should be the gating boundary, not the low-level helper functions above.
+
 ## Upload (ST-Link)
 
 `platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload`

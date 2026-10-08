@@ -4,8 +4,8 @@ Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
-Status: Planning only. No optimization applied; no firmware uploaded.
-Next authorized handoff: STEP 1 only.
+Status: Step 1 complete; Gate A accepted; Step 2 handoff pending.
+Next authorized handoff: STEP 2 (coordinator handoff pending).
 
 ## How we work
 
@@ -174,6 +174,12 @@ Preserve shared boot/fault/device/control functions, CFG/CAL provisioning
 and actionable diagnostics in both profiles. Excluded commands must report
 an explicit unsupported/unknown error, never appear to succeed.
 
+Safeguard note: some helpers are shared between bench-only command handlers
+and startup/runtime flows. In particular, `runFlashBringupTest()` and
+`aw95xxEnsureGpioPushPull()` are used by startup/runtime code and must not
+be removed or gated when bench commands are gated; gate only the bench
+command entry points, not these shared helpers.
+
 Build both profiles cleanly. Provide a command availability table and
 before/after flash/RAM deltas for like-for-like configurations. Verify
 full-bench command/help parity and compact retained behavior. Update the
@@ -254,9 +260,11 @@ No automatic merge, issue closure, or unsupported "bench passed" claims.
 ## Execution record - coordinator owned
 
 Planning: complete; Markdown plan with per-step plain-text handoffs.
-Step 1: authorized; prompt provided to user for VS Code; awaiting agent report.
-Step 2: waiting for Gate A.
-Step 3: waiting for Step 2 review.
+Step 1: complete; coordinator has accepted Gate A and verified the baseline.
+	- Baseline measured: flash 64,892 B (free 644 B), static RAM 5,536 B.
+	- Before/after dependency-pin ELF hashes: identical (no code/behavior churn).
+Step 2: ready for separate coordinator handoff; not started.
+Step 3: waiting for Step 2 review and separate authorization.
 Step 4: optional; not authorized.
 Step 5: optional; not authorized.
 Step 6: waiting for accepted changes and user-approved ceiling.
