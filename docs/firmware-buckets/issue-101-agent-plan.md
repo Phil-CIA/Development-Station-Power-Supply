@@ -1,4 +1,4 @@
-ISSUE 101 - STM32 FLASH HEADROOM / VS CODE AGENT EXECUTION PLAN
+# Issue 101 - STM32 Flash Headroom / VS Code Agent Execution Plan
 
 Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
@@ -7,28 +7,33 @@ Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
 Status: Planning only. No optimization applied; no firmware uploaded.
 Next authorized handoff: STEP 1 only.
 
-HOW WE WORK
+## How we work
 
 This Copilot app session is the coordinator. The user chooses the VS Code
 agent/model for each step and pastes its report back here. The coordinator
 reviews the actual diff and evidence before authorizing the next step.
 Do not execute this entire file as one assignment.
 
-Copy COMMON AGENT INSTRUCTIONS, REPORT FORMAT, and ONE STEP PROMPT into
-the VS Code agent. Later step prompts are prepared, NOT authorized.
+The durable plan lives in this Markdown file. At each handoff, the
+coordinator provides one standalone plain-text prompt in a copyable code
+block, incorporating the common instructions, assigned step and report
+format below. No separate committed text plan is required.
+Later step prompts are prepared, NOT authorized.
 After each review, update this file's execution record and next handoff.
 Changing models does not change scope or bypass an approval gate.
 Only one agent writes to the branch at a time.
 
 Use the checkout for this branch, NOT the project's main checkout.
 At plan creation, its Windows path is:
+```text
 C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
+```
 The folder retains its generated name although the branch was renamed.
 If the path changes, obtain the current session path from the coordinator.
 Before editing, verify git branch --show-current and git status --short.
 If the branch is wrong or another agent's changes conflict, stop and report.
 
-CONFIRMED DIRECTION / NON-NEGOTIABLES
+## Confirmed direction / non-negotiables
 
 Native USB CDC is unused on the current HAT and can be removed. Future USB,
 Wi-Fi and a more capable MCU belong to a later revision, not this PR.
@@ -56,7 +61,7 @@ The proposed compact flash ceiling is 52,428 of 65,536 bytes, reserving
 Bench/full must always fit the documented 65,536-byte capacity.
 Static RAM totals do not establish heap/stack or timing safety.
 
-COMMON AGENT INSTRUCTIONS (COPY WITH EACH STEP)
+## Common agent instructions
 
 Work only on issue #101 in branch phil-cia-stm32-flash-headroom.
 Read the current issue body AND comments, this plan, README.md,
@@ -83,7 +88,7 @@ If blocked, report evidence and stop; do not start the next step.
 Use existing testing/build conventions and add focused checks for new logic.
 Do not silently omit failures or emit success-shaped fallback responses.
 
-REPORT FORMAT (COPY WITH EACH STEP)
+## Required agent report
 
 STEP / selected model (if known):
 Branch, checkout path, starting commit:
@@ -104,7 +109,7 @@ versions and profiles, and count .data initializers in flash usage.
 Do not commit ELF/map/build products or raw verbose logs; use session artifacts
 or PR attachments and put concise durable results in relevant repo docs.
 
-STEP 1 PROMPT - REPRODUCE AND FREEZE THE BASELINE
+## Step 1 - Reproduce and freeze the baseline
 
 Execute Step 1 only. Inspect the current environment and reproduce the
 unmodified STM32 build at the current commit. The issue baseline is commit
@@ -126,10 +131,10 @@ Report the command inventory with runtime-shared helpers and a proposed
 bench-only allowlist, including commands not explicitly listed in the issue.
 Stop for Gate A.
 
-GATE A - coordinator reviews baseline, pins, console ownership and scope.
+**Gate A:** coordinator reviews baseline, pins, console ownership and scope.
 Authorize Step 2 only after accepting this report/diff.
 
-STEP 2 PROMPT - REMOVE CDC AND CONSOLIDATE THE CONSOLE
+## Step 2 - Remove CDC and consolidate the console
 
 Execute Step 2 only after Gate A approval. Remove native USB CDC from the
 maintained STM32 configuration. Inspect Arduino core 2.12 behavior and choose
@@ -148,11 +153,11 @@ explicitly NOT bench-tested. Include safe, user-run bench checks for boot
 messages, heartbeat, HELP/DIAG/CFGSHOW and UDI GET/ACK/ERR; do not run hardware.
 Stop for Gate B.
 
-GATE B - coordinator reviews console diff and build evidence.
+**Gate B:** coordinator reviews console diff and build evidence.
 User bench-checks console/UDI when hardware is available. Missing bench
 evidence remains explicit; it is not permission to claim runtime success.
 
-STEP 3 PROMPT - ADD COMPACT AND FULL BENCH PROFILES
+## Step 3 - Add compact and full bench profiles
 
 Execute Step 3 only after authorization. Based on the approved inventory,
 introduce one explicit bring-up flag and a maintained full-bench environment.
@@ -175,11 +180,11 @@ full-bench command/help parity and compact retained behavior. Update the
 STM32 README with profile usage and warnings. Do not delete bench code,
 add LTO, change parsing or touch hardware. Stop for Gate C.
 
-GATE C - coordinator accepts profile/command decisions and size evidence.
+**Gate C:** coordinator accepts profile/command decisions and size evidence.
 User approves the compact ceiling (proposed 52,428 B) and whether Step 4
 or Step 5 is justified. These optimizations are optional bridge work.
 
-STEP 4 PROMPT - CONDITIONAL LTO TRIAL
+## Step 4 - Conditional LTO trial
 
 Run only if explicitly authorized at Gate C. Trial -flto in both maintained
 profiles with identical dependencies. Compare each profile before/after;
@@ -191,7 +196,7 @@ Retain it only if the coordinator accepts the tradeoff; do not silently
 roll forward despite warnings or absent evidence. No parser changes.
 Stop and report. Bench verification remains a separate gate.
 
-STEP 5 PROMPT - CONDITIONAL BOUNDED ILIM PARSER
+## Step 5 - Conditional bounded ILIM parser
 
 Run only if explicitly authorized after reviewing achieved headroom.
 Replace only ILIM's sscanf dependency with a bounded, overflow-safe parser.
@@ -209,7 +214,7 @@ must leave both limits unchanged and produce an explicit protocol error.
 Do not rewrite String-based command buffering or unrelated command parsing.
 Update directly affected protocol docs only if behavior changes. Stop.
 
-STEP 6 PROMPT - ENFORCE THE AGREED BUDGET IN EXISTING CI
+## Step 6 - Enforce the agreed budget in existing CI
 
 Run after accepted optimizations and an approved numeric ceiling.
 Extend .github/workflows/platformio-build.yml; CI already exists.
@@ -228,7 +233,7 @@ limits to unrelated targets. Record remaining-feature headroom assumptions
 from the real feature inventory, not "80% complete" arithmetic.
 Stop with the report; do not merge or close the issue.
 
-STEP 7 PROMPT - BENCH EVIDENCE AND PR CLOSEOUT
+## Step 7 - Bench evidence and PR closeout
 
 Execute documentation/review preparation only unless the user separately
 authorizes specific hardware actions. Prepare a safe evidence checklist
@@ -246,10 +251,10 @@ Report acceptance criteria individually as met, open or blocked. The
 coordinator reviews the diff, CI and evidence and updates the draft PR.
 No automatic merge, issue closure, or unsupported "bench passed" claims.
 
-EXECUTION RECORD - COORDINATOR OWNED
+## Execution record - coordinator owned
 
-Planning: complete; execution handoffs not yet sent.
-Step 1: ready; not executed.
+Planning: complete; Markdown plan with per-step plain-text handoffs.
+Step 1: authorized; prompt provided to user for VS Code; awaiting agent report.
 Step 2: waiting for Gate A.
 Step 3: waiting for Step 2 review.
 Step 4: optional; not authorized.

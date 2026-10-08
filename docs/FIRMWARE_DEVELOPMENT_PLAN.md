@@ -144,7 +144,7 @@ PR description.
 | #40 CrowPanel startup test | Bucket 4 | In scope now |
 | #38 SPI memory test | Bucket 5 | In scope now |
 | #27 Bootup log and testing | Bucket 6 | In scope now |
-| #101 STM32F103C8 flash headroom and size budget | Bucket 6 | Planning only; sequential VS Code agent handoffs and coordinator approval gates in [issue-101-agent-plan.txt](firmware-buckets/issue-101-agent-plan.txt). Remove unused CDC with single-USART1 console ownership, then gate bench-only commands; LTO/parser work conditional on measured need. No optimization or bench verification claimed yet |
+| #101 STM32F103C8 flash headroom and size budget | Bucket 6 | Markdown plan with sequential plain-text VS Code agent handoffs and coordinator approval gates in [issue-101-agent-plan.md](firmware-buckets/issue-101-agent-plan.md). Step 1 baseline handoff authorized; awaiting report. Remove unused CDC with single-USART1 console ownership, then gate bench-only commands; LTO/parser work conditional on measured need. No optimization or bench verification claimed yet |
 | #33 Milestone C AHT20 fan curve | Bucket 6 | In scope now (diagnostics + validation evidence) |
 | #35 Milestone E bench fan-validation evidence capture | Bucket 6 | In scope now |
 | #25 Add OTA and Wi-Fi | Bucket 5 | Out of scope for Rev-C bench bring-up unless explicitly re-scoped |
