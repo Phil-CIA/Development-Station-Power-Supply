@@ -9,6 +9,10 @@
 HardwareSerial& SerialConsole = Serial1; // USART1 via CH340 on HAT
 HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
 
+#ifndef STM32_ENABLE_BRINGUP_BENCH_COMMANDS
+#define STM32_ENABLE_BRINGUP_BENCH_COMMANDS 0
+#endif
+
 // Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
 static const uint8_t PIN_ISET_5V = PA0;
 static const uint8_t PIN_ISET_3V3 = PA1;
@@ -438,8 +442,21 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 }
 
 void printCommandHelp() {
-  logConsole("cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
-  logConsole("udi: CMD:OUTPUT|ILIM|GET*");
+  logConsole("cmd core: HELP DIAG D9ON D9OFF CALSHOW CFGSHOW CALSET CFGSAVE CFGLOAD CFGRESET CFGERASE");
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
+  logConsole("cmd bench: FTEST AHTNOW AHTRESET SRTEST D9FLASH HBON HBOFF Q1/2/3/4/5/9ON/OFF Q39ON/OFF Q612ON/OFF QSTATE QSEQ INAPROBE INANOW INARAILS INADIAG AWPROBE AWMODE AWHB AWP10ON AWP10OFF Q9DIAG");
+#endif
+  logConsole("udi: CMD:OUTPUT ON|OFF ; CMD:GET OUTPUT|STATE|CFGREC|ILIM CH1|CH2 ; CMD:ILIM CH1|CH2 <mA>");
+}
+
+bool isBenchOnlyCommandName(const String& cmd) {
+  return cmd == "FTEST" || cmd == "AHTNOW" || cmd == "AHTRESET" || cmd == "SRTEST" || cmd == "D9FLASH" ||
+         cmd == "HBON" || cmd == "HBOFF" || cmd == "Q1ON" || cmd == "Q1OFF" || cmd == "Q2ON" || cmd == "Q2OFF" ||
+         cmd == "Q3ON" || cmd == "Q3OFF" || cmd == "Q4ON" || cmd == "Q4OFF" || cmd == "Q5ON" || cmd == "Q5OFF" ||
+         cmd == "Q9ON" || cmd == "Q9OFF" || cmd == "Q39ON" || cmd == "Q39OFF" || cmd == "Q612ON" ||
+         cmd == "Q612OFF" || cmd == "QSTATE" || cmd == "QSEQ" || cmd == "INAPROBE" || cmd == "INANOW" ||
+         cmd == "INARAILS" || cmd == "INADIAG" || cmd == "AWPROBE" || cmd == "AWMODE" || cmd == "AWHB" ||
+         cmd == "AWP10ON" || cmd == "AWP10OFF" || cmd == "Q9DIAG";
 }
 
 bool i2cPing(uint8_t address) {
@@ -1167,6 +1184,7 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
   if (cmd == "FTEST") {
     flash_test_runs++;
     char run_msg[48];
@@ -1175,6 +1193,7 @@ void handleCommand(const String& cmd_in) {
     flash_test_passed = runFlashBringupTest();
     return;
   }
+#endif
 
   if (cmd == "DIAG") {
     logConsole((PIN_FAULT_CRITICAL_SUM >= 0) ? "diag:fault-gpio" : "diag:fault-awint");
@@ -1182,6 +1201,7 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
   if (cmd == "AHTNOW") {
     Aht20Sample sample;
     if (readAht20Now(sample)) {
@@ -1228,6 +1248,7 @@ void handleCommand(const String& cmd_in) {
     flashD9Led(8, 1000, 1000);
     return;
   }
+#endif
 
   if (cmd == "D9ON") {
     g_output_enabled = true;
@@ -1245,6 +1266,7 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
   if (cmd == "HBON") {
     g_hb_print_enabled = true;
     logConsole("hb: periodic serial output ENABLED");
@@ -1256,7 +1278,9 @@ void handleCommand(const String& cmd_in) {
     logConsole("hb: periodic serial output DISABLED");
     return;
   }
+#endif
 
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
   if (cmd == "Q3ON") {
     setQ3OnlyEnabled(true);
     return;
@@ -1396,6 +1420,7 @@ void handleCommand(const String& cmd_in) {
     printInaRawDiagnostics();
     return;
   }
+#endif
 
   if (cmd == "CALSHOW" || cmd == "CFGSHOW") {
     printPersistentConfig();
@@ -1468,6 +1493,7 @@ void handleCommand(const String& cmd_in) {
     return;
   }
 
+#if STM32_ENABLE_BRINGUP_BENCH_COMMANDS
   if (cmd == "AWPROBE") {
     printAw95xxProbeSummary();
     return;
@@ -1519,6 +1545,16 @@ void handleCommand(const String& cmd_in) {
     }
     return;
   }
+#endif
+
+#if !STM32_ENABLE_BRINGUP_BENCH_COMMANDS
+  if (isBenchOnlyCommandName(cmd)) {
+    char unsupported_msg[96];
+    snprintf(unsupported_msg, sizeof(unsupported_msg), "cmd: unsupported in compact profile '%s'", cmd.c_str());
+    logConsole(unsupported_msg);
+    return;
+  }
+#endif
 
   char unknown_msg[80];
   snprintf(unknown_msg, sizeof(unknown_msg), "cmd: unknown '%s'", cmd.c_str());

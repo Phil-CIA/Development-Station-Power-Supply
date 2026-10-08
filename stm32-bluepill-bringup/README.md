@@ -21,39 +21,25 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
 
 ## Command shell
 
-- `HELP`
-- `FTEST`
-- `AHTNOW`
-- `AHTRESET`
-- `SRTEST`
-- `D9FLASH`
-- `D9ON`
-- `D9OFF`
-- `Q1ON`
-- `Q1OFF`
-- `Q2ON`
-- `Q2OFF`
-- `Q3ON`
-- `Q3OFF`
-- `Q4ON`
-- `Q4OFF`
-- `Q5ON`
-- `Q5OFF`
-- `Q39ON`
-- `Q39OFF`
-- `Q612ON`
-- `Q612OFF`
-- `QSTATE`
-- `QSEQ`
-- `INAPROBE`
-- `INANOW`
-- `INARAILS`
-- Display-over-UDI command channel on USART3:
-  - `CMD:OUTPUT ON|OFF`
-  - `CMD:ILIM CH1|CH2 <mA>`
-  - Responses: `ACK:...` / `ERR:...` / `EVT:...`
-- `AWPROBE`
-- `AWMODE`
+- Compact/default profile (`bluepill_f103c8`) keeps only:
+  - `HELP`, `DIAG`, `D9ON`, `D9OFF`
+  - `CALSHOW`, `CFGSHOW`, `CALSET`, `CFGSAVE`, `CFGLOAD`, `CFGRESET`, `CFGERASE`
+  - Display-over-UDI command channel on USART3:
+    - `CMD:OUTPUT ON|OFF`
+    - `CMD:ILIM CH1|CH2 <mA>`
+    - `CMD:GET OUTPUT|STATE|CFGREC|ILIM CH1|CH2`
+    - Responses: `ACK:...` / `ERR:...` / `EVT:...`
+
+- Full-bench profile (`bluepill_f103c8_bench`) includes all compact commands plus bench-only commands:
+  - `FTEST`, `AHTNOW`, `AHTRESET`, `SRTEST`, `D9FLASH`, `HBON`, `HBOFF`
+  - `Q1ON/Q1OFF`, `Q2ON/Q2OFF`, `Q3ON/Q3OFF`, `Q4ON/Q4OFF`, `Q5ON/Q5OFF`
+  - `Q9ON/Q9OFF`, `Q39ON/Q39OFF`, `Q612ON/Q612OFF`, `QSTATE`, `QSEQ`, `Q9DIAG`
+  - `INAPROBE`, `INANOW`, `INARAILS`, `INADIAG`
+  - `AWPROBE`, `AWMODE`, `AWHB`, `AWP10ON`, `AWP10OFF`
+
+- Compact profile behavior for excluded bench commands:
+  - Bench command names are not listed by `HELP`.
+  - Entering one returns an explicit unsupported response (`cmd: unsupported in compact profile '...'`).
 
 Range pair notes:
 - `Q1ON` / `Q1OFF` drive AW9523 `P0.2` (`ESP- GPIO 5V Low`) for the Q1/Q7 gate path.
@@ -89,7 +75,44 @@ AW9523 mode notes:
 
 ## Build
 
-`py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Compact/default profile:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Full-bench profile:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench`
+
+Native USB CDC is absent in both maintained profiles.
+
+## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
+
+Scope executed: Step 3 only for issue #101 / draft PR #103.
+
+- Maintained environments:
+  - `bluepill_f103c8`: compact/default profile (`STM32_ENABLE_BRINGUP_BENCH_COMMANDS=0`)
+  - `bluepill_f103c8_bench`: full-bench profile (`STM32_ENABLE_BRINGUP_BENCH_COMMANDS=1`)
+- Shared configuration is defined in non-environment section `stm32_common` and referenced by both maintained environments in `platformio.ini`.
+- Bench evidence status: NOT RUN (build/static analysis only).
+
+Measured build results (clean builds, Python 3.13, no upload):
+
+| Profile | PlatformIO flash used/free | PlatformIO static RAM | Complete loadable image used/free* | firmware.bin length |
+|---|---:|---:|---:|---:|
+| Compact `bluepill_f103c8` | 44,956 / 20,580 B | 2,000 B | 45,276 / 20,260 B | 45,276 B |
+| Full-bench `bluepill_f103c8_bench` | 52,256 / 13,280 B | 2,000 B | 52,576 / 12,960 B | 52,576 B |
+
+*Complete loadable image counts every flash `LOAD` section (`.isr_vector`, `.text`, `.rodata`, `.ARM`, `.init_array`, `.fini_array`, and `.data` initializers).
+
+Delta versus Step 2 baseline (`bluepill_f103c8`, CDC removed, 51,980 B PlatformIO flash and 52,300 B complete image):
+
+- Compact/default profile:
+  - PlatformIO flash delta: -7,024 B
+  - Complete image delta: -7,024 B
+- Full-bench profile:
+  - PlatformIO flash delta: +276 B
+  - Complete image delta: +276 B
+
+Evidence artifacts (ELF/map/objdump/symbol/log extracts):
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-3`
 
 ## Issue #101 Step 1 Baseline (2026-10-08)
 

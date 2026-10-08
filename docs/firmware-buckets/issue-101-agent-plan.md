@@ -4,8 +4,8 @@ Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
-Status: Step 1 complete; Gate A accepted; Step 2 implementation complete and Gate B accepted by coordinator.
-Next authorized handoff: STEP 3 (separate coordinator prompt required; not started).
+Status: Step 1 complete; Gate A accepted; Step 2 implementation complete and Gate B accepted by coordinator; Step 3 implementation complete, pending Gate C review.
+Next authorized handoff: Gate C coordinator review and user decision on compact-ceiling approval.
 
 ## How we work
 
@@ -268,10 +268,15 @@ Step 2: implementation complete; Gate B accepted by coordinator.
 	- Complete loadable image: flash 52,300 B used / 13,236 B free.
 	- CDC absent in maintained STM32 config; one USART1 console owner; USART3 UDI remains separate.
 	- Bench status for Step 2: NOT RUN (build/diff/documentation evidence only).
-Step 3: next authorized step, but not started.
+Step 3: implementation complete; Gate C review pending.
+	- Environments: `bluepill_f103c8` (compact/default) and `bluepill_f103c8_bench` (full bench), with shared settings in `stm32_common` and `default_envs = bluepill_f103c8`.
+	- Compact build result: PlatformIO flash 44,956 B used / 20,580 B free, static RAM 2,000 B; complete image 45,276 B used / 20,260 B free; `firmware.bin` 45,276 B.
+	- Full-bench build result: PlatformIO flash 52,256 B used / 13,280 B free, static RAM 2,000 B; complete image 52,576 B used / 12,960 B free; `firmware.bin` 52,576 B.
+	- Delta vs Step 2 baseline (PlatformIO 51,980 B / complete image 52,300 B): compact saves 7,024 B; full-bench is +276 B.
+	- Build status: both profiles passed clean builds; bench status: NOT RUN.
 Step 4: optional; not authorized.
 Step 5: optional; not authorized.
-Step 6: waiting for accepted changes and user-approved ceiling.
+Step 6: waiting for Gate C acceptance and a user-approved compact ceiling.
 Step 7: waiting for final build evidence and user bench availability.
 Bench status: NOT RUN.
-Flash ceiling approval: pending; proposed compact ceiling 52,428 B (128 B margin over current complete image).
+Flash ceiling approval: pending; proposed compact ceiling 52,428 B remains unapproved and is not enforced.
