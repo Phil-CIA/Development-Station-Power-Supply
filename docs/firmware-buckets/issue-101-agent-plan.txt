@@ -1,0 +1,260 @@
+ISSUE 101 - STM32 FLASH HEADROOM / VS CODE AGENT EXECUTION PLAN
+
+Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
+Branch: phil-cia-stm32-flash-headroom
+Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
+Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
+Status: Planning only. No optimization applied; no firmware uploaded.
+Next authorized handoff: STEP 1 only.
+
+HOW WE WORK
+
+This Copilot app session is the coordinator. The user chooses the VS Code
+agent/model for each step and pastes its report back here. The coordinator
+reviews the actual diff and evidence before authorizing the next step.
+Do not execute this entire file as one assignment.
+
+Copy COMMON AGENT INSTRUCTIONS, REPORT FORMAT, and ONE STEP PROMPT into
+the VS Code agent. Later step prompts are prepared, NOT authorized.
+After each review, update this file's execution record and next handoff.
+Changing models does not change scope or bypass an approval gate.
+Only one agent writes to the branch at a time.
+
+Use the checkout for this branch, NOT the project's main checkout.
+At plan creation, its Windows path is:
+C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
+The folder retains its generated name although the branch was renamed.
+If the path changes, obtain the current session path from the coordinator.
+Before editing, verify git branch --show-current and git status --short.
+If the branch is wrong or another agent's changes conflict, stop and report.
+
+CONFIRMED DIRECTION / NON-NEGOTIABLES
+
+Native USB CDC is unused on the current HAT and can be removed. Future USB,
+Wi-Fi and a more capable MCU belong to a later revision, not this PR.
+CDC removal must consolidate all console paths onto ONE USART1 object;
+a flag-only removal leaves duplicate USART1 objects and is not acceptable.
+USART1: CH340 console, PA10 RX / PA9 TX, 115200 8N1.
+USART3: separate UDI, PB11 RX / PB10 TX, 115200 8N1.
+Confirm these against docs/STM32_BLUEPILL_PIN_TABLE.md before changes.
+
+Bench-only commands may be gated behind a compile-time bring-up flag.
+Keep the full bench profile available; do not delete commands in this PR
+just because a compact profile excludes them. Deletion requires captured
+bucket evidence and separate approval.
+
+Every maintained profile retains safe startup, AW9523 fault IRQ/EVT,
+telemetry, UDI ACK/ERR/EVT, CALSET/CFG provisioning, runtime device drivers,
+and actionable boot/config/failure/recovery messages.
+Do not remove runtime functions merely because a debug command uses them.
+Do not alter persistence layout, hardware pins, rail architecture, CrowPanel
+behavior, board flash limits, or assume undocumented 128 KiB capacity.
+External W25Q128 data flash is not additional executable internal flash.
+
+The proposed compact flash ceiling is 52,428 of 65,536 bytes, reserving
+13,108 bytes. This is a planning target until the user approves it at Gate C.
+Bench/full must always fit the documented 65,536-byte capacity.
+Static RAM totals do not establish heap/stack or timing safety.
+
+COMMON AGENT INSTRUCTIONS (COPY WITH EACH STEP)
+
+Work only on issue #101 in branch phil-cia-stm32-flash-headroom.
+Read the current issue body AND comments, this plan, README.md,
+docs/SYSTEM_DEVELOPMENT_WORKFLOW.md, docs/FIRMWARE_DEVELOPMENT_PLAN.md,
+docs/display-project/README.md, stm32-bluepill-bringup/README.md,
+stm32-bluepill-bringup/platformio.ini, docs/STM32_BLUEPILL_PIN_TABLE.md,
+docs/DISPLAY_INTERFACE_STANDARD.md, and .github/workflows/platformio-build.yml.
+Repo code/docs are the source of truth; inspect callers before removing code.
+
+Execute ONLY the assigned step. Preserve unrelated edits. No broad cleanup,
+new controller design, deep driver rewrite, or String rewrite.
+No uploads, output toggles, induced faults, flash erase, or physical tests
+without separate user authorization. Build-only work is the default.
+Never claim bench verification from a successful build.
+Do not create another branch/PR, merge, edit main, push, or amend commits.
+Leave changes uncommitted for coordinator review. The coordinator commits
+accepted steps and updates the draft PR.
+Do not modify this plan's approval/status fields yourself.
+
+Build with:
+python -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8
+Record failures honestly. Do not change flash capacity to make a build pass.
+If blocked, report evidence and stop; do not start the next step.
+Use existing testing/build conventions and add focused checks for new logic.
+Do not silently omit failures or emit success-shaped fallback responses.
+
+REPORT FORMAT (COPY WITH EACH STEP)
+
+STEP / selected model (if known):
+Branch, checkout path, starting commit:
+Files changed and why:
+Exact commands run and exit results:
+Resolved platform/core/toolchain/direct/transitive library versions:
+Before/after flash bytes, free bytes, static RAM, and delta:
+ELF/map/section/symbol evidence paths:
+Behavior preserved / intentional behavior changes:
+Tests and regressions covered:
+Bench evidence: NOT RUN, or user-authorized procedure and observed results:
+Risks, blockers, unresolved decisions:
+Suggested next action (do not execute):
+
+For documentation-only or measurement-only steps, state no firmware change.
+Distinguish measured savings from estimates. Compare identical dependency
+versions and profiles, and count .data initializers in flash usage.
+Do not commit ELF/map/build products or raw verbose logs; use session artifacts
+or PR attachments and put concise durable results in relevant repo docs.
+
+STEP 1 PROMPT - REPRODUCE AND FREEZE THE BASELINE
+
+Execute Step 1 only. Inspect the current environment and reproduce the
+unmodified STM32 build at the current commit. The issue baseline is commit
+92699b9055c234a5c3ab6e01942a42af69880efa: flash 64,892 B, free 644 B,
+static RAM 5,536 B. Those figures are prior evidence, not a guaranteed result.
+
+Capture the ELF, linker map (generate one if absent), sections, and largest
+symbols. Identify resolved dependencies including AW9523 and BusIO and
+compare tool versions with the issue. Explain any baseline discrepancy.
+Pin the currently resolved direct/transitive library versions in the STM32
+configuration without upgrading them, then clean-build and verify the same
+baseline. Record tooling needed for reproducible later comparisons; do not
+pin unrelated projects or refactor the CI installation yet.
+
+Document the baseline and evidence location in the STM32 README. Inspect all
+console initialization/logging/polling paths and report the intended single
+USART1 consolidation; do NOT remove CDC or alter firmware behavior yet.
+Report the command inventory with runtime-shared helpers and a proposed
+bench-only allowlist, including commands not explicitly listed in the issue.
+Stop for Gate A.
+
+GATE A - coordinator reviews baseline, pins, console ownership and scope.
+Authorize Step 2 only after accepting this report/diff.
+
+STEP 2 PROMPT - REMOVE CDC AND CONSOLIDATE THE CONSOLE
+
+Execute Step 2 only after Gate A approval. Remove native USB CDC from the
+maintained STM32 configuration. Inspect Arduino core 2.12 behavior and choose
+one USART1 object with explicit ownership; avoid both the core Serial1 and
+an application SerialDbg initializing/polling the same peripheral.
+Consolidate every boot log, heartbeat, error, helper and command polling path
+onto that single console, retaining the CH340 pin/baud contract.
+Keep USART3 UDI separate and unchanged. Do not add LTO or gate debug commands
+in this step. Rename logging helpers only where their old name becomes
+misleading; avoid unrelated source cleanup.
+
+Build cleanly, compare against Step 1, inspect symbols for CDC removal and
+single USART1 ownership, and explain RAM changes. Update the STM32 README
+console description and firmware plan's flash status with measured results,
+explicitly NOT bench-tested. Include safe, user-run bench checks for boot
+messages, heartbeat, HELP/DIAG/CFGSHOW and UDI GET/ACK/ERR; do not run hardware.
+Stop for Gate B.
+
+GATE B - coordinator reviews console diff and build evidence.
+User bench-checks console/UDI when hardware is available. Missing bench
+evidence remains explicit; it is not permission to claim runtime success.
+
+STEP 3 PROMPT - ADD COMPACT AND FULL BENCH PROFILES
+
+Execute Step 3 only after authorization. Based on the approved inventory,
+introduce one explicit bring-up flag and a maintained full-bench environment.
+Use bluepill_f103c8 as the compact/default environment, with the flag off,
+and bluepill_f103c8_bench as the full bench environment with the flag on.
+Share platform/dependency/common flags through PlatformIO inheritance; no
+duplicated drifting config. Neither profile re-enables native USB CDC.
+
+Gate bench-only command dispatch, their exclusive implementations/strings,
+and HELP entries consistently. Candidates approved in the issue include
+Q-path/range-pair tests, AW9523 P1.0/mode pokes, D9FLASH, SRTEST, INADIAG,
+QSEQ and Q9DIAG. Other commands require inventory review, not assumptions.
+Preserve shared boot/fault/device/control functions, CFG/CAL provisioning
+and actionable diagnostics in both profiles. Excluded commands must report
+an explicit unsupported/unknown error, never appear to succeed.
+
+Build both profiles cleanly. Provide a command availability table and
+before/after flash/RAM deltas for like-for-like configurations. Verify
+full-bench command/help parity and compact retained behavior. Update the
+STM32 README with profile usage and warnings. Do not delete bench code,
+add LTO, change parsing or touch hardware. Stop for Gate C.
+
+GATE C - coordinator accepts profile/command decisions and size evidence.
+User approves the compact ceiling (proposed 52,428 B) and whether Step 4
+or Step 5 is justified. These optimizations are optional bridge work.
+
+STEP 4 PROMPT - CONDITIONAL LTO TRIAL
+
+Run only if explicitly authorized at Gate C. Trial -flto in both maintained
+profiles with identical dependencies. Compare each profile before/after;
+record linker warnings, flash, static RAM and relevant code retention.
+Do not retain LTO just because it compiles. Document runtime risks and a
+user-run bench regression checklist covering boot outputs, IRQ/fault EVT,
+I2C/SPI devices, telemetry, console/UDI and persistence/recovery.
+Retain it only if the coordinator accepts the tradeoff; do not silently
+roll forward despite warnings or absent evidence. No parser changes.
+Stop and report. Bench verification remains a separate gate.
+
+STEP 5 PROMPT - CONDITIONAL BOUNDED ILIM PARSER
+
+Run only if explicitly authorized after reviewing achieved headroom.
+Replace only ILIM's sscanf dependency with a bounded, overflow-safe parser.
+Inspect normalization and existing parser helpers first. Preserve valid
+CH1/CH2 values, range endpoints, command responses and state updates.
+Test zero, positive limits, upper endpoints, one-above, negative/sign input,
+huge integers/overflow, bad channel, missing tokens, whitespace, malformed
+numbers and trailing input. Capture current behavior before changes.
+Document any intentional stricter treatment of trailing/malformed input and
+obtain coordinator approval rather than silently changing compatibility.
+
+Provide deterministic host-side or repository-standard logic tests and
+build both profiles; compare incremental measured savings. Invalid input
+must leave both limits unchanged and produce an explicit protocol error.
+Do not rewrite String-based command buffering or unrelated command parsing.
+Update directly affected protocol docs only if behavior changes. Stop.
+
+STEP 6 PROMPT - ENFORCE THE AGREED BUDGET IN EXISTING CI
+
+Run after accepted optimizations and an approved numeric ceiling.
+Extend .github/workflows/platformio-build.yml; CI already exists.
+Build compact and full-bench STM32 environments without disturbing other
+targets. Enforce the agreed compact ceiling and full bench's 65,536-byte
+capacity. Measure flash from the actual linked artifact including .data
+load bytes and required vector/initialization sections, not .text alone.
+Report used/free flash and static RAM. Fail explicitly for missing artifacts,
+malformed measurements and over-budget results; never skip into success.
+
+Add focused tests for exactly-at-budget, one-byte-over, missing/malformed
+artifact input, and correct flash-vs-RAM attribution. Keep checks portable
+between Windows developer builds and Linux CI. Upload size/map evidence as
+CI artifacts and document the local equivalent. Avoid adding global size
+limits to unrelated targets. Record remaining-feature headroom assumptions
+from the real feature inventory, not "80% complete" arithmetic.
+Stop with the report; do not merge or close the issue.
+
+STEP 7 PROMPT - BENCH EVIDENCE AND PR CLOSEOUT
+
+Execute documentation/review preparation only unless the user separately
+authorizes specific hardware actions. Prepare a safe evidence checklist
+covering compact and bench boot, safe PA0/PA1/PA2 output states, console,
+USART3 telemetry and ACK/ERR round trips, AW9523 fault IRQ/EVT, I2C/SPI,
+config/calibration cold-boot persistence and induced recovery.
+Fault injection, output enabling and config erase/reset need explicit user
+approval and a known-safe bench setup. Capture runtime heap/stack/timing
+evidence where feasible; report gaps rather than treating static RAM as proof.
+
+Incorporate only actual user-provided or authorized observations. Update
+docs/FIRMWARE_DEVELOPMENT_PLAN.md and the STM32 README with final measured
+sizes, profile contracts, preserved functionality and open evidence.
+Report acceptance criteria individually as met, open or blocked. The
+coordinator reviews the diff, CI and evidence and updates the draft PR.
+No automatic merge, issue closure, or unsupported "bench passed" claims.
+
+EXECUTION RECORD - COORDINATOR OWNED
+
+Planning: complete; execution handoffs not yet sent.
+Step 1: ready; not executed.
+Step 2: waiting for Gate A.
+Step 3: waiting for Step 2 review.
+Step 4: optional; not authorized.
+Step 5: optional; not authorized.
+Step 6: waiting for accepted changes and user-approved ceiling.
+Step 7: waiting for final build evidence and user bench availability.
+Bench status: NOT RUN.
+Flash ceiling approval: pending; proposed compact ceiling 52,428 B.
