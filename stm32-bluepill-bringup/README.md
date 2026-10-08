@@ -9,8 +9,9 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
   - PA1 = ISET_MPU_3V3
   - PA2 = ISET_MPU_Channel_3
 - Blinks PC13 status LED every 1 second.
-- Emits heartbeat on USB/USART monitor (`Serial`) at 115200.
+- Emits heartbeat/logging on USART1 (CH340 path, PA10 RX / PA9 TX) at 115200 8N1.
 - Emits extended binary telemetry on USART3 via `HardwareSerial SerialU3(PB11, PB10)` at 115200.
+- Native USB CDC console is not provided by this maintained configuration.
 
 ## Current role in this repo
 
@@ -88,7 +89,7 @@ AW9523 mode notes:
 
 ## Build
 
-`platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+`py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
 
 ## Issue #101 Step 1 Baseline (2026-10-08)
 
@@ -97,6 +98,11 @@ Measured on branch `phil-cia-stm32-flash-headroom` at commit `cbeee06`.
 - Build (unchanged target): `python -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
 - Flash usage: 64,892 / 65,536 bytes (free: 644 bytes)
 - Static RAM usage: 5,536 / 20,480 bytes
+
+Flash accounting note for Step 1 baseline:
+
+- PlatformIO reported metric: 64,892 bytes used / 644 bytes free.
+- Complete loadable image footprint (all flash `LOAD` sections, including vectors/init/fini/.ARM and `.data` initializers): 65,216 bytes used / 320 bytes free.
 
 Resolved tooling and package versions used for this baseline:
 
@@ -123,6 +129,73 @@ Evidence artifacts (ELF, map, section/symbol reports, and build logs) were captu
 - `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-1`
 
 Bench evidence status: NOT bench-tested in this step (build and static artifact analysis only).
+
+## Issue #101 Step 2 (2026-10-08) - CDC removal + console consolidation
+
+Scope executed: Step 2 only for issue #101 / draft PR #103.
+
+- Removed `PIO_FRAMEWORK_ARDUINO_ENABLE_CDC` from `bluepill_f103c8`.
+- Console ownership is consolidated to one USART1 owner: core `Serial1` via `HardwareSerial& SerialConsole = Serial1`.
+- Explicit pin setup is applied before `begin()`:
+  - `SerialConsole.setRx(PA10)`
+  - `SerialConsole.setTx(PA9)`
+  - `SerialConsole.begin(115200)`
+- App-owned `SerialDbg(PA10, PA9)` is removed.
+- USART3 UDI path remains independent and unchanged: `HardwareSerial SerialU3(PB11, PB10)` at 115200 8N1.
+
+Measured build (clean, build-only; no upload/bench):
+
+- Command: `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t clean`
+- Command: `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Python: 3.13.15
+- PlatformIO Core: 6.2.0
+- Platform/platform packages: unchanged from baseline (`ststm32` 19.7.0, core 2.12.0, GCC 12.3.1)
+- Direct/transitive libs preserved: `Adafruit AW9523@1.0.5`, `Adafruit BusIO@1.17.4`
+- Flash usage (PlatformIO reported metric): 51,980 / 65,536 bytes (free: 13,556 bytes)
+- Static RAM usage: 2,000 / 20,480 bytes
+
+Complete image accounting (all loadable flash sections):
+
+- `.isr_vector` 268 B
+- `.text` 44,256 B
+- `.rodata` 7,596 B
+- `.ARM` 8 B
+- `.init_array` 28 B
+- `.fini_array` 16 B
+- `.data` initializers (flash load) 128 B
+- Total complete image footprint = 52,300 B
+- Free by complete image accounting = 13,236 B
+
+Method comparison and deltas versus Step 1 baseline:
+
+| Method | Step 1 used/free | Step 2 used/free | Delta used | Delta free |
+|---|---:|---:|---:|---:|
+| PlatformIO reported | 64,892 / 644 | 51,980 / 13,556 | -12,912 | +12,912 |
+| Complete loadable image | 65,216 / 320 | 52,300 / 13,236 | -12,916 | +12,916 |
+
+Compact-ceiling status note:
+
+- Proposed compact ceiling remains pending user review: 52,428 bytes.
+- Current complete image footprint is 52,300 bytes, leaving only 128 bytes to that proposed ceiling; this does not by itself demonstrate adequate remaining feature headroom.
+
+Evidence artifacts for Step 2:
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-2`
+
+Bench evidence status: NOT RUN in Step 2.
+
+### User-run bench checklist (not executed in this step)
+
+- Confirm boot logs appear on CH340 USART1 at 115200 8N1.
+- Run `HELP`, `DIAG`, and `CFGSHOW`; verify readable responses and no duplicate lines.
+- Confirm periodic binary telemetry continues on USART3 (PB11/PB10 path).
+- Run read-only UDI round trips and confirm ACK/ERR behavior:
+  - `CMD:GET OUTPUT`
+  - `CMD:GET STATE`
+  - `CMD:GET CFGREC`
+  - `CMD:GET ILIM CH1`
+  - `CMD:GET ILIM CH2`
+  - malformed command (expect `ERR:`)
 
 ## Issue #101 Gate A Proposals - Pending Coordinator Review
 

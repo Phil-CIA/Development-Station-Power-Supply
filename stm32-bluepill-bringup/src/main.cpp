@@ -4,9 +4,9 @@
 #include <string.h>
 #include <Adafruit_AW9523.h>
 
-// NOTE: framework-arduinoststm32 4.21200.0 (core 2.12) has no `Uart`; its concrete
-// serial class is `HardwareSerial` with an (rx, tx) pin-pair constructor.
-HardwareSerial SerialDbg(PA10, PA9); // RX, TX (USART1 via CH340 on HAT)
+// NOTE: framework-arduinoststm32 4.21200.0 (core 2.12) provides concrete
+// `HardwareSerial` instances (Serial1..). Keep one USART1 owner for console.
+HardwareSerial& SerialConsole = Serial1; // USART1 via CH340 on HAT
 HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
 
 // Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
@@ -267,11 +267,9 @@ void onAw9523Interrupt();
 void serviceAw9523FaultPath();
 bool sampleFaultSumFromAw9523();
 
-void logBoth(const char* msg) {
-  Serial.println(msg);
-  SerialDbg.println(msg);
+void logConsole(const char* msg) {
+  SerialConsole.println(msg);
 }
-
 void onAw9523Interrupt() {
   g_aw_int_pending = true;
 }
@@ -440,8 +438,8 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 }
 
 void printCommandHelp() {
-  logBoth("cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
-  logBoth("udi: CMD:OUTPUT|ILIM|GET*");
+  logConsole("cmd: HELP/DIAG/FTEST/AHT*/SR*/D9*/INA*/CAL*/CFG*/AW*");
+  logConsole("udi: CMD:OUTPUT|ILIM|GET*");
 }
 
 bool i2cPing(uint8_t address) {
@@ -567,7 +565,7 @@ void printInaProbeSummary() {
            "ina: 0x40=%s 0x41=%s",
            found_5v ? "ACK" : "MISS",
            found_3v3 ? "ACK" : "MISS");
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void printAw95xxProbeSummary() {
@@ -580,13 +578,13 @@ void printAw95xxProbeSummary() {
                sizeof(msg),
                "aw95xx: candidate ACK at 0x%02X",
                addr);
-      logBoth(msg);
+      logConsole(msg);
       found_any = true;
     }
   }
 
   if (!found_any) {
-    logBoth("aw95xx: no ACK in 0x58-0x5B");
+    logConsole("aw95xx: no ACK in 0x58-0x5B");
   }
 }
 
@@ -658,7 +656,7 @@ void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_hig
   if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P0, p0_out) ||
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in) ||
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, p0_cfg)) {
-    logBoth("aw95xx diag: failed reading P0 output/input/config registers");
+    logConsole("aw95xx diag: failed reading P0 output/input/config registers");
     return;
   }
 
@@ -679,15 +677,15 @@ void logAwP0MaskElectricalState(const char* tag, uint8_t mask, bool expected_hig
            static_cast<unsigned>(p0_out),
            static_cast<unsigned>(p0_in),
            static_cast<unsigned>(p0_cfg));
-  logBoth(msg);
+  logConsole(msg);
 
   if (is_out == 0u) {
-    logBoth("aw95xx diag: pin not configured as output");
+    logConsole("aw95xx diag: pin not configured as output");
     return;
   }
 
   if ((out_bit == want) && (in_bit != want)) {
-    logBoth("awdiag: out/in mismatch (check pull/load)");
+    logConsole("awdiag: out/in mismatch (check pull/load)");
   }
 }
 
@@ -759,7 +757,7 @@ bool aw95xxEnsureGpioPushPull() {
 
 void aw95xxPrintModeRegs() {
   if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
-    logBoth("aw95xx: 0x58 not responding");
+    logConsole("aw95xx: 0x58 not responding");
     return;
   }
 
@@ -773,7 +771,7 @@ void aw95xxPrintModeRegs() {
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, cfg_p1) ||
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P0, mode_p0) ||
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_LED_MODE_P1, mode_p1)) {
-    logBoth("aw95xx: failed reading mode registers");
+    logConsole("aw95xx: failed reading mode registers");
     return;
   }
 
@@ -787,7 +785,7 @@ void aw95xxPrintModeRegs() {
            static_cast<unsigned>(cfg_p1),
            static_cast<unsigned>(mode_p0),
            static_cast<unsigned>(mode_p1));
-  logBoth(msg);
+  logConsole(msg);
 
   if (cfg_p0 != AW95XX_CFG_P0_POLICY) {
     char warn[96];
@@ -795,7 +793,7 @@ void aw95xxPrintModeRegs() {
              sizeof(warn),
              "aw95xx warn: CFG_P0 policy mismatch (expected 0x%02X)",
              static_cast<unsigned>(AW95XX_CFG_P0_POLICY));
-    logBoth(warn);
+    logConsole(warn);
   }
 }
 
@@ -818,25 +816,25 @@ bool aw95xxWriteP10(bool high) {
 
 void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
   if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
-    logBoth("aw95xx: 0x58 not responding");
+    logConsole("aw95xx: 0x58 not responding");
     return;
   }
 
   uint8_t saved_cfg = 0;
   uint8_t saved_out = 0;
   if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
-    logBoth("aw95xx: failed to set P1.0 output mode");
+    logConsole("aw95xx: failed to set P1.0 output mode");
     return;
   }
 
   for (uint8_t i = 0; i < blinks; i++) {
     if (!aw95xxWriteP10(true)) {
-      logBoth("aw95xx: write fail during heartbeat ON");
+      logConsole("aw95xx: write fail during heartbeat ON");
       break;
     }
     delay(on_ms);
     if (!aw95xxWriteP10(false)) {
-      logBoth("aw95xx: write fail during heartbeat OFF");
+      logConsole("aw95xx: write fail during heartbeat OFF");
       break;
     }
     delay(off_ms);
@@ -845,7 +843,7 @@ void runAwP10Heartbeat(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
   // Restore pre-test state.
   i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_OUTPUT_P1, saved_out);
   i2cWriteReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P1, saved_cfg);
-  logBoth("aw95xx: P1.0 heartbeat complete");
+  logConsole("aw95xx: P1.0 heartbeat complete");
 }
 
 void printInaReading(const Ina3221Reading& reading, const char* label) {
@@ -868,7 +866,7 @@ void printInaReading(const Ina3221Reading& reading, const char* label) {
            ch2_i,
            ch3_v,
            ch3_i);
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* ina_3v3) {
@@ -886,9 +884,9 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
              hi_i,
              lo_v,
              lo_i);
-    logBoth(msg_5v);
+    logConsole(msg_5v);
   } else {
-    logBoth("rail 5V: INA 0x40 unavailable");
+    logConsole("rail 5V: INA 0x40 unavailable");
   }
 
   if (ina_3v3 != nullptr) {
@@ -909,10 +907,10 @@ void printInaRailsSummary(const Ina3221Reading* ina_5v, const Ina3221Reading* in
              lo_i,
              in_v,
              in_i);
-    logBoth(msg_3v3);
-    logBoth("rail note: 0x41 CH3 is incoming rail monitor on this rev.");
+    logConsole(msg_3v3);
+    logConsole("rail note: 0x41 CH3 is incoming rail monitor on this rev.");
   } else {
-    logBoth("rail 3V3: INA 0x41 unavailable");
+    logConsole("rail 3V3: INA 0x41 unavailable");
   }
 }
 
@@ -924,7 +922,7 @@ void printInaRawDiagnostics() {
     if (!i2cPing(address)) {
       char msg[48];
       snprintf(msg, sizeof(msg), "ina raw 0x%02X: no ACK", address);
-      logBoth(msg);
+      logConsole(msg);
       continue;
     }
 
@@ -947,7 +945,7 @@ void printInaRawDiagnostics() {
                  shunt_ok ? "OK" : "ERR",
                  static_cast<unsigned>(bus_reg),
                  bus_ok ? "OK" : "ERR");
-        logBoth(msg);
+        logConsole(msg);
         continue;
       }
 
@@ -972,7 +970,7 @@ void printInaRawDiagnostics() {
                bus_v,
                static_cast<int>(shunt_ohms * 1000.0f + 0.5f),
                static_cast<int>(current_mA + (current_mA >= 0.0f ? 0.5f : -0.5f)));
-      logBoth(msg);
+      logConsole(msg);
     }
   }
 
@@ -982,14 +980,14 @@ void printInaRawDiagnostics() {
   formatFixedValue(g_config.rail_5v.current_gain, 100000, 5, ig, sizeof(ig));
   formatFixedValue(g_config.rail_5v.current_offset_mA, 100, 2, io, sizeof(io));
   snprintf(msg, sizeof(msg), "cal 5V vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
-  logBoth(msg);
+  logConsole(msg);
 
   formatFixedValue(g_config.rail_3v3.voltage_gain, 100000, 5, vg, sizeof(vg));
   formatFixedValue(g_config.rail_3v3.voltage_offset_mV, 100, 2, vo, sizeof(vo));
   formatFixedValue(g_config.rail_3v3.current_gain, 100000, 5, ig, sizeof(ig));
   formatFixedValue(g_config.rail_3v3.current_offset_mA, 100, 2, io, sizeof(io));
   snprintf(msg, sizeof(msg), "cal 3V3 vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void sendUdiAck(const char* payload) {
@@ -1173,13 +1171,13 @@ void handleCommand(const String& cmd_in) {
     flash_test_runs++;
     char run_msg[48];
     snprintf(run_msg, sizeof(run_msg), "flash: manual test run #%lu", static_cast<unsigned long>(flash_test_runs));
-    logBoth(run_msg);
+    logConsole(run_msg);
     flash_test_passed = runFlashBringupTest();
     return;
   }
 
   if (cmd == "DIAG") {
-    logBoth((PIN_FAULT_CRITICAL_SUM >= 0) ? "diag:fault-gpio" : "diag:fault-awint");
+    logConsole((PIN_FAULT_CRITICAL_SUM >= 0) ? "diag:fault-gpio" : "diag:fault-awint");
     logHealthSummary();
     return;
   }
@@ -1199,9 +1197,9 @@ void handleCommand(const String& cmd_in) {
                static_cast<long>(h_whole),
                static_cast<long>(h_frac),
                g_aht20.status);
-      logBoth(msg);
+      logConsole(msg);
     } else {
-      logBoth("aht20: read failed");
+      logConsole("aht20: read failed");
     }
     return;
   }
@@ -1212,12 +1210,12 @@ void handleCommand(const String& cmd_in) {
     const uint8_t tx_ok = Wire.endTransmission();
     delay(25);
     if (tx_ok != 0) {
-      logBoth("aht20: soft reset tx failed");
+      logConsole("aht20: soft reset tx failed");
       return;
     }
     Aht20Sample sample;
     const bool ok = readAht20Now(sample);
-    logBoth(ok ? "aht20: reset + probe OK" : "aht20: reset done, read still failing");
+    logConsole(ok ? "aht20: reset + probe OK" : "aht20: reset done, read still failing");
     return;
   }
 
@@ -1249,13 +1247,13 @@ void handleCommand(const String& cmd_in) {
 
   if (cmd == "HBON") {
     g_hb_print_enabled = true;
-    logBoth("hb: periodic serial output ENABLED");
+    logConsole("hb: periodic serial output ENABLED");
     return;
   }
 
   if (cmd == "HBOFF") {
     g_hb_print_enabled = false;
-    logBoth("hb: periodic serial output DISABLED");
+    logConsole("hb: periodic serial output DISABLED");
     return;
   }
 
@@ -1365,18 +1363,18 @@ void handleCommand(const String& cmd_in) {
     const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
     const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
     if (!ok_5v && !ok_3v3) {
-      logBoth("ina: no expected devices responded");
+      logConsole("ina: no expected devices responded");
       return;
     }
     if (ok_5v) {
       printInaReading(ina_5v, "5V");
     } else {
-      logBoth("ina 5V 0x40: read failed");
+      logConsole("ina 5V 0x40: read failed");
     }
     if (ok_3v3) {
       printInaReading(ina_3v3, "3V3");
     } else {
-      logBoth("ina 3V3 0x41: read failed");
+      logConsole("ina 3V3 0x41: read failed");
     }
     return;
   }
@@ -1387,7 +1385,7 @@ void handleCommand(const String& cmd_in) {
     const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
     const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
     if (!ok_5v && !ok_3v3) {
-      logBoth("ina rails: no expected devices responded");
+      logConsole("ina rails: no expected devices responded");
       return;
     }
     printInaRailsSummary(ok_5v ? &ina_5v : nullptr, ok_3v3 ? &ina_3v3 : nullptr);
@@ -1411,16 +1409,16 @@ void handleCommand(const String& cmd_in) {
     float i_gain = 1.0f;
     float i_off_mA = 0.0f;
     if (!parseCalsetCommand(cmd, rail_token, sizeof(rail_token), v_gain, v_off_mV, i_gain, i_off_mA)) {
-      logBoth("[CFG] CALSET 5V|3V3 vg vo ig io");
+      logConsole("[CFG] CALSET 5V|3V3 vg vo ig io");
       return;
     }
 
     if (v_gain <= 0.0f || i_gain <= 0.0f) {
-      logBoth("[CFG] CALSET gain<=0");
+      logConsole("[CFG] CALSET gain<=0");
       return;
     }
     if (v_off_mV < -10000.0f || v_off_mV > 10000.0f || i_off_mA < -50000.0f || i_off_mA > 50000.0f) {
-      logBoth("[CFG] CALSET offset range");
+      logConsole("[CFG] CALSET offset range");
       return;
     }
 
@@ -1430,7 +1428,7 @@ void handleCommand(const String& cmd_in) {
     } else if (strcmp(rail_token, "3V3") == 0) {
       target = &g_config.rail_3v3;
     } else {
-      logBoth("[CFG] CALSET rail 5V|3V3");
+      logConsole("[CFG] CALSET rail 5V|3V3");
       return;
     }
 
@@ -1477,9 +1475,9 @@ void handleCommand(const String& cmd_in) {
 
   if (cmd == "AWMODE") {
     if (aw95xxEnsureGpioPushPull()) {
-      logBoth("aw95xx: forced GPIO + push-pull mode");
+      logConsole("aw95xx: forced GPIO + push-pull mode");
     } else {
-      logBoth("aw95xx: failed forcing GPIO + push-pull mode");
+      logConsole("aw95xx: failed forcing GPIO + push-pull mode");
     }
     aw95xxPrintModeRegs();
     return;
@@ -1495,13 +1493,13 @@ void handleCommand(const String& cmd_in) {
     uint8_t saved_out = 0;
     (void)saved_out;
     if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
-      logBoth("aw95xx: failed to set P1.0 output mode");
+      logConsole("aw95xx: failed to set P1.0 output mode");
       return;
     }
     if (aw95xxWriteP10(true)) {
-      logBoth("aw95xx: P1.0 forced HIGH");
+      logConsole("aw95xx: P1.0 forced HIGH");
     } else {
-      logBoth("aw95xx: failed to write P1.0 HIGH");
+      logConsole("aw95xx: failed to write P1.0 HIGH");
     }
     return;
   }
@@ -1511,30 +1509,26 @@ void handleCommand(const String& cmd_in) {
     uint8_t saved_out = 0;
     (void)saved_out;
     if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
-      logBoth("aw95xx: failed to set P1.0 output mode");
+      logConsole("aw95xx: failed to set P1.0 output mode");
       return;
     }
     if (aw95xxWriteP10(false)) {
-      logBoth("aw95xx: P1.0 forced LOW");
+      logConsole("aw95xx: P1.0 forced LOW");
     } else {
-      logBoth("aw95xx: failed to write P1.0 LOW");
+      logConsole("aw95xx: failed to write P1.0 LOW");
     }
     return;
   }
 
   char unknown_msg[80];
   snprintf(unknown_msg, sizeof(unknown_msg), "cmd: unknown '%s'", cmd.c_str());
-  logBoth(unknown_msg);
+  logConsole(unknown_msg);
   printCommandHelp();
 }
 
 void pollCommands() {
-  if (Serial.available()) {
-    const String cmd = Serial.readStringUntil('\n');
-    handleCommand(cmd);
-  }
-  if (SerialDbg.available()) {
-    const String cmd = SerialDbg.readStringUntil('\n');
+  if (SerialConsole.available()) {
+    const String cmd = SerialConsole.readStringUntil('\n');
     handleCommand(cmd);
   }
   pollUdiCommands();
@@ -1652,12 +1646,12 @@ void srShiftOut16(uint16_t value) {
 
 void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
   if (i2cPing(AW95XX_ADDR_ACTIVE)) {
-    logBoth("d9: using aw95xx P1.0 backend");
+    logConsole("d9: using aw95xx P1.0 backend");
     runAwP10Heartbeat(blinks, on_ms, off_ms);
     return;
   }
 
-  logBoth("d9: using SR fallback backend");
+  logConsole("d9: using SR fallback backend");
   const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
   const uint16_t saved = g_sr_state;
   // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
@@ -1671,7 +1665,7 @@ void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
            static_cast<unsigned>(blinks),
            static_cast<unsigned>(on_ms),
            static_cast<unsigned>(off_ms));
-  logBoth(msg);
+  logConsole(msg);
 
   for (uint8_t i = 0; i < blinks; ++i) {
     srShiftOut16(ch2_on);
@@ -1681,7 +1675,7 @@ void flashD9Led(uint8_t blinks, uint16_t on_ms, uint16_t off_ms) {
   }
 
   srShiftOut16(saved);
-  logBoth("d9: flash sequence complete");
+  logConsole("d9: flash sequence complete");
 }
 
 void setD9PathEnabled(bool enabled) {
@@ -1690,18 +1684,18 @@ void setD9PathEnabled(bool enabled) {
     uint8_t saved_out = 0;
     (void)saved_out;
     if (!aw95xxSetP10OutputMode(saved_cfg, saved_out)) {
-      logBoth("aw95xx: failed to set P1.0 output mode");
+      logConsole("aw95xx: failed to set P1.0 output mode");
       return;
     }
     if (aw95xxWriteP10(enabled)) {
-      logBoth(enabled ? "d9: aw95xx P1.0 forced ON" : "d9: aw95xx P1.0 forced OFF");
+      logConsole(enabled ? "d9: aw95xx P1.0 forced ON" : "d9: aw95xx P1.0 forced OFF");
     } else {
-      logBoth(enabled ? "d9: aw95xx P1.0 ON write failed" : "d9: aw95xx P1.0 OFF write failed");
+      logConsole(enabled ? "d9: aw95xx P1.0 ON write failed" : "d9: aw95xx P1.0 OFF write failed");
     }
     return;
   }
 
-  logBoth("d9: aw95xx unavailable, using SR fallback backend");
+  logConsole("d9: aw95xx unavailable, using SR fallback backend");
   const uint16_t mask = static_cast<uint16_t>((1u << SR_BIT_3V3_HI) | (1u << SR_BIT_3V3_LO));
   // PMOS high-side behavior on this path: gate-low enables, gate-high disables.
   const uint16_t on_state = static_cast<uint16_t>(g_sr_state & ~mask);
@@ -1716,7 +1710,7 @@ void setD9PathEnabled(bool enabled) {
     srShiftOut16(off_state);
   }
 
-  logBoth(enabled ? "d9: path forced ON" : "d9: path forced OFF");
+  logConsole(enabled ? "d9: path forced ON" : "d9: path forced OFF");
 }
 
 void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
@@ -1737,14 +1731,14 @@ void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
 
   if (p0_mask != 0 && i2cPing(AW95XX_ADDR_ACTIVE)) {
     if (!aw95xxSetP0MaskOutputMode(p0_mask)) {
-      logBoth("aw95xx: failed to set P0 pin output mode for range control");
+      logConsole("aw95xx: failed to set P0 pin output mode for range control");
       return;
     }
 
     // EN nets are active-high on this Rev-C path.
     uint8_t p0_out_after = 0;
     if (!aw95xxWriteP0Mask(p0_mask, enabled, p0_out_after)) {
-      logBoth("aw95xx: failed to write P0 pin for range control");
+      logConsole("aw95xx: failed to write P0 pin for range control");
       return;
     }
 
@@ -1756,7 +1750,7 @@ void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
              enabled ? "ON" : "OFF",
              p0_desc,
              static_cast<unsigned>(p0_out_after));
-    logBoth(msg);
+    logConsole(msg);
     return;
   }
 
@@ -1775,19 +1769,19 @@ void setRangePairEnabled(uint8_t bit, const char* label, bool enabled) {
            static_cast<unsigned>(bit),
            static_cast<unsigned>((g_sr_state >> bit) & 0x1u),
            static_cast<unsigned>(g_sr_state));
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void setQ3OnlyEnabled(bool enabled) {
   if (i2cPing(AW95XX_ADDR_ACTIVE)) {
     if (!aw95xxSetP0MaskOutputMode(AW95XX_P00_MASK)) {
-      logBoth("aw95xx: failed to set P0.0 output mode for Q3-only control");
+      logConsole("aw95xx: failed to set P0.0 output mode for Q3-only control");
       return;
     }
 
     uint8_t p0_out_after = 0;
     if (!aw95xxWriteP0Mask(AW95XX_P00_MASK, enabled, p0_out_after)) {
-      logBoth("aw95xx: failed to write P0.0 for Q3-only control");
+      logConsole("aw95xx: failed to write P0.0 for Q3-only control");
       return;
     }
 
@@ -1797,25 +1791,25 @@ void setQ3OnlyEnabled(bool enabled) {
              "range: Q3-only forced %s via aw95xx P0.0 (p0=0x%02X)",
              enabled ? "ON" : "OFF",
              static_cast<unsigned>(p0_out_after));
-    logBoth(msg);
+    logConsole(msg);
     logAwP0MaskElectricalState("Q3/P0.0", AW95XX_P00_MASK, enabled);
     return;
   }
 
-  logBoth("range: Q3-only fallback to combined Q3/Q9");
+  logConsole("range: Q3-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
 void setQ9OnlyEnabled(bool enabled) {
   if (i2cPing(AW95XX_ADDR_ACTIVE)) {
     if (!aw95xxSetP0MaskOutputMode(AW95XX_P05_MASK)) {
-      logBoth("aw95xx: failed to set P0.5 output mode for Q9-only control");
+      logConsole("aw95xx: failed to set P0.5 output mode for Q9-only control");
       return;
     }
 
     uint8_t p0_out_after = 0;
     if (!aw95xxWriteP0Mask(AW95XX_P05_MASK, enabled, p0_out_after)) {
-      logBoth("aw95xx: failed to write P0.5 for Q9-only control");
+      logConsole("aw95xx: failed to write P0.5 for Q9-only control");
       return;
     }
 
@@ -1825,29 +1819,29 @@ void setQ9OnlyEnabled(bool enabled) {
              "range: Q9-only forced %s via aw95xx P0.5 (p0=0x%02X)",
              enabled ? "ON" : "OFF",
              static_cast<unsigned>(p0_out_after));
-    logBoth(msg);
+    logConsole(msg);
     logAwP0MaskElectricalState("Q9/P0.5", AW95XX_P05_MASK, enabled);
     return;
   }
 
-  logBoth("range: Q9-only fallback to combined Q3/Q9");
+  logConsole("range: Q9-only fallback to combined Q3/Q9");
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", enabled);
 }
 
 void setAwP0GatePathEnabled(uint8_t mask, uint8_t pin, const char* label, bool enabled) {
   if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
-    logBoth("range: aw95xx unavailable for direct gate-path control");
+    logConsole("range: aw95xx unavailable for direct gate-path control");
     return;
   }
 
   if (!aw95xxSetP0MaskOutputMode(mask)) {
-    logBoth("aw95xx: failed to set P0 output mode for direct gate-path control");
+    logConsole("aw95xx: failed to set P0 output mode for direct gate-path control");
     return;
   }
 
   uint8_t p0_out_after = 0;
   if (!aw95xxWriteP0Mask(mask, enabled, p0_out_after)) {
-    logBoth("aw95xx: failed to write P0 output for direct gate-path control");
+    logConsole("aw95xx: failed to write P0 output for direct gate-path control");
     return;
   }
 
@@ -1859,7 +1853,7 @@ void setAwP0GatePathEnabled(uint8_t mask, uint8_t pin, const char* label, bool e
            enabled ? "ON" : "OFF",
            static_cast<unsigned>(pin),
            static_cast<unsigned>(p0_out_after));
-  logBoth(msg);
+  logConsole(msg);
   logAwP0MaskElectricalState(label, mask, enabled);
 }
 
@@ -1881,16 +1875,16 @@ void setQ5PathEnabled(bool enabled) {
 
 void runQ9ElectricalDiagnostic() {
   if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
-    logBoth("q9 diag: aw95xx unavailable");
+    logConsole("q9 diag: aw95xx unavailable");
     return;
   }
 
   if (!aw95xxEnsureGpioPushPull()) {
-    logBoth("q9 diag: failed to enforce push-pull mode");
+    logConsole("q9 diag: failed to enforce push-pull mode");
     return;
   }
 
-  logBoth("q9 diag: start (P0.5 low -> high -> input)");
+  logConsole("q9 diag: start (P0.5 low -> high -> input)");
 
   g_aw.pinMode(AW95XX_PIN_P0_5, OUTPUT);
   g_aw.digitalWrite(AW95XX_PIN_P0_5, LOW);
@@ -1909,7 +1903,7 @@ void runQ9ElectricalDiagnostic() {
   uint8_t p0_cfg = 0;
   if (!i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_INPUT_P0, p0_in) ||
       !i2cReadReg8(AW95XX_ADDR_ACTIVE, AW95XX_REG_CONFIG_P0, p0_cfg)) {
-    logBoth("q9 diag: failed reading input/config after Hi-Z");
+    logConsole("q9 diag: failed reading input/config after Hi-Z");
   } else {
     const unsigned in_bit = (p0_in & AW95XX_P05_MASK) ? 1u : 0u;
     const unsigned is_input = (p0_cfg & AW95XX_P05_MASK) ? 1u : 0u;
@@ -1921,27 +1915,27 @@ void runQ9ElectricalDiagnostic() {
              is_input ? "IN" : "OUT",
              static_cast<unsigned>(p0_in),
              static_cast<unsigned>(p0_cfg));
-    logBoth(msg);
+    logConsole(msg);
   }
 
   // Restore default board policy after test.
   if (aw95xxEnsureGpioPushPull()) {
-    logBoth("q9 diag: end (policy restored)");
+    logConsole("q9 diag: end (policy restored)");
   } else {
-    logBoth("q9 diag: end (failed restoring policy)");
+    logConsole("q9 diag: end (failed restoring policy)");
   }
 }
 
 void aw95xxBootInit() {
   if (!i2cPing(AW95XX_ADDR_ACTIVE)) {
     g_aw_boot_state = AW_BOOT_SKIP;
-    logBoth("aw95xx boot: 0x58 not detected, skipping init");
+    logConsole("aw95xx boot: 0x58 not detected, skipping init");
     return;
   }
 
   if (!aw95xxEnsureGpioPushPull()) {
     g_aw_boot_state = AW_BOOT_HOLD;
-    logBoth("aw95xx boot: failed to enforce GPIO + push-pull policy");
+    logConsole("aw95xx boot: failed to enforce GPIO + push-pull policy");
     return;
   }
 
@@ -1951,7 +1945,7 @@ void aw95xxBootInit() {
                                                  AW95XX_P03_MASK | AW95XX_P04_MASK | AW95XX_P05_MASK);
   if (!aw95xxWriteP0Mask(boot_mask, false, p0_out_after)) {
     g_aw_boot_state = AW_BOOT_HOLD;
-    logBoth("aw95xx boot: failed forcing P0.0/P0.1/P0.5 low");
+    logConsole("aw95xx boot: failed forcing P0.0/P0.1/P0.5 low");
   } else {
     g_aw_boot_state = AW_BOOT_PASS;
     char msg[96];
@@ -1959,7 +1953,7 @@ void aw95xxBootInit() {
              sizeof(msg),
              "aw95xx boot: p0 forced low (0x%02X)",
              static_cast<unsigned>(p0_out_after));
-    logBoth(msg);
+    logConsole(msg);
   }
 
   // Keep P1.0 low by default as well.
@@ -2005,7 +1999,7 @@ void printRangePairStates() {
              q4_q10,
              q5_q11,
              q39_q9);
-    logBoth(msg);
+    logConsole(msg);
     return;
   }
 
@@ -2020,13 +2014,13 @@ void printRangePairStates() {
            q39_bit,
            static_cast<unsigned>(SR_BIT_ADJ_LO),
            q28_bit);
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void captureRangeSequenceSnapshot(const char* step) {
   char tag[64];
   snprintf(tag, sizeof(tag), "range seq: %s", step);
-  logBoth(tag);
+  logConsole(tag);
   printRangePairStates();
 
   Ina3221Reading ina_5v = {};
@@ -2034,14 +2028,14 @@ void captureRangeSequenceSnapshot(const char* step) {
   const bool ok_5v = readIna3221(INA3221_ADDR_5V, ina_5v);
   const bool ok_3v3 = readIna3221(INA3221_ADDR_3V3, ina_3v3);
   if (!ok_5v && !ok_3v3) {
-    logBoth("ina rails: no expected devices responded");
+    logConsole("ina rails: no expected devices responded");
     return;
   }
   printInaRailsSummary(ok_5v ? &ina_5v : nullptr, ok_3v3 ? &ina_3v3 : nullptr);
 }
 
 void runRangePairSequence() {
-  logBoth("range seq: begin (Q3/Q9 then Q2/Q8)");
+  logConsole("range seq: begin (Q3/Q9 then Q2/Q8)");
   captureRangeSequenceSnapshot("B0 baseline");
 
   setRangePairEnabled(SR_BIT_3V3_HI, "Q3/Q9", false);
@@ -2068,7 +2062,7 @@ void runRangePairSequence() {
   delay(40);
   captureRangeSequenceSnapshot("S6 Q612OFF");
 
-  logBoth("range seq: complete");
+  logConsole("range seq: complete");
 }
 
 void runShiftRegisterSelfTest() {
@@ -2081,7 +2075,7 @@ void runShiftRegisterSelfTest() {
       0x0F00,
   };
 
-  logBoth("sr: self-test begin (interface only)");
+  logConsole("sr: self-test begin (interface only)");
   for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); i++) {
     srShiftOut16(patterns[i]);
     char msg[64];
@@ -2090,11 +2084,11 @@ void runShiftRegisterSelfTest() {
              "sr: pattern[%lu]=0x%04X",
              static_cast<unsigned long>(i),
              static_cast<unsigned>(patterns[i]));
-    logBoth(msg);
+    logConsole(msg);
     delay(40);
   }
   srShiftOut16(0x0000);
-  logBoth("sr: self-test end");
+  logConsole("sr: self-test end");
 }
 
 void logHealthSummary() {
@@ -2152,7 +2146,7 @@ void logHealthSummary() {
              awBootStateString(),
              static_cast<unsigned long>(flash_test_runs));
   }
-  logBoth(msg);
+  logConsole(msg);
 }
 
 void flashSelect() {
@@ -2270,7 +2264,7 @@ void resetPersistentConfigDefaults() {
 bool savePersistentConfig(bool verbose) {
   if (!flash_test_passed) {
     if (verbose) {
-      logBoth("[CFG] save skip: flash bad");
+      logConsole("[CFG] save skip: flash bad");
     }
     return false;
   }
@@ -2285,20 +2279,20 @@ bool savePersistentConfig(bool verbose) {
   flashSectorErase4K(FLASH_CFG_ADDR);
   if (!flashWaitReady(4000)) {
     if (verbose) {
-      logBoth("[CFG] save fail: erase tmo");
+      logConsole("[CFG] save fail: erase tmo");
     }
     return false;
   }
 
   if (!flashWriteData(FLASH_CFG_ADDR, reinterpret_cast<const uint8_t*>(&record), sizeof(record))) {
     if (verbose) {
-      logBoth("[CFG] save fail: write tmo");
+      logConsole("[CFG] save fail: write tmo");
     }
     return false;
   }
 
   if (verbose) {
-    logBoth("[CFG] Saved");
+    logConsole("[CFG] Saved");
   }
   return true;
 }
@@ -2329,7 +2323,7 @@ bool loadPersistentConfig(bool verbose) {
   if (!flash_test_passed) {
     g_cfg_recovery_reason = CFGREC_FLASH;
     if (verbose) {
-      logBoth("[CFG] load skip: flash bad");
+      logConsole("[CFG] load skip: flash bad");
     }
     return false;
   }
@@ -2340,7 +2334,7 @@ bool loadPersistentConfig(bool verbose) {
   if (record.magic != FLASH_CFG_MAGIC) {
     g_cfg_recovery_reason = CFGREC_NOSIG;
     if (verbose) {
-      logBoth("[CFG] no signature");
+      logConsole("[CFG] no signature");
     }
     return false;
   }
@@ -2353,14 +2347,14 @@ bool loadPersistentConfig(bool verbose) {
                "[CFG] ver %u != %u",
                static_cast<unsigned>(record.version),
                static_cast<unsigned>(FLASH_CFG_VERSION));
-      logBoth(msg);
+      logConsole(msg);
     }
     return false;
   }
   if (record.payload_len != sizeof(record.payload)) {
     g_cfg_recovery_reason = CFGREC_LEN;
     if (verbose) {
-      logBoth("[CFG] len mismatch");
+      logConsole("[CFG] len mismatch");
     }
     return false;
   }
@@ -2369,7 +2363,7 @@ bool loadPersistentConfig(bool verbose) {
   if (record.crc32 != expected_crc) {
     g_cfg_recovery_reason = CFGREC_CRC;
     if (verbose) {
-      logBoth("[CFG] crc mismatch");
+      logConsole("[CFG] crc mismatch");
     }
     return false;
   }
@@ -2378,7 +2372,7 @@ bool loadPersistentConfig(bool verbose) {
       record.payload.rail_5v.current_gain <= 0.0f || record.payload.rail_3v3.current_gain <= 0.0f) {
     g_cfg_recovery_reason = CFGREC_GAIN;
     if (verbose) {
-      logBoth("[CFG] gain invalid");
+      logConsole("[CFG] gain invalid");
     }
     return false;
   }
@@ -2386,7 +2380,7 @@ bool loadPersistentConfig(bool verbose) {
   g_config = record.payload;
   g_cfg_recovery_reason = CFGREC_OK;
   if (verbose) {
-    logBoth("[CFG] Loaded");
+    logConsole("[CFG] Loaded");
   }
   return true;
 }
@@ -2399,7 +2393,7 @@ void initPersistentConfigAtBoot() {
 
   if (!flash_test_passed) {
     g_cfg_recovery_reason = CFGREC_FLASH;
-    logBoth("[CFG] flash bad; defaults");
+    logConsole("[CFG] flash bad; defaults");
   } else if (!loadPersistentConfig(true)) {
     g_cfg_recovery_defaults = true;
     g_cfg_recovery_saved = savePersistentConfig(true);
@@ -2412,25 +2406,25 @@ void initPersistentConfigAtBoot() {
            configRecoveryReasonCode(g_cfg_recovery_reason),
            g_cfg_recovery_defaults ? 1u : 0u,
            g_cfg_recovery_saved ? 1u : 0u);
-  logBoth(msg);
+  logConsole(msg);
 }
 
 bool erasePersistentConfig(bool verbose) {
   if (!flash_test_passed) {
     if (verbose) {
-      logBoth("[CFG] erase skip: flash bad");
+      logConsole("[CFG] erase skip: flash bad");
     }
     return false;
   }
   flashSectorErase4K(FLASH_CFG_ADDR);
   if (!flashWaitReady(4000)) {
     if (verbose) {
-      logBoth("[CFG] erase tmo");
+      logConsole("[CFG] erase tmo");
     }
     return false;
   }
   if (verbose) {
-    logBoth("[CFG] Erased");
+    logConsole("[CFG] Erased");
   }
   return true;
 }
@@ -2440,25 +2434,25 @@ void printPersistentConfig() {
   char vg[20], vo[20], ig[20], io[20];
 
   snprintf(msg, sizeof(msg), "cfg d9=%s", g_config.d9_path_enabled ? "ON" : "OFF");
-  logBoth(msg);
+  logConsole(msg);
 
   formatFixedValue(g_config.rail_5v.voltage_gain, 100000, 5, vg, sizeof(vg));
   formatFixedValue(g_config.rail_5v.voltage_offset_mV, 100, 2, vo, sizeof(vo));
   formatFixedValue(g_config.rail_5v.current_gain, 100000, 5, ig, sizeof(ig));
   formatFixedValue(g_config.rail_5v.current_offset_mA, 100, 2, io, sizeof(io));
   snprintf(msg, sizeof(msg), "cal 5V vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
-  logBoth(msg);
+  logConsole(msg);
 
   formatFixedValue(g_config.rail_3v3.voltage_gain, 100000, 5, vg, sizeof(vg));
   formatFixedValue(g_config.rail_3v3.voltage_offset_mV, 100, 2, vo, sizeof(vo));
   formatFixedValue(g_config.rail_3v3.current_gain, 100000, 5, ig, sizeof(ig));
   formatFixedValue(g_config.rail_3v3.current_offset_mA, 100, 2, io, sizeof(io));
   snprintf(msg, sizeof(msg), "cal 3V3 vg=%s voff_mV=%s ig=%s ioff_mA=%s", vg, vo, ig, io);
-  logBoth(msg);
+  logConsole(msg);
 }
 
 bool runFlashBringupTest() {
-  logBoth("flash: begin bring-up test");
+  logConsole("flash: begin bring-up test");
 
   uint8_t manufacturer = 0;
   uint8_t mem_type = 0;
@@ -2472,18 +2466,18 @@ bool runFlashBringupTest() {
            manufacturer,
            mem_type,
            capacity);
-  logBoth(id_msg);
+  logConsole(id_msg);
 
   // Winbond W25Q128 typical ID: EF 40 18.
   if (manufacturer != 0xEF) {
-    logBoth("flash: unexpected manufacturer (expected Winbond 0xEF)");
+    logConsole("flash: unexpected manufacturer (expected Winbond 0xEF)");
     return false;
   }
 
   const uint8_t sr1_before = flashReadStatus1();
   char sr_msg[64];
   snprintf(sr_msg, sizeof(sr_msg), "flash: SR1 before=0x%02X", sr1_before);
-  logBoth(sr_msg);
+  logConsole(sr_msg);
 
   uint8_t tx[FLASH_TEST_LEN];
   uint8_t rx[FLASH_TEST_LEN];
@@ -2494,23 +2488,23 @@ bool runFlashBringupTest() {
 
   flashSectorErase4K(FLASH_TEST_ADDR);
   if (!flashWaitReady(4000)) {
-    logBoth("flash: sector erase timeout");
+    logConsole("flash: sector erase timeout");
     return false;
   }
 
   flashPageProgram(FLASH_TEST_ADDR, tx, FLASH_TEST_LEN);
   if (!flashWaitReady(1000)) {
-    logBoth("flash: page program timeout");
+    logConsole("flash: page program timeout");
     return false;
   }
 
   flashReadData(FLASH_TEST_ADDR, rx, FLASH_TEST_LEN);
   if (memcmp(tx, rx, FLASH_TEST_LEN) != 0) {
-    logBoth("flash: readback mismatch");
+    logConsole("flash: readback mismatch");
     return false;
   }
 
-  logBoth("flash: erase/program/readback PASS");
+  logConsole("flash: erase/program/readback PASS");
   return true;
 }
 
@@ -2649,13 +2643,12 @@ void setup() {
   Wire.setSDA(I2C_SDA_PIN);
   Wire.begin();
 
-  Serial.begin(115200);
-  SerialDbg.begin(115200);
+  SerialConsole.setRx(PA10);
+  SerialConsole.setTx(PA9);
+  SerialConsole.begin(115200);
   delay(150);
-  Serial.println("stm32-bluepill bringup: boot");
-  SerialDbg.println("stm32-bluepill bringup: boot");
-  Serial.println("fault path: AW9523 INT PB7");
-  SerialDbg.println("fault path: AW9523 INT PB7");
+  SerialConsole.println("stm32-bluepill bringup: boot");
+  SerialConsole.println("fault path: AW9523 INT PB7");
 
   aw95xxBootInit();
   g_aw_int_pending = true;
@@ -2664,7 +2657,7 @@ void setup() {
   // USART3 on PB10/PB11 for future HAT->CrowPanel link validation.
   SerialU3.begin(115200);
   SerialU3.println("stm32-bluepill usart3: ready");
-  SerialDbg.println("stm32-bluepill usart3: ready");
+  SerialConsole.println("stm32-bluepill usart3: ready");
 
   printCommandHelp();
   flash_test_passed = runFlashBringupTest();
@@ -2677,15 +2670,15 @@ void setup() {
   Aht20Sample boot_sample;
   if (readAht20Now(boot_sample)) {
     g_aht20 = boot_sample;
-    logBoth("aht20: startup probe PASS");
+    logConsole("aht20: startup probe PASS");
   } else {
-    logBoth("aht20: startup probe HOLD");
+    logConsole("aht20: startup probe HOLD");
   }
   printInaProbeSummary();
   if (refreshIncomingRailSample()) {
-    logBoth("ina: incoming rail sample PASS");
+    logConsole("ina: incoming rail sample PASS");
   } else {
-    logBoth("ina: incoming rail sample HOLD");
+    logConsole("ina: incoming rail sample HOLD");
   }
   logHealthSummary();
 }
@@ -2707,8 +2700,7 @@ void loop() {
     refreshIncomingRailSample();
 
     if (g_hb_print_enabled) {
-      Serial.println("hb");
-      SerialDbg.println("hb");
+      SerialConsole.println("hb");
 
       if (g_incoming_rail.valid) {
         char ina_hb_msg[96];
@@ -2720,14 +2712,13 @@ void loop() {
                  "ina hb: Vin=%sV Iin=%smA",
                  vin,
                  iin);
-        logBoth(ina_hb_msg);
+        logConsole(ina_hb_msg);
       } else {
-        logBoth("ina hb: HOLD");
+        logConsole("ina hb: HOLD");
       }
 
       if (!flash_test_passed) {
-        Serial.println("flash: HOLD (bring-up test failed)");
-        SerialDbg.println("flash: HOLD (bring-up test failed)");
+        SerialConsole.println("flash: HOLD (bring-up test failed)");
       }
     }
   }

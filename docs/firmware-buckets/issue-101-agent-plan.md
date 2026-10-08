@@ -4,8 +4,8 @@ Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
-Status: Step 1 complete; Gate A accepted; Step 2 handoff pending.
-Next authorized handoff: STEP 2 (coordinator handoff pending).
+Status: Step 1 complete; Gate A accepted; Step 2 implementation complete and Gate B accepted by coordinator.
+Next authorized handoff: STEP 3 (separate coordinator prompt required; not started).
 
 ## How we work
 
@@ -263,11 +263,15 @@ Planning: complete; Markdown plan with per-step plain-text handoffs.
 Step 1: complete; coordinator has accepted Gate A and verified the baseline.
 	- Baseline measured: flash 64,892 B (free 644 B), static RAM 5,536 B.
 	- Before/after dependency-pin ELF hashes: identical (no code/behavior churn).
-Step 2: ready for separate coordinator handoff; not started.
-Step 3: waiting for Step 2 review and separate authorization.
+Step 2: implementation complete; Gate B accepted by coordinator.
+	- PlatformIO metric: flash 51,980 B used / 13,556 B free; static RAM 2,000 B.
+	- Complete loadable image: flash 52,300 B used / 13,236 B free.
+	- CDC absent in maintained STM32 config; one USART1 console owner; USART3 UDI remains separate.
+	- Bench status for Step 2: NOT RUN (build/diff/documentation evidence only).
+Step 3: next authorized step, but not started.
 Step 4: optional; not authorized.
 Step 5: optional; not authorized.
 Step 6: waiting for accepted changes and user-approved ceiling.
 Step 7: waiting for final build evidence and user bench availability.
 Bench status: NOT RUN.
-Flash ceiling approval: pending; proposed compact ceiling 52,428 B.
+Flash ceiling approval: pending; proposed compact ceiling 52,428 B (128 B margin over current complete image).
