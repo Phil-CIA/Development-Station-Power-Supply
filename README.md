@@ -38,6 +38,7 @@ Current power-hardware status:
 - The Rev-B HAT current-range switch remains bypassed pending MOSFET pinout and Vgs validation.
 - HAT Rev-C implements four-channel differential OCP with dual INA2180A2 amplifiers and dual TLV1702 comparators.
 - HAT Rev-C ERC is clean, but RB-012 remains a PCB release gate for Kelvin routing, bypassing, thresholds, hysteresis, footprints, and final DRC/connectivity validation.
+- Future HAT Rev-D controller decision: use a bare STM32F405RG LQFP64 as the deterministic controller, replacing the F103C8 Blue Pill development module, with an ESP32-C3-MINI Wi-Fi coprocessor and USB CDC telemetry to a PC. Rev-D schematic/layout and firmware migration are not complete; Rev-C bring-up continues in parallel. See `docs/HAT_CONTROLLER_EVALUATION.md`.
 - See `docs/DEV_STATION_HANDOFF_2026-08-14.md` for the active restart state.
 
 ## Hardware scope in this repo

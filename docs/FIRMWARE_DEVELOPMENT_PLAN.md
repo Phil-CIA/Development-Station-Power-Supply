@@ -147,6 +147,7 @@ PR description.
 | #33 Milestone C AHT20 fan curve | Bucket 6 | In scope now (diagnostics + validation evidence) |
 | #35 Milestone E bench fan-validation evidence capture | Bucket 6 | In scope now |
 | #25 Add OTA and Wi-Fi | Bucket 5 | Out of scope for Rev-C bench bring-up unless explicitly re-scoped |
+| #102 HAT controller upgrade | Hardware/firmware migration (future Rev-D; separate from Rev-C buckets) | Decision: bare STM32F405RG LQFP64 on the HAT replaces the F103C8 Blue Pill module; ESP32-C3-MINI remains the Wi-Fi coprocessor; native USB CDC provides future PC telemetry. Migration and Rev-D verification are tracked in `docs/HAT_CONTROLLER_EVALUATION.md`. Continue compatible Rev-C firmware and bench work in parallel. |
 | #17 Milestone 4 custom panel UDI+LVGL rewrite | Bucket 4 | Out of scope now (secondary/paused path) |
 | #3 STM32 HardwareSerial compile mismatch (closed) | Bucket 1 | Regression watch: reopen/new issue if compile break reappears |
 
