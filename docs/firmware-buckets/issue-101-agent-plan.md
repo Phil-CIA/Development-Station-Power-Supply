@@ -4,8 +4,8 @@ Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
-Status: Step 1 complete; Gate A accepted; Step 2 implementation complete and Gate B accepted by coordinator; Step 3 implementation complete, pending Gate C review.
-Next authorized handoff: Gate C coordinator review and user decision on compact-ceiling approval.
+Status: Steps 1-6 complete and reviewed; Step 7 has partial bench evidence with open criteria. PR review/reconciliation is next.
+Next action: independent review of draft PR #103; no further hardware testing is authorized unless the user separately approves it.
 
 ## How we work
 
@@ -56,9 +56,9 @@ Do not alter persistence layout, hardware pins, rail architecture, CrowPanel
 behavior, board flash limits, or assume undocumented 128 KiB capacity.
 External W25Q128 data flash is not additional executable internal flash.
 
-The proposed compact flash ceiling is 52,428 of 65,536 bytes, reserving
-13,108 bytes. This is a planning target until the user approves it at Gate C.
-Bench/full must always fit the documented 65,536-byte capacity.
+The user approved a compact complete-image ceiling of 52,428 bytes at Gate C.
+The full-bench image must fit the documented 65,536-byte capacity.
+CI enforces these limits using the programmed `firmware.bin` size.
 Static RAM totals do not establish heap/stack or timing safety.
 
 ## Common agent instructions
@@ -186,9 +186,9 @@ full-bench command/help parity and compact retained behavior. Update the
 STM32 README with profile usage and warnings. Do not delete bench code,
 add LTO, change parsing or touch hardware. Stop for Gate C.
 
-**Gate C:** coordinator accepts profile/command decisions and size evidence.
-User approves the compact ceiling (proposed 52,428 B) and whether Step 4
-or Step 5 is justified. These optimizations are optional bridge work.
+**Gate C:** accepted. The compact profile ceiling is 52,428 B. The user
+chose to skip optional LTO and parser optimization; Steps 4 and 5 are not
+authorized for this PR.
 
 ## Step 4 - Conditional LTO trial
 
@@ -222,8 +222,8 @@ Update directly affected protocol docs only if behavior changes. Stop.
 
 ## Step 6 - Enforce the agreed budget in existing CI
 
-Run after accepted optimizations and an approved numeric ceiling.
-Extend .github/workflows/platformio-build.yml; CI already exists.
+Gate C approved the numeric ceiling. Step 6 extends
+.github/workflows/platformio-build.yml; CI already exists.
 Build compact and full-bench STM32 environments without disturbing other
 targets. Enforce the agreed compact ceiling and full bench's 65,536-byte
 capacity. Measure flash from the actual linked artifact including .data
@@ -268,15 +268,23 @@ Step 2: implementation complete; Gate B accepted by coordinator.
 	- Complete loadable image: flash 52,300 B used / 13,236 B free.
 	- CDC absent in maintained STM32 config; one USART1 console owner; USART3 UDI remains separate.
 	- Bench status for Step 2: NOT RUN (build/diff/documentation evidence only).
-Step 3: implementation complete; Gate C review pending.
+Step 3: implementation complete; Gate C accepted by coordinator and user.
 	- Environments: `bluepill_f103c8` (compact/default) and `bluepill_f103c8_bench` (full bench), with shared settings in `stm32_common` and `default_envs = bluepill_f103c8`.
 	- Compact build result: PlatformIO flash 44,956 B used / 20,580 B free, static RAM 2,000 B; complete image 45,276 B used / 20,260 B free; `firmware.bin` 45,276 B.
 	- Full-bench build result: PlatformIO flash 52,256 B used / 13,280 B free, static RAM 2,000 B; complete image 52,576 B used / 12,960 B free; `firmware.bin` 52,576 B.
 	- Delta vs Step 2 baseline (PlatformIO 51,980 B / complete image 52,300 B): compact saves 7,024 B; full-bench is +276 B.
-	- Build status: both profiles passed clean builds; bench status: NOT RUN.
-Step 4: optional; not authorized.
-Step 5: optional; not authorized.
-Step 6: waiting for Gate C acceptance and a user-approved compact ceiling.
-Step 7: waiting for final build evidence and user bench availability.
-Bench status: NOT RUN.
-Flash ceiling approval: pending; proposed compact ceiling 52,428 B remains unapproved and is not enforced.
+	- Build status: both profiles passed clean builds; bench profile remains available for bring-up.
+Step 4: skipped by user decision; not authorized.
+Step 5: skipped by user decision; not authorized.
+Step 6: implementation complete; user-approved budgets enforced in CI.
+	- Compact complete-image limit: 52,428 B; full-bench capacity/limit: 65,536 B.
+	- Unit tests, both local profile builds, size checks and all four GitHub Actions jobs passed; manual-dispatch run 37918855171 on 6fe846c.
+Step 7: partial bench evidence captured 2026-10-09; further hardware testing stopped at user direction.
+	- Compact and full-bench uploads/boot logs passed; authorized automatic startup test erased/programmed only FLASH_TEST_ADDR and passed.
+	- Compact unsupported bench-command responses, full-bench read-only diagnostics and CrowPanel-observed USART3 telemetry/available GET ACKs passed.
+	- CrowPanel remained connected under user-authorized output isolation and automatically sent OUTPUT ON and ILIM CH1/CH2 traffic; the agent did not manually issue these writes.
+	- Direct GET STATE/GET CFGREC and STM32 ERR injection through CrowPanel CLI: BLOCKED. PA0/PA1/PA2 electrical measurement: NOT MEASURED.
+	- No further bench work is authorized unless the user separately approves it.
+Bench status: PARTIAL; blocked and unmeasured criteria remain open.
+Flash ceiling approval: compact complete-image ceiling 52,428 B APPROVED; full-bench limit is 65,536 B.
+PR #103: remains draft pending independent review and reconciliation of remaining open acceptance criteria.
