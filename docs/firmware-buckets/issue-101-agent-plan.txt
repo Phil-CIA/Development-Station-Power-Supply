@@ -1,0 +1,91 @@
+Issue #101 / draft PR #103 - Step 7a: planning-only bench follow-up
+
+ASSIGNMENT
+Investigate and prepare the remaining bench-validation procedure. Do not
+execute it. Report back and stop for coordinator review and user approval.
+The Markdown issue-101-agent-plan.md is the durable plan; this text file is
+only the current copy/paste handoff.
+
+CHECKOUT
+Work only in the existing PR branch checkout:
+C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
+Expected branch: phil-cia-stm32-flash-headroom.
+Verify branch, HEAD, and worktree status with read-only git commands.
+The published review corrections include 02159eb; verify it is present.
+Do not switch branches, use the main checkout, discard changes, or assume
+the hardware is running the same revision as this checkout.
+If the checkout is wrong or stale, stop and report.
+
+CURRENT STATE
+USART1 CH340 console is Serial1, PA10 RX / PA9 TX, 115200 8N1.
+USART3 UDI is independent, PB11 RX / PB10 TX.
+Compact and full-bench builds and image-budget gates pass.
+Compact complete-image limit: 52,428 B; full-bench limit: 65,536 B.
+All five size-checker tests run in the compact CI job.
+Actions run 37927216963 passed all four jobs on 1fe8155;
+02159eb records that result. Optional LTO/parser work was skipped.
+PR remains draft. Prior bench evidence is PARTIAL, not a complete pass.
+
+READ FIRST
+README.md
+docs\SYSTEM_DEVELOPMENT_WORKFLOW.md
+docs\FIRMWARE_DEVELOPMENT_PLAN.md
+docs\firmware-buckets\issue-101-agent-plan.md
+stm32-bluepill-bringup\README.md (Step 7 evidence)
+docs\GPIO_PINOUT.md and docs\STM32_BLUEPILL_PIN_TABLE.md
+docs\display-project\README.md and docs\DISPLAY_INTERFACE_STANDARD.md
+Then inspect the relevant current STM32/CrowPanel source and configuration.
+Use code as evidence; flag stale references rather than trusting prose.
+
+AUTHORIZED WORK: READ-ONLY INVESTIGATION AND PROCEDURE DESIGN
+1. Trace the CrowPanel USB CLI and USART3 transmit/receive paths. Explain
+   why direct GET STATE/GET CFGREC and malformed-command injection were
+   blocked. Distinguish a CrowPanel-local ERR from an STM32-origin ERR.
+2. Determine whether an existing supported route can send these commands.
+   If not, propose a direct 3.3 V TTL USART3 adapter procedure, conditional
+   on the user confirming available hardware and actual-board wiring.
+   Do not assume CH340 USART1 commands reach the UDI handler.
+   Never propose connecting two active transmitters to STM32 RX.
+   Specify crossed TX/RX, common ground, voltage compatibility, and how
+   to avoid back-powering. Do not guess connector pins or board revision.
+3. Derive exact proposed GET STATE/GET CFGREC payloads, line terminators,
+   response shapes, and a non-mutating unknown-command error case from
+   source. Account for binary telemetry interleaved with text replies.
+   Identify any side effects; do not equate a GET with no flash access.
+4. For PA0/PA1/PA2, trace boot initialization and subsequent writes.
+   Separate logical control state from electrical proof and rail voltage.
+   Establish source-backed expected inactive levels and proposed meter
+   tolerances; mark hardware-dependent values unresolved when necessary.
+   Verify whether Rev-C pin references apply to the actual built board.
+   Define evidence needed to distinguish boot defaults from later states.
+5. Address known automatic behavior before any future execution:
+   CrowPanel previously sent OUTPUT ON and ILIM CH1/CH2 writes while
+   connected, despite the agent not manually issuing them.
+   STM32 startup automatically erases/programs FLASH_TEST_ADDR.
+   Prior isolation/startup-test approval does NOT authorize a new run.
+   Opening a port can toggle reset lines; do not open ports even to listen.
+6. Classify these three remaining checks against issue #101's acceptance
+   criteria and bucket dependencies. Recommend completion or explicit
+   deferral with rationale; do not waive criteria yourself or add unrelated
+   fault/persistence/range-control testing to this assignment.
+
+NOT AUTHORIZED
+No serial-port access, monitor, upload, reset, power cycle, wiring change,
+probing, measurement, output enable/disable, ILIM/range/AW9523 writes,
+flash test, config/calibration write/reset/erase, or fault injection.
+Do not edit firmware, scripts, workflow, or docs; do not commit, push,
+change PR state, merge, or close the issue. Proposed tooling or firmware
+changes must be described separately for approval, not implemented.
+
+REPORT BACK
+Provide:
+- Branch/HEAD/status and source references with file names and line numbers.
+- Existing blockers and the least-invasive feasible route around each.
+- A proposed procedure table: check, setup, command/action, expected result,
+  evidence to capture, side effects, and stop conditions.
+- Unresolved equipment, board-revision, wiring, and authorization questions.
+- Which exact actions need fresh user approval before execution.
+- Any implementation proposal separated from the bench procedure.
+- Confirmation that no hardware was accessed and no files were changed.
+Label all unexecuted results PROPOSED, OPEN, BLOCKED, or NOT MEASURED.
+STOP after the report. Do not proceed to hardware or implementation.

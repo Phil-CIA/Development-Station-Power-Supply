@@ -4,8 +4,8 @@ Issue: https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/101
 Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
-Status: Steps 1-6 complete and reviewed; Step 7 has partial bench evidence with open criteria. PR review/reconciliation is next.
-Next action: independent review of draft PR #103; no further hardware testing is authorized unless the user separately approves it.
+Status: Steps 1-3 and 6 complete and reviewed; Steps 4/5 skipped. Independent review findings are addressed; Step 7 remains partial with open criteria.
+Next authorized handoff: Step 7a planning-only investigation using issue-101-agent-plan.txt. No further hardware testing is authorized unless the user separately approves it.
 
 ## How we work
 
@@ -17,7 +17,8 @@ Do not execute this entire file as one assignment.
 The durable plan lives in this Markdown file. At each handoff, the
 coordinator provides one standalone plain-text prompt in a copyable code
 block, incorporating the common instructions, assigned step and report
-format below. No separate committed text plan is required.
+format below. `issue-101-agent-plan.txt` contains only the current copy/paste
+handoff, not a second execution plan.
 Later step prompts are prepared, NOT authorized.
 After each review, update this file's execution record and next handoff.
 Changing models does not change scope or bypass an approval gate.
@@ -257,6 +258,23 @@ Report acceptance criteria individually as met, open or blocked. The
 coordinator reviews the diff, CI and evidence and updates the draft PR.
 No automatic merge, issue closure, or unsupported "bench passed" claims.
 
+### Step 7a - Plan the remaining bench checks without operating hardware
+
+User selected this planning-only handoff on 2026-10-09. Read the current
+firmware and existing evidence to determine how to reach STM32 USART3 for
+`GET STATE`, `GET CFGREC`, and a non-mutating unknown-command error case.
+Confirm actual-board applicability before specifying PA0/PA1/PA2 test
+points, expected inactive levels, and measurement tolerances.
+
+Prepare a procedure with source references, prerequisites, exact proposed
+commands, expected responses, evidence fields, and stop conditions.
+Account for automatic CrowPanel OUTPUT/ILIM writes, competing UART
+transmitters, mixed binary/text traffic, and automatic startup flash writes.
+No serial-port access, uploads, resets, power cycles, wiring changes,
+measurements, firmware edits, or hardware operations are authorized.
+Report feasibility and unresolved setup questions to the coordinator.
+Stop before execution; the user must separately approve a specific procedure.
+
 ## Execution record - coordinator owned
 
 Planning: complete; Markdown plan with per-step plain-text handoffs.
@@ -288,4 +306,6 @@ Step 7: partial bench evidence captured 2026-10-09; further hardware testing sto
 	- No further bench work is authorized unless the user separately approves it.
 Bench status: PARTIAL; blocked and unmeasured criteria remain open.
 Flash ceiling approval: compact complete-image ceiling 52,428 B APPROVED; full-bench limit is 65,536 B.
-PR #103: remains draft pending independent review and reconciliation of remaining open acceptance criteria.
+Independent review: record inconsistencies corrected; checker unit tests now run in CI.
+Step 7a: planning-only handoff prepared at user request; investigation results pending. Hardware execution remains unauthorized.
+PR #103: remains draft pending disposition of the remaining open acceptance criteria.
