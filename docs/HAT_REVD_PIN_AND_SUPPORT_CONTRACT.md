@@ -75,10 +75,17 @@ Reserve GPIO capacity; do not wire module boot pins by assumption.
 
 ## Work sequence and review gates
 
-1. Reconcile the retained Rev-C schematic and fresh netlist, including the
-   provisional range-switch/fault references documented under #62. Record
-   which source is used for Rev-D; do not infer board circuitry from the
-   firmware pin table alone.
+1. **Gate 1 source reconciliation completed (2026-10-09):** the current
+   Rev-C HAT schematic and its fresh KiCad netlist export are the source for
+   HAT connector/control routing. The export matches the committed `.net`
+   electrically; the HAT PCB is not reconciled and is not an approved copy
+   source for its PCB-only circuitry. `docs/STM32_BLUEPILL_PIN_TABLE.md`
+   records the confirmed, conflicting, and unknown Rev-D reuse blocks,
+   including the separate Regulator Rev-C source applicable to the power
+   stage. Do not copy the old AW9523/Q3/Q9/Q12 screenshot mapping into Rev-D.
+   Identify the physical HAT/Regulator revisions and measure or trace the
+   ISET, fault, shift-register, fan, and U2 paths before treating the
+   unresolved circuits as reusable.
 2. Check this complete allocation in ST's LQFP64 pin/alternate-function
    tables, including DMA/timer conflicts if used. Freeze GPIO safety states
    and resolve the clock, C3 module/boot access and USB connector details.
