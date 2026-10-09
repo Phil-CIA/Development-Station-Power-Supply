@@ -126,15 +126,16 @@ bare module, or an implemented C3 programming/recovery path.
 ### UART4 link and STM32-owned controls
 
 Use the dedicated 3.3 V UART4 interface already reserved on the F405. Route
-the following signal names. Session 2 has provisionally reserved PC0 and PC1
-for the control signals; confirm in its pin-freeze review:
+the following signal names. Session 2 has confirmed provisional F405
+assignments PC0 and PC1 for the control signals; retain these as provisional
+until its complete pin-freeze review is finalized:
 
 | Net name | C3 connection | F405 connection | Direction |
 |---|---|---|---|
 | `C3_UART_RX` | GPIO0, app UART RX | UART4 TX, PC10 | STM32 -> C3 |
 | `C3_UART_TX` | GPIO1, app UART TX | UART4 RX, PC11 | C3 -> STM32 |
-| `C3_EN_N` | CHIP_EN | PC0, provisional | Active-low reset/disable |
-| `C3_BOOT_N` | GPIO9 strap | PC1, provisional | Active-low download-mode request |
+| `C3_EN_N` | CHIP_EN | PC0, provisional | Active-low reset/disable, open-drain |
+| `C3_BOOT_N` | GPIO9 strap | PC1, provisional | Active-low download-mode request, open-drain |
 
 Use 3.3 V CMOS levels and common ground; no level shifter is needed when both
 devices use the same 3.3 V logic rail. A 115200-baud 8-N-1 link is adequate
@@ -142,12 +143,15 @@ for command/telemetry framing. Hardware RTS/CTS is not required for this
 traffic; leave C3 UART0 GPIO20/21 available for programming and do not carry
 the Rev-C `CTS_ESP`/`RTS_ESP` stubs forward as flow-control signals.
 
-Give CHIP_EN a 10 kOhm pull-up to C3 3.3 V and 1 uF capacitor to ground, with
-a short trace. Allow the 3.3 V rail to stabilize for at least 50 us before
-enabling the chip; hold CHIP_EN low for at least 50 us to reset. Drive
-`C3_EN_N` and `C3_BOOT_N` as open-drain/low-side controls with pull-ups local
-to the C3 rail, so the F405 cannot back-power an unpowered C3. Default both
-controls released so the C3 boots normally.
+Provide 10 kOhm pull-ups from both `C3_EN_N` and `C3_BOOT_N` to C3 3.3 V.
+The module datasheet's peripheral reference circuit recommends a 10 kOhm
+CHIP_EN pull-up and 1 uF capacitor to ground; the capacitor value and
+population remain gated on verification against the exact orderable MINI-1U
+variant and the board's power-up behavior. Keep the CHIP_EN trace short.
+Allow the 3.3 V rail to stabilize for at least 50 us before enabling the chip;
+hold CHIP_EN low for at least 50 us to reset. These controls are open-drain /
+low-side so the F405 cannot back-power an unpowered C3. Default both controls
+released so the C3 boots normally.
 
 GPIO2, GPIO8, and GPIO9 are boot strapping pins. Pull GPIO2 and GPIO8 high
 for deterministic SPI-flash boot and download-mode entry; keep GPIO9 high by
