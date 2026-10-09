@@ -6,9 +6,14 @@ Work on issue #102, session 5: full HAT integration. Use branch `hw/revd-hat-int
 
 Starting point: use the separate editable integration starter
 `hardware/kicad/dsp-regulator-hat-rev-d-full/DSP-Regulator-HAT-RevD-Full.kicad_pro`
-and its same-named root schematic and local `MCU.kicad_sch`. It currently
-contains only the reviewed F405 support, Type-C/USB circuit and logical C3
-interface, not the full HAT or a bare C3 module.
+and its same-named root schematic, local `MCU.kicad_sch` and `HAT.kicad_sch`.
+The first source-backed pass connects ISET, flash, CH340, UDI, I2C, fan and
+SWD interfaces to the frozen F405 pins. It is still partial, not a complete
+HAT or bare C3 implementation. Read its README for the exact retained source,
+deliberate R64/D12 changes and current 0-error / 80-warning ERC evidence.
+Resolve rather than suppress the warnings; source-absent AW9523,
+shift-register and measurement/protection blocks require actual circuits,
+not invented net mappings. PA4/PC4/PC13 remain NC until their endpoints exist.
 
 Preserve `hardware/kicad/dsp-regulator-hat-rev-d/` (the reviewed session-4
 support-only project) and all Rev-C KiCad files byte-identically. Do not

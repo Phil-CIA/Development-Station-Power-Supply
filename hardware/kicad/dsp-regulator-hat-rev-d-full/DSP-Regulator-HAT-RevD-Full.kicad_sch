@@ -5,11 +5,28 @@
   (uuid "8eac47b6-9c92-4005-8483-c8ba2676659b")
   (paper "A4")
   (title_block
-    (title "DSP Regulator HAT Rev-D Full - Integration Starter")
-    (rev "D / integration starter")
-    (comment 1 "Support circuits only; full HAT integration pending; not fabrication ready")
+    (title "DSP Regulator HAT Rev-D Full - Initial Integration")
+    (rev "D / first pass")
+    (comment 1 "Partial HAT reuse integration; bare C3 and missing source blocks pending; NOT RELEASED")
   )
   (lib_symbols)
+  (sheet
+    (at 100 25)
+    (size 100 50)
+    (fields_autoplaced yes)
+    (stroke (width 0) (type default))
+    (fill (color 0 0 0 0))
+    (uuid "e086f746-69c6-46b6-a4c0-cc7da8d58477")
+    (property "Sheet name" "HAT" (at 100 23 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom)))
+    (property "Sheet file" "HAT.kicad_sch" (at 100 77 0)
+      (effects (font (size 1.27 1.27)) (justify left top)))
+    (instances
+      (project "DSP-Regulator-HAT-RevD-Full"
+        (path "/8eac47b6-9c92-4005-8483-c8ba2676659b" (page "3"))
+      )
+    )
+  )
   (sheet
     (at 100 100)
     (size 100 80)

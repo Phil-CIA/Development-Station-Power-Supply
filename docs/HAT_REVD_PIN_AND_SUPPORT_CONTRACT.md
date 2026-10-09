@@ -9,11 +9,13 @@ PC0/PC1 C3 control assignments for the bare ESP32-C3-MINI-1U external-antenna
 module; exact ordering code, antenna, and electrical implementation still
 require schematic/layout verification.
 
-An independent editable **integration starter**, not a complete full-HAT
+An independent editable **partial integration**, not a complete full-HAT
 schematic, now lives in `hardware/kicad/dsp-regulator-hat-rev-d-full/`.
 Session 5 must use that project's local MCU sheet, preserving the reviewed
 support-only project in `hardware/kicad/dsp-regulator-hat-rev-d/` intact.
-See the integration direction and starter evidence below.
+Its first source-backed HAT reuse pass has **0 ERC errors / 80 warnings**;
+the support-only 0/0 result above is not a current full-HAT ERC claim.
+See the integration direction, historical starter evidence and latest pass below.
 
 Selected architecture: bare STM32F405RG LQFP64 plus a separate ESP32-C3
 Wi-Fi coprocessor. See [controller decision](HAT_CONTROLLER_EVALUATION.md).
@@ -276,7 +278,11 @@ deterministic STM32 control.
    `hardware/kicad/dsp-regulator-hat-rev-d-full/` project copies the reviewed
    root, setup and local MCU sheet under full-HAT project names. No reused
    HAT circuitry, bare C3 module, antenna, or PCB has been added.
-6. Full-HAT integration, PCB DRC, and bench validation remain separate
+6. **First integration pass (2026-10-09):** imported a local HAT candidate
+   sheet from the committed Rev-C schematic, removed old U11/U2 and wired
+   the source-backed frozen F405 interfaces. Current ERC: 0 errors,
+   80 warnings; details and unresolved block/label gaps are below.
+7. Full-HAT integration, PCB DRC, and bench validation remain separate
    fabrication-release gates. ERC alone cannot validate capacitor
    requirements, USB clock accuracy, reset safety, signal integrity, or
    pin-multiplexing assumptions.
@@ -382,13 +388,70 @@ original support-project files and all five HAT Rev-C files byte-identical.
 Reports and comparison exports are in the starter's gitignored
 `build_kicad/` directory.
 
-Present: F405 support, Type-C/USB and logical C3 interface. Absent: full-HAT
+At starter creation: F405 support, Type-C/USB and logical C3 interface.
+Absent at that point: full-HAT
 reuse/integration circuits, bare C3 module and antenna implementation, and
 PCB. This review is **not full-HAT ERC, PCB DRC, fabrication or bench
 validation**. Crystal/load, EN timing, module/antenna, connector footprints,
 power budget, safe states, USB/ESD/RF layout and Rev-D hardware validation
 remain open. The user will perform bulk circuit edits in this separate
 starter; do not overwrite the reviewed support project.
+
+### First source-backed HAT integration pass (2026-10-09)
+
+User requested execution of PR #112; integration was started without merging
+it. The working project now has root page 1, independent local MCU page 2
+and local `HAT.kicad_sch` page 3. The HAT copy uses the committed
+`hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch`,
+not the uncorrelated production PCB or external OneDrive files.
+
+The old U11 Blue Pill and U2 XIAO C3 were removed from the imported sheet.
+All 62 other HAT components are retained. The source contains no AW9523,
+shift-register device or complete measurement/protection implementation;
+this pass does not infer those circuits from PCB-only content.
+
+Thirteen frozen F405 pin interfaces are now connected: PA0/PA1 to J12 ISET;
+PA5/PA6/PA7/PA8 to W25Q128 SPI/CS; PB6/PB7 to CH340 debug (not the legacy
+PB6/PB7 expansion labels); PB10/PB11 to R77/R79 and UDI J9; PB8/PB9 to
+J10/U13 I2C; PB5 through R63 to Q9 fan control. The existing SWD test
+points/header join PA13/PA14/NRST. Source `+3.3V Boot` became shared `+3V3`,
+connecting U15's output to F405 power; redundant MCU supply/ground PWR_FLAGs
+were removed. This does not validate U15's radio-current headroom.
+
+Nine bias resistors R11-R19 implement the frozen ISET, SPI/CS, debug and UDI
+reset targets; source I2C R69/R70 4.7k pull-ups remain. Fan R64 is now a
+populated generic 10k resistor, replacing the source's 100k DNP and clearing
+its obsolete orderable-part metadata. The legacy WS2812B D12 has DIN tied
+LOW and no MCU connection; it is not the required PC13 low-current sink LED.
+The latter, PA4 latch and PC4 interrupt remain NC pending actual endpoints.
+Bare MINI-1U module, straps, decoupling, recovery and antenna remain absent;
+J4 is still logical support only.
+
+Validation: KiCad CLI 10.0.5 reports **0 errors, 80 warnings**. These are
+32 footprint-library, 32 symbol-library, 3 symbol/library mismatch and
+13 isolated-label warnings; no new suppression was used. Isolated endpoints:
+VSENSE_5V+/-, VSENSE_3V3+/-, Incoming (+/-), PB6/PB7/B13/B14/B15/SPI_CS
+and `FAULT_WARNING_SUM`. Resolve their circuit/connector ownership rather
+than assuming they are valid F405 routes. ERC is not clean and does not
+prove safe output or fault coverage.
+The three library mismatches are source `1My_Connectors:5015` test points
+TP9, TP2_+5V1 and TP_+3.3V1.
+
+XML netlist has **102 components and 128 nets**. Pairwise connectivity
+comparison covers all 215 retained HAT pins except the deliberately grounded
+D12 DIN, checked separately. Retained HAT values/footprints are unchanged
+except R64. The review checks support pin topology, all 64 F405 pins,
+13 interface mappings, all nine bias resistors, fan pull-down population,
+SWD, rail joins, native USB VBUS isolation and distinct instance UUID/path
+integrity. Netlist and SVG exports resolve all three sheets. Before/after
+SHA-256 confirms all four support-only project files and all five HAT Rev-C
+files byte-identical. Reports and exports are gitignored in the full project's
+`build_kicad/`; `git diff --check` passes.
+
+**Partial integration only.** Missing source blocks, bare C3, remaining safe
+states/part qualification, unresolved warnings, PCB/layout/DRC and Rev-D
+bench/fabrication gates remain open. No production-board match, full-HAT
+completion or hardware validation is claimed.
 
 ## Session breakdown
 

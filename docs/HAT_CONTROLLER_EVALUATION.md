@@ -6,7 +6,8 @@ migration and verification remain to be done; Rev-C files are not changed by
 this decision. The reviewed F405 support project is preserved; use the
 separate editable integration starter in
 `hardware/kicad/dsp-regulator-hat-rev-d-full/` for full-HAT work. It currently
-contains support circuits only, not the complete HAT, bare C3 module or PCB.
+contains F405 support and an initial committed-source HAT reuse pass, not
+the complete HAT, bare C3 module or PCB.
 
 This decision applies to the future HAT revision, referred to here as
 Rev-D. Continue Rev-C bring-up and firmware work separately.
@@ -96,8 +97,10 @@ Confirmed interface decisions: supply-powered USB device (data/VBUS sensing
 only) and a dedicated UART between the STM32 and C3. Session 3 confirmed the
 bare ESP32-C3-MINI-1U external-antenna path and PC0/PC1 as the C3 EN/BOOT
 controls. The support schematic has passed initial ERC/netlist review, and a
-separate editable full-HAT starter copies that circuitry. Full-HAT integration
-and electrical review remain open. Under the user's 2026-10-09 direction,
+separate editable full-HAT project now adds an initial HAT reuse pass.
+The current partial integration has 0 ERC errors and 80 unresolved warnings;
+the earlier support-only 0/0 result is not a current full-HAT claim.
+Full-HAT integration and electrical review remain open. Under the user's 2026-10-09 direction,
 prior HAT circuits are working reuse candidates, replaceable as needed;
 full Rev-C bench requalification and the untested fan's later bench check
 do not block integration. Production-source/physical-board correlation and
