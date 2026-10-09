@@ -61,6 +61,11 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
+      - name: Test STM32 size budget checker
+        if: ${{ matrix.env == 'bluepill_f103c8' }}
+        working-directory: stm32-bluepill-bringup
+        run: python -m unittest discover -s tools/tests -v
+
       - name: Build ${{ matrix.env }}
         working-directory: ${{ matrix.working-directory }}
         continue-on-error: ${{ matrix.allow-failure }}

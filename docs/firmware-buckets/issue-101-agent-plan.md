@@ -278,7 +278,8 @@ Step 4: skipped by user decision; not authorized.
 Step 5: skipped by user decision; not authorized.
 Step 6: implementation complete; user-approved budgets enforced in CI.
 	- Compact complete-image limit: 52,428 B; full-bench capacity/limit: 65,536 B.
-	- Unit tests, both local profile builds, size checks and all four GitHub Actions jobs passed; manual-dispatch run 37918855171 on 6fe846c.
+	- Both local profile builds and size checks passed; the earlier four-job Actions run 37918855171 on 6fe846c passed before the unit-test step was added.
+	- Added the STM32 size-checker unit-test step to CI; all five tests pass locally. The new Actions result is pending.
 Step 7: partial bench evidence captured 2026-10-09; further hardware testing stopped at user direction.
 	- Compact and full-bench uploads/boot logs passed; authorized automatic startup test erased/programmed only FLASH_TEST_ADDR and passed.
 	- Compact unsupported bench-command responses, full-bench read-only diagnostics and CrowPanel-observed USART3 telemetry/available GET ACKs passed.
