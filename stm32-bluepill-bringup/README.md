@@ -331,6 +331,128 @@ Final hardware/profile state at stop:
 - This checkpoint is bounded evidence only and does not claim full bench
   acceptance.
 
+## Issue #101 Step 7c (2026-10-09) - startup-capture follow-up from installed full-bench image
+
+Scope executed: verify prior upload evidence and attempt a single approved
+startup capture from the already-installed full-bench image without reflashing.
+No firmware, PlatformIO, or wiring/config edits were made.
+
+Source/provenance context used for this attempt:
+
+- Current branch/HEAD during execution: `phil-cia-stm32-flash-headroom` / `6f21a07`
+- Verified firmware/config diff from checkpoint `77275f0` was docs-only.
+- Previously uploaded source identity remains `6ff3562` (compact + full-bench).
+
+User-approved setup and reset gate for this attempt:
+
+- Setup unchanged: ST-Link present, COM7 STM32 CH340 console at 115200 8N1,
+  COM12 CrowPanel USB console.
+- User approved one reset and acknowledged startup side effects:
+  - `FLASH_TEST_ADDR` erase/program at `0x001000`.
+  - Possible defaults save at `FLASH_CFG_ADDR` `0x002000` when persisted config
+    is invalid/missing.
+  - Persisted control-setting restore at boot.
+  - `0x001000` test sector is disposable for this run.
+
+D9 label clarification recorded (pending schematic verification):
+
+- User reports legacy D9 maps to D15 indicator LED on AW9523 `P1_0` (package
+  pin 1) for expander-control proof.
+- `cfg d9=ON` is therefore not treated as proof that a supply rail is enabled.
+- Command names and firmware behavior were unchanged in this step.
+
+Capture execution and artifacts:
+
+- COM7 capture opened with DTR/RTS inactive and timestamped log output.
+- Preserved prior Step 7b logs in session artifacts:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-compact-20261009-084811.log`
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-fullbench-20261009-091100.log`
+- Step 7c startup-attempt logs:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-startup-capture-20261009-095430.log`
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-startup-capture-retry-20261009-095838.log`
+
+Observed result for Step 7c:
+
+- Startup sequence was NOT CAPTURED in the approved window.
+- Captured lines were periodic health summaries (`st f=PASS aw=PASS ...`) only.
+- No boot banner (`stm32-bluepill bringup: boot`) was observed in these logs.
+- Because boot was not observed, this attempt did not issue `HELP`, `DIAG`, or
+  `CFGSHOW` as part of the startup-capture sequence.
+- Per gate constraints, no additional reset/upload attempts were performed.
+
+Representative Step 7c capture excerpt:
+
+- `2026-10-09T09:58:38... INFO COM7 opened 115200 8N1 DTR=0 RTS=0`
+- `2026-10-09T09:58:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T09:59:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T10:00:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T10:01:39... INFO sawBoot=False ...`
+
+Final state for this follow-up:
+
+- Serial capture handles were closed/released.
+- No reflashes, PlatformIO changes, wiring changes, or additional resets.
+- Last installed firmware profile remains full-bench (`bluepill_f103c8_bench`).
+- Direct USART3 command/error-path validation remains BLOCKED with current path.
+- This remains bounded evidence and not full bench acceptance.
+
+Step 7c addendum (later user-confirmed reset transcript):
+
+- After the bounded NOT CAPTURED window above, user provided a separate COM7
+  transcript and confirmed it was produced by pressing the Blue Pill physical
+  RESET button during active recording (not by restarting the monitor/capture).
+- Approximate reset timing reported by user: about 4-5 minutes into that active
+  recording session.
+- The provided transcript contains startup markers including:
+  - `stm32-bluepill bringup: boot`
+  - startup command tables (`cmd core`, `cmd bench`, `udi: CMD...`)
+  - flash bring-up sequence (`flash: begin bring-up test` through
+    `flash: erase/program/readback PASS`)
+  - config/calibration/startup probes (`[CFG] Loaded`, `[CFG] REC...`,
+    `aht20: startup probe PASS`, `ina: incoming rail sample PASS`)
+- Interpretation boundary: this addendum confirms reset-driven startup output
+  exists in a later user-reported session, while the original Step 7c capture
+  files listed above remain correctly classified as NOT CAPTURED.
+
+Step 7c bounded post-reset console check (no new reset/upload):
+
+- Continuity status: the earlier Step 7c recording handle had already ended and
+  was closed before this check; this run used a new bounded COM7 session.
+- Startup transcript preserved verbatim as a session artifact:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\user-provided-startup-transcript-verbatim-20261009.txt`
+- Provenance/metadata artifact (includes user-confirmed trigger + approximate
+  reset timing, without retroactive exact timestamp invention):
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\user-provided-startup-transcript-provenance-20261009.md`
+- Bounded command-capture artifact:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-post-reset-help-diag-cfgshow-20261009.log`
+
+Startup transcript values requested for closeout:
+
+- Flash test result: `flash: erase/program/readback PASS`
+- Config recovery status: `[CFG] REC r=O d=0 s=0`
+- D9/D15 interpretation boundary: user-reported indicator mapping only
+  (`D9 -> D15 -> AW9523 P1.0`), not measured rail-enable state.
+
+Timestamped command results from the bounded COM7 run (115200 8N1):
+
+- `2026-10-09T10:49:07.2335932-05:00 TX HELP`
+  - RX: `cmd core: HELP DIAG D9ON D9OFF CALSHOW CFGSHOW CALSET CFGSAVE CFGLOAD CFGRESET CFGERASE`
+  - RX: `cmd bench: FTEST AHTNOW AHTRESET SRTEST D9FLASH HBON HBOFF Q1/2/3/4/5/9ON/OFF Q39ON/OFF Q612ON/OFF QSTATE QSEQ INAPROBE INANOW INARAILS INADIAG AWPROBE AWMODE AWHB AWP10ON AWP10OFF Q9DIAG`
+  - RX: `udi: CMD:OUTPUT ON|OFF ; CMD:GET OUTPUT|STATE|CFGREC|ILIM CH1|CH2 ; CMD:ILIM CH1|CH2 <mA>`
+- `2026-10-09T10:49:09.0590976-05:00 TX DIAG`
+  - RX: `diag:fault-awint`
+  - RX: `st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 T=26.84 RH=49.12 n=1`
+- `2026-10-09T10:49:10.9045203-05:00 TX CFGSHOW`
+  - RX: `cfg d9=ON`
+  - RX: `cal 5V vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00`
+  - RX: `cal 3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`
+
+Run-end status:
+
+- `2026-10-09T10:49:13.3260041-05:00 INFO Closed COM7 capture handle`
+- No reset, upload, PlatformIO/firmware change, OUTPUT/ILIM/D9 write, wiring
+  change, or additional USART3 testing was performed in this bounded check.
+
 ## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
 
 Scope executed: Step 3 only for issue #101 / draft PR #103.
