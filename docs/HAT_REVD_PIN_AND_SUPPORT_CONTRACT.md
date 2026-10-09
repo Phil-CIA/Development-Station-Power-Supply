@@ -80,9 +80,10 @@ identify Seeed SKU `113991054` (XIAO ESP32C3), a development board rather than
 a bare ESP32-C3-MINI module. The symbol does not expose the board's EN or USB
 signals, so this footprint does not support the required STM32-controlled
 reset or a schematic-verifiable USB programming path. Select a bare module
-with exposed EN and strap pins for Rev-D; prefer ESP32-C3-MINI-1U-N4X with an
-external antenna so it can be positioned clear of the HAT's switching power
-hardware. Confirm the exact purchasable module and antenna before layout.
+with exposed EN and strap pins for Rev-D. The selected module path is a bare
+ESP32-C3-MINI-1U with an external antenna, allowing the antenna to be
+positioned clear of the HAT's switching power hardware. Confirm the exact
+orderable module variant and antenna/connector before layout.
 
 ### Rev-C U2 netlist findings
 

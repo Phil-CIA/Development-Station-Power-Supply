@@ -46,8 +46,9 @@ ESP32-C3-MINI module. Its 5 V input is connected, its 3.3 V output is
 explicitly no-connected, two GPIOs link to the STM32, two more have isolated
 RTS/CTS-named net stubs, and nine GPIOs are explicit no-connects. EN and USB
 programming signals are not exposed by the schematic symbol. Rev-D therefore
-needs a separate module/footprint decision with explicit power, EN/boot
-control, antenna, UART, and recovery access; see the C3 audit in the
+uses a bare ESP32-C3-MINI-1U module with external antenna, with explicit
+power, EN/boot control, UART, and recovery access. Confirm the exact orderable
+module variant and antenna/connector before layout; see the C3 audit in the
 [Rev-D pin and minimum-support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md).
 
 The STM32F405RG is an LQFP64 device, not a Blue Pill module. Rev-D must
