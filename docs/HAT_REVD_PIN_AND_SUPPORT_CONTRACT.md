@@ -112,6 +112,18 @@ or protection.
 - The Rev-C source reconciliation / #62 conflict must confirm the ISET
   control polarity and the shift-register all-off word before those safe
   states are copied into the new schematic.
+- **Production-source identity gate (2026-10-09):** the user selected the
+  2026-08-28 HAT PCB and its same-day Gerber/drill files as the manufacturing
+  reference. KiCad reports that PCB as 50.00 x 100.00 mm with 57 components;
+  the repository PCB is 100.00 x 102.57 mm with 163 components. The supplied
+  folder's editable schematic is dated 2026-09-21 and its exported netlist
+  (57 components, 83 nets) differs from the repository schematic/netlist
+  (64 components, 105 nets). Do not assume either schematic matches the
+  manufacturing files or physical HAT until reconciled. Operator report:
+  no known HAT issues during prior use; most circuitry was plug-and-play, but
+  the ESP32 and fan were not tested. Treat this as history, not bench evidence.
+  Rev-D replaces the Blue Pill and current ESP32-C3; this does not resolve the
+  production-source mapping.
 - The chosen crystal's exact manufacturer part and load must be checked
   against its datasheet and final PCB parasitics. The 8 MHz / CL=8 pF /
   2×10 pF target is not startup- or USB-bench-validated.
