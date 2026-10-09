@@ -25,8 +25,9 @@ Review these files first for current context:
 - Do not create new root-level dated HANDOFF_*/`*_SUMMARY.md` files; update the relevant tracker doc instead.
 
 ## Datasheets and reference docs
-- Before fetching any datasheet, app note, or reference manual from the web, run `python scripts/datasheet.py find <part or keyword>` and use the local copy if present (read `NOTES.md`, then the extracted `.txt`, then the PDF).
-- If you do fetch a document, add it with `python scripts/datasheet.py add <PART> --url <URL> ...` and commit it on your branch.
+- Before fetching any datasheet, app note, reference manual, or doc page from the web, run `python scripts/datasheet.py find <part or keyword>` and use the local copy if present (read `NOTES.md`, then the extracted `.txt`, then the PDF).
+- The doc-fetch hook (`.github/hooks/doc-fetch-cache.json`) automatically files any document fetched a second time into `docs/datasheets/` and blocks further fetches with a pointer to the local copy. When it files something, commit the new files on your branch and fill in its metadata.
+- If you fetch a datasheet you know the project will need again, add it right away with `python scripts/datasheet.py add <PART> --url <URL> ...` rather than waiting for the second fetch.
 - Record specs you extract into `docs/datasheets/parts/<PART>/NOTES.md` with page references.
 - See docs/datasheets/README.md for details.
 

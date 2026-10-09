@@ -1,11 +1,35 @@
 # Datasheet Library
 
-Single local home for datasheets, reference manuals, app notes, and errata used
-by this project. **Agents and humans must check here before fetching any
-document from the web**, and must add anything newly fetched so it is never
-downloaded twice.
+Single local home for datasheets, reference manuals, app notes, errata, and
+web reference pages used by this project. Documents are fetched from the
+internet once and then read locally.
 
 Browse everything in [INDEX.md](INDEX.md) (generated).
+
+## Automatic filing of repeat fetches
+
+A Copilot CLI hook ([`.github/hooks/doc-fetch-cache.json`](../../.github/hooks/doc-fetch-cache.json)
+→ [`scripts/doc_fetch_hook.py`](../../scripts/doc_fetch_hook.py)) watches every
+agent `web_fetch` and every shell download (`curl`, `wget`, `Invoke-WebRequest`, …):
+
+| Fetch of the same URL | What happens |
+|---|---|
+| 1st | Allowed. Logged and the result staged in `~/.copilot/doc-fetch-cache/` (shared by all worktrees/sessions on this machine, not committed). |
+| 2nd | Filed into this library instead: PDFs are downloaded to `parts/<PART>/` with text extracted; web pages are saved to `web/<slug>/content_<start>.md`. The fetch is blocked and the agent is told where the local copy is. |
+| 3rd+ | Blocked, with a pointer to the local copy. |
+
+- Auto-filed entries are tagged `auto-filed`. Agents should commit them on
+  their branch and tidy the metadata (`add <PART> --title --mfr --tags`).
+- Append `#refetch` to a URL to bypass the hook deliberately (e.g. new revision).
+- Vendors that block scripted downloads (e.g. Microchip returns 403) cannot be
+  auto-filed; the fetch is allowed and the agent should save the file manually
+  with `add <PART> --file <downloaded.pdf>`.
+- Settings: `DOC_FETCH_THRESHOLD` (default `2`), `DOC_FETCH_HOME` (state dir),
+  `DOC_FETCH_DISABLE=1` (off). Hook errors never block a tool; they are logged
+  to `~/.copilot/doc-fetch-cache/hook-errors.log`.
+- GitHub PR/issue/API URLs and localhost are never tracked.
+- Copilot cloud agent sessions run the same hook, but their state directory is
+  ephemeral, so counting only happens within one job there.
 
 ## Look it up first
 
@@ -20,6 +44,7 @@ python scripts/datasheet.py list
 1. `parts/<PART>/NOTES.md` — curated key specs and project gotchas (cheapest).
 2. `parts/<PART>/<file>.txt` — extracted text with `===== page N =====` markers; grep it.
 3. `parts/<PART>/<file>.pdf` — only when you need figures, tables, or layout.
+4. `web/<slug>/content_<N>.md` — saved web reference pages.
 
 ## Add a missing document
 
