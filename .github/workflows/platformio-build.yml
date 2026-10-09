@@ -34,6 +34,11 @@ jobs:
             env: bluepill_f103c8
             # Fixed in issue #3 (HardwareSerial -> Uart); now a required check.
             allow-failure: false
+          - name: stm32-bluepill-bringup (f405rg)
+            working-directory: stm32-bluepill-bringup
+            env: f405rg
+            # Build-only target; Rev-D hardware is not available for validation.
+            allow-failure: false
     steps:
       - uses: actions/checkout@v4
 

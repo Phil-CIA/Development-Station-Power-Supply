@@ -1,4 +1,21 @@
-# STM32 Blue Pill Bring-up (First Flash)
+# STM32 Bring-up Firmware
+
+## Targets
+
+- `bluepill_f103c8`: Rev-C STM32F103C8 Blue Pill bring-up target.
+- `f405rg`: build-only Rev-D STM32F405RG target using the frozen pin
+  allocation in `docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`. Rev-D hardware is
+  not available; this build does not validate electrical behavior or imply
+  bench readiness.
+
+Board-specific GPIO and UART assignments are held in `src/board_pins_*.h`.
+The F103 assignments follow `docs/STM32_BLUEPILL_PIN_TABLE.md`; the F405
+assignments follow the Rev-D pin/support contract. The F405 environment
+enables USB CDC on OTG FS PA11/PA12 with PA9 VBUS sensing, USART1 debug on
+PB6/PB7, USART3 UDI on PB10/PB11, and UART4 for C3 on PC10/PC11. This build
+configuration is not evidence that those interfaces are routed or bench-tested.
+
+## Rev-C F103 Blue Pill bring-up (First Flash)
 
 This project is the active bench-controller firmware baseline for STM32F103C8 (Blue Pill) on the current Rev-B HAT bring-up branch.
 
@@ -88,7 +105,13 @@ AW9523 mode notes:
 
 ## Build
 
+Build the Rev-C environment:
+
 `platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+
+Build the Rev-D target:
+
+`platformio run -d stm32-bluepill-bringup -e f405rg`
 
 ## Upload (ST-Link)
 
