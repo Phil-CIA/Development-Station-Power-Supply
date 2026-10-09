@@ -82,6 +82,44 @@ AW9523 mode notes:
 
 Native USB CDC is absent in both maintained profiles.
 
+## STM32 flash budget checks (Issue #101 Step 6)
+
+Approved flash limits for CI size gates:
+
+- Compact/default `bluepill_f103c8`: 52,428 bytes maximum complete image size.
+- Full-bench `bluepill_f103c8_bench`: 65,536 bytes maximum complete image size.
+
+What is measured:
+
+- Acceptance is based on `firmware.bin` byte length (the programmed image).
+- The checker cross-validates with ELF FLASH load-span accounting and fails if
+  `firmware.bin`, `firmware.elf`, `firmware.map`, or the build log is missing,
+  empty, or malformed.
+- The checker reports PlatformIO Flash and static RAM metrics separately; RAM is
+  never counted as flash usage.
+
+Local commands (no upload):
+
+- Build compact profile and capture log:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 | Tee-Object -FilePath stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8.log`
+- Build full-bench profile and capture log:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench | Tee-Object -FilePath stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8_bench.log`
+- Run checker for compact profile:
+  - `py -3.13 stm32-bluepill-bringup/tools/check_stm32_size_budget.py --env bluepill_f103c8 --build-dir stm32-bluepill-bringup/.pio/build/bluepill_f103c8 --build-log stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8.log --flash-capacity-bytes 65536 --flash-limit-bytes 52428 --report-text stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8.txt --report-json stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8.json`
+- Run checker for full-bench profile:
+  - `py -3.13 stm32-bluepill-bringup/tools/check_stm32_size_budget.py --env bluepill_f103c8_bench --build-dir stm32-bluepill-bringup/.pio/build/bluepill_f103c8_bench --build-log stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8_bench.log --flash-capacity-bytes 65536 --flash-limit-bytes 65536 --report-text stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8_bench.txt --report-json stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8_bench.json`
+
+CI evidence artifacts:
+
+- `stm32-size-evidence-bluepill_f103c8`
+- `stm32-size-evidence-bluepill_f103c8_bench`
+
+Each artifact contains the build log, `firmware.bin`, `firmware.elf`,
+`firmware.map`, and concise generated size reports (`.txt` + `.json`).
+
+These CI build/size checks do not replace bench testing; runtime and hardware
+evidence remains required.
+
 ## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
 
 Scope executed: Step 3 only for issue #101 / draft PR #103.
