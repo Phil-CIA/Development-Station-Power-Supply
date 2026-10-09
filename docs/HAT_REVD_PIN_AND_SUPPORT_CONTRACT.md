@@ -9,6 +9,12 @@ PC0/PC1 C3 control assignments for the bare ESP32-C3-MINI-1U external-antenna
 module; exact ordering code, antenna, and electrical implementation still
 require schematic/layout verification.
 
+An independent editable **integration starter**, not a complete full-HAT
+schematic, now lives in `hardware/kicad/dsp-regulator-hat-rev-d-full/`.
+Session 5 must use that project's local MCU sheet, preserving the reviewed
+support-only project in `hardware/kicad/dsp-regulator-hat-rev-d/` intact.
+See the integration direction and starter evidence below.
+
 Selected architecture: bare STM32F405RG LQFP64 plus a separate ESP32-C3
 Wi-Fi coprocessor. See [controller decision](HAT_CONTROLLER_EVALUATION.md).
 
@@ -62,9 +68,10 @@ any Rev-D net is routed.
 | Boot configuration | BOOT0 / PB2 (BOOT1) | 60 / 28 | Boot straps | Fit 10 kΩ pull-down on each. Normal boot is BOOT0=0; recovery boot raises BOOT0 while PB2 stays LOW. | DS-PIN |
 
 The LOW defaults for the ISET controls follow the existing firmware's
-initialization intent. The Rev-C schematic/netlist source conflict remains a
-gate: confirm the copied Rev-D control polarity and all-off shift-register
-word against the reconciled hardware source before wiring the new sheet.
+initialization intent. The Rev-C schematic/netlist source conflict remains
+an explicit uncertainty:
+confirm the integrated Rev-D control polarity and all-off shift-register
+word against the selected circuit source before accepting its safe states.
 Passive pulls define reset behavior; they do not replace hardware interlocks
 or protection.
 
@@ -109,9 +116,10 @@ or protection.
   and PC0=`C3_EN_N` / PC1=`C3_BOOT_N`. Confirm the exact orderable module and
   antenna/connector before layout; verify the EN capacitor and reset timing
   against the selected module and final 3.3 V rail ramp.
-- The Rev-C source reconciliation / #62 conflict must confirm the ISET
-  control polarity and the shift-register all-off word before those safe
-  states are copied into the new schematic.
+- Confirm the integrated ISET control polarity and shift-register all-off
+  word against the selected circuit sources; unresolved source correlation
+  is not evidence of safe behavior. Full Rev-C bench requalification is
+  not an integration prerequisite under the user direction below.
 - The chosen crystal's exact manufacturer part and load must be checked
   against its datasheet and final PCB parasitics. The 8 MHz / CL=8 pF /
   2×10 pF target is not startup- or USB-bench-validated.
@@ -246,9 +254,10 @@ deterministic STM32 control.
    records the confirmed, conflicting, and unknown Rev-D reuse blocks,
    including the separate Regulator Rev-C source applicable to the power
    stage. Do not copy the old AW9523/Q3/Q9/Q12 screenshot mapping into Rev-D.
-   Identify the physical HAT/Regulator revisions and measure or trace the
-   ISET, fault, shift-register, fan, and U2 paths before treating the
-   unresolved circuits as reusable.
+   These are committed-source findings, not a physical-board correlation
+   claim. The user direction below supersedes the prior blanket bench
+   prerequisite for circuit reuse; keep source and connectivity
+   uncertainties visible while integrating.
 2. The F405 pin allocation, reset-safe bias targets, clock target, boot straps,
    and USB connector/protection choices are frozen here with citations.
    Session 3 confirmed the C3 module path and PC0/PC1 controls; schematic
@@ -263,7 +272,11 @@ deterministic STM32 control.
    checked power/support pins, C3 UART direction and controls, USB connector
    through ESD and PA9 VBUS sensing, and SWD. KiCad 10.0.5 ERC reported
    0 errors and 0 warnings. The detailed results and open gates are below.
-5. Full-HAT integration, PCB DRC, and bench validation remain separate
+5. **Editable starter created (2026-10-09):** the separate
+   `hardware/kicad/dsp-regulator-hat-rev-d-full/` project copies the reviewed
+   root, setup and local MCU sheet under full-HAT project names. No reused
+   HAT circuitry, bare C3 module, antenna, or PCB has been added.
+6. Full-HAT integration, PCB DRC, and bench validation remain separate
    fabrication-release gates. ERC alone cannot validate capacitor
    requirements, USB clock accuracy, reset safety, signal integrity, or
    pin-multiplexing assumptions.
@@ -330,6 +343,53 @@ Review findings and qualification status:
   powered/unpowered insertion test, crystal startup test, or bench test was
   performed. Review ESD placement and 90 Ω USB routing during layout.
 
+### User-approved integration direction (2026-10-09)
+
+- Prior HAT circuits are working reuse candidates and may be replaced as
+  needed. A full Rev-C bench requalification is not required before Rev-D
+  integration. The fan is untested; its later bench check is nonblocking.
+- Replace the old ESP32-C3 development-board implementation with the bare
+  ESP32-C3-MINI-1U external-antenna path defined here.
+- The supplied 2026-08-28 production Rev-C PCB/Gerber/drill set is the working
+  manufacturing reference. Exact physical-board and schematic correlation
+  remain unresolved; neither manufacturing outputs nor the committed
+  schematic prove a match. Do not copy or modify external OneDrive
+  production files. PR #111 records the mismatch but is not merged at this
+  starter's creation; this direction does not depend on that PR being merged.
+- Record selected sources, changed/replaced blocks and pin/net/safe-state
+  reviews in the full-HAT project. Integration may proceed without a blanket
+  Rev-C bench gate; Rev-D electrical, layout, fabrication and bench gates
+  remain required. Do not treat the separate Regulator #62 namespace as
+  proof of HAT connectivity.
+
+### Independent full-HAT starter review (2026-10-09)
+
+Project: `hardware/kicad/dsp-regulator-hat-rev-d-full/`
+(`DSP-Regulator-HAT-RevD-Full.kicad_pro`,
+`DSP-Regulator-HAT-RevD-Full.kicad_sch`, local `MCU.kicad_sch`).
+The root title identifies it as an integration starter. All project-instance
+names, including the MCU's 34 symbol instances, use the new project name;
+UUIDs, sheet paths, annotation and circuitry are preserved. No child sheet
+is shared with the support-only project.
+
+KiCad CLI **10.0.5 ERC: 0 errors, 0 warnings** for the copied support
+schematic only. Both root and `/MCU/` hierarchy load in the exported netlist;
+comparison to a fresh support-project export found identical components,
+symbol-library data and pin/net topology: **31 components, 68 nets, all
+64 F405 pins accounted for**. Candidate/DNP markings and unallocated GPIO
+no-connects are unchanged. SHA-256 before/after checks confirmed all four
+original support-project files and all five HAT Rev-C files byte-identical.
+Reports and comparison exports are in the starter's gitignored
+`build_kicad/` directory.
+
+Present: F405 support, Type-C/USB and logical C3 interface. Absent: full-HAT
+reuse/integration circuits, bare C3 module and antenna implementation, and
+PCB. This review is **not full-HAT ERC, PCB DRC, fabrication or bench
+validation**. Crystal/load, EN timing, module/antenna, connector footprints,
+power budget, safe states, USB/ESD/RF layout and Rev-D hardware validation
+remain open. The user will perform bulk circuit edits in this separate
+starter; do not overwrite the reviewed support project.
+
 ## Session breakdown
 
 Each session uses its own branch and PR. Each session also has a reusable
@@ -344,7 +404,7 @@ Rev-C KiCad files unchanged.
 | 2 | `phil-cia-f405-pin-freeze` | `revd-2-f405-pin-freeze` | Freeze cited F405 pins, reset-safe states, clock, boot, and USB support choices | C3 control GPIOs confirmed by session 3; electrical fit/value checks remain |
 | 3 | `hw/revd-c3-coprocessor` | `revd-3-c3-coprocessor` | Select bare ESP32-C3-MINI-1U external-antenna path and define power, RF, UART, reset/boot, and recovery requirements | — |
 | 4 | `hw/revd-f405-support-sheet` | `revd-4-f405-support-sheet` | Separate Rev-D KiCad project, MCU support sheet, ERC and netlist review | 2, 3 |
-| 5 | `hw/revd-hat-integration` | `revd-5-hat-integration` | Full Rev-D HAT integration, ERC and DRC | 1, 4 |
+| 5 | `hw/revd-hat-integration` | `revd-5-hat-integration` | Integrate in the separate full-HAT starter; full ERC, then layout/DRC release gates | Reviewed session-4 input and independent starter; source findings/user direction above, no blanket Rev-C bench prerequisite |
 | 6 | `firmware/f405-target` | `revd-6-f405-firmware-target` | F405 PlatformIO target using the frozen pin map | 2 |
 
 Sessions 1–3 can run in parallel. Rev-C bring-up continues independently.

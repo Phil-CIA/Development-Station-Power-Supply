@@ -3,7 +3,10 @@
 **Status:** Controller architecture and MCU selected for future HAT Rev-D:
 STM32F405RG bare MCU plus ESP32-C3-MINI Wi-Fi coprocessor. Schematic/layout
 migration and verification remain to be done; Rev-C files are not changed by
-this decision.
+this decision. The reviewed F405 support project is preserved; use the
+separate editable integration starter in
+`hardware/kicad/dsp-regulator-hat-rev-d-full/` for full-HAT work. It currently
+contains support circuits only, not the complete HAT, bare C3 module or PCB.
 
 This decision applies to the future HAT revision, referred to here as
 Rev-D. Continue Rev-C bring-up and firmware work separately.
@@ -92,7 +95,14 @@ provides the frozen, cited F405 allocation and schematic review gates.
 Confirmed interface decisions: supply-powered USB device (data/VBUS sensing
 only) and a dedicated UART between the STM32 and C3. Session 3 confirmed the
 bare ESP32-C3-MINI-1U external-antenna path and PC0/PC1 as the C3 EN/BOOT
-controls. The schematic is not yet created or electrically reviewed.
+controls. The support schematic has passed initial ERC/netlist review, and a
+separate editable full-HAT starter copies that circuitry. Full-HAT integration
+and electrical review remain open. Under the user's 2026-10-09 direction,
+prior HAT circuits are working reuse candidates, replaceable as needed;
+full Rev-C bench requalification and the untested fan's later bench check
+do not block integration. Production-source/physical-board correlation and
+Rev-D validation remain open; see the contract for the manufacturing-reference
+boundary and remaining gates.
 
 The F405RG provides up to 1 MiB of flash, 192 KiB SRAM, and USB OTG FS
 according to ST documentation. Confirm the exact datasheet limits and memory
