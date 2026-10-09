@@ -266,6 +266,71 @@ Step 7 command and flash-operation statement:
   user-authorized disposable `FLASH_TEST_ADDR` sector and passed.
 - No other external-flash erase/program operation was performed in this step.
 
+## Issue #101 Step 7b (2026-10-09) - bounded checkpoint closeout (no further hardware actions)
+
+Scope executed: close out the bounded checkpoint report after Step 7 activity.
+No PlatformIO configuration, firmware source, wiring, or profile definitions
+were changed in this closeout step.
+
+Exact source identity used for this bounded run:
+
+- Branch: `phil-cia-stm32-flash-headroom`
+- Source commit: `6ff3562`
+
+Approved setup/isolation and operation scope captured in-session:
+
+- Board revision: Version C.
+- Power path: bench PSU at 12 V, 800 mA limit.
+- User-stated isolation condition for this run: no output connectors unplugged;
+  only 10 ohm resistive loads connected downstream.
+- User approved compact upload and full-bench upload operations and side effects.
+- No additional reset/upload/port activity was performed after full-bench
+  evidence capture for this closeout request.
+
+Profiles uploaded during this bounded run:
+
+- Compact/default profile (`bluepill_f103c8`) upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload`
+  - Result: SUCCESS
+- Full-bench profile (`bluepill_f103c8_bench`) upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload`
+  - Result: SUCCESS
+
+Captured command/response evidence (USART1 COM7, 115200 8N1):
+
+- Compact log: `C:\Users\user\AppData\Local\Temp\issue101-step7b\com7-compact-20261009-084811.log`
+  - `HELP`, `DIAG`, `CFGSHOW` returned normally.
+  - `INAPROBE` and `INANOW` explicitly returned unsupported in compact profile.
+- Full-bench log: `C:\Users\user\AppData\Local\Temp\issue101-step7b\com7-fullbench-20261009-091100.log`
+  - `HELP`, `DIAG`, `CFGSHOW`, `INAPROBE`, `INANOW`, `AHTNOW` returned expected bench responses.
+
+Measurement evidence recorded for this checkpoint (Group 2):
+
+- Instrument: OWON XDM1014.
+- Reference node: H2 pad (ground reference used by operator).
+- PA0, PA1, PA2: each measured <= 0.02 V.
+- User agreed interpretation: logic LOW.
+- Evidence type: steady-state DMM only; this is not startup-glitch verification.
+
+Bounded status retained for unresolved criteria:
+
+- Early boot auto-write/recovery capture: NOT MEASURED in this run's evidence
+  set (early boot lines were not captured in the compact/full-bench COM7 logs
+  above).
+- USART3 direct command/ACK/ERR validation through a raw non-mutating route:
+  BLOCKED with current reported wiring/path; CrowPanel USB CLI interception
+  limits direct host-line injection evidence.
+
+Final hardware/profile state at stop:
+
+- Testing stopped on user request after bounded checkpoint capture.
+- No further resets or uploads were performed for this closeout.
+- Last uploaded profile state: full-bench (`bluepill_f103c8_bench`).
+- Serial captures were closed/released after logging (no active COM7 handle
+  retained by the capture commands).
+- This checkpoint is bounded evidence only and does not claim full bench
+  acceptance.
+
 ## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
 
 Scope executed: Step 3 only for issue #101 / draft PR #103.
