@@ -1,11 +1,13 @@
 # HAT Rev-D F405 Pin and Minimum-Support Contract
 
-**Status:** F405RG pin allocation and minimum-support values frozen for
-schematic implementation. No Rev-D schematic has been created or electrically
-reviewed; this is not fabrication readiness and does not change the Rev-C pin
-contract. Session 3 confirmed the PC0/PC1 C3 control assignments for the bare
-ESP32-C3-MINI-1U external-antenna module; exact ordering code, antenna, and
-electrical implementation still require schematic/layout verification.
+**Status:** F405RG pin allocation and minimum-support values are frozen for
+schematic implementation. Session 4 captured a separate MCU support-sheet
+project; KiCad ERC reports 0 errors and 0 warnings, and the exported netlist
+passed a pin-by-pin contract review. The sheet is not routed or fabrication
+ready and does not change the Rev-C pin contract. Session 3 confirmed the
+PC0/PC1 C3 control assignments for the bare ESP32-C3-MINI-1U external-antenna
+module; exact ordering code, antenna, and electrical implementation still
+require schematic/layout verification.
 
 Selected architecture: bare STM32F405RG LQFP64 plus a separate ESP32-C3
 Wi-Fi coprocessor. See [controller decision](HAT_CONTROLLER_EVALUATION.md).
@@ -119,8 +121,14 @@ or protection.
 - Confirm the reset-capacitor release time, regulator headroom, VDDA noise,
   PC13 sink-current margin, and fan PWM frequency during schematic/firmware
   integration.
-- No Rev-D schematic, ERC/netlist review, PCB DRC, or bench validation exists
-  yet; this frozen table is a design input only.
+- The session-4 support sheet is schematic-only. The C3 connector represents
+  an external module interface; module supply decoupling, GPIO2/GPIO8 boot
+  straps, UART0 recovery header, antenna/RF layout, and final connector
+  selection remain for full HAT integration. Its SWD header footprint and
+  exact USB footprint mapping also require review.
+- No Rev-D PCB DRC or bench validation exists; the ERC and netlist review do
+  not validate capacitor selection, clock startup, reset timing, USB signal
+  integrity, ESD placement, or VBUS behavior.
 
 ## C3 coprocessor audit and Rev-D contract
 
@@ -246,19 +254,81 @@ deterministic STM32 control.
    Session 3 confirmed the C3 module path and PC0/PC1 controls; schematic
    capture must still qualify the exact module/antenna, EN circuit, crystal
    load, VBUS divider, and unresolved Rev-C source conflicts.
-3. Create a separate Rev-D KiCad project and MCU minimum-support sheet.
-   Keep Rev-C untouched; do not present a copied PCB as migrated or validated.
-4. Export the schematic netlist and inspect every MCU power/support pin,
-   UART direction, USB mapping and debug connection. Run ERC and review its
-   findings alongside the datasheet; ERC alone cannot validate capacitor
-   requirements, USB clock accuracy, reset safety or pin multiplexing.
-5. Record review results and remaining gates here before integrating the
-   MCU sheet into the full HAT. Full-board ERC/DRC and bench validation remain
-   separate fabrication-release gates.
+3. **Session 4 completed (2026-10-09):** created
+   `hardware/kicad/dsp-regulator-hat-rev-d/` with a root project and separate
+   hierarchical `MCU.kicad_sch`. Rev-C source files and PCB were left
+   untouched; no Rev-C board content was copied.
+4. **Session 4 review completed:** exported the netlist to the project's
+   gitignored `build_kicad/` directory, accounted for all 64 F405 pins, and
+   checked power/support pins, C3 UART direction and controls, USB connector
+   through ESD and PA9 VBUS sensing, and SWD. KiCad 10.0.5 ERC reported
+   0 errors and 0 warnings. The detailed results and open gates are below.
+5. Full-HAT integration, PCB DRC, and bench validation remain separate
+   fabrication-release gates. ERC alone cannot validate capacitor
+   requirements, USB clock accuracy, reset safety, signal integrity, or
+   pin-multiplexing assumptions.
 
 The controller choice and cited F405 allocation/support targets are settled.
-They are **not yet routed or electrically reviewed**; schematic ERC, netlist
-inspection, USB timing/ESD review, and bench validation remain open.
+The session-4 support sheet has passed an initial ERC/netlist review, but it is
+**not routed or electrically released**. USB timing/ESD review, part
+qualification, full-HAT integration, PCB DRC, and bench validation remain
+open.
+
+### Session 4 schematic review (2026-10-09)
+
+Project: `hardware/kicad/dsp-regulator-hat-rev-d/`
+(`DSP-Regulator-HAT-RevD-Support.kicad_sch` with child `MCU.kicad_sch`).
+The machine-readable ERC report and exported netlist are in the gitignored
+project `build_kicad/` directory. KiCad CLI version: 10.0.5. ERC result:
+**0 errors, 0 warnings**.
+
+Netlist review confirmed:
+
+- All 64 STM32F405RG LQFP64 pins are accounted for. VDD pins 19/32/48/64 and
+  VBAT pin 1 map to `+3V3`; VSS pins 18/63 and VSSA pin 12 map to GND;
+  VDDA pin 13 is supplied through the 0 Ω link and has local bypass; VCAP_1
+  pin 31 and VCAP_2 pin 47 each connect only to their own 2.2 µF capacitor.
+- The four digital VDD pins have one 100 nF bypass each and a local 4.7 µF
+  rail capacitor. NRST pin 7 has its 10 kΩ pull-up, 100 nF capacitor, reset
+  switch, and SWD-header connection. BOOT0 pin 60 and PB2/BOOT1 pin 28 each
+  have a 10 kΩ pull-down; the BOOT0 recovery jumper raises BOOT0 from 3.3 V.
+- HSE PH0/PH1 (pins 5/6) connect to the crystal and separate ground-referenced
+  load-capacitor nets. Their fields retain the candidate/unverified status
+  described below.
+- PC10/pin 51 is `C3_UART_RX` (F405 UART4 TX to C3 GPIO0/RX), and PC11/pin 52
+  is `C3_UART_TX` (C3 GPIO1/TX to F405 UART4 RX). PC0/pin 8 is `C3_EN_N`;
+  PC1/pin 9 is `C3_BOOT_N`. Both controls have 10 kΩ pull-ups to 3.3 V and
+  terminate at the external C3 interface connector.
+- USB PA11/pin 44 maps to D− and PA12/pin 45 to D+ through U2, whose Value is
+  `USBLC6-2SC6`. Type-C connector D+/D− pins A/B are paired correctly, both
+  CC pins have 5.1 kΩ Rd resistors, and the connector shield/common ground
+  is tied to GND. Connector VBUS reaches PA9/pin 42 only through R9 (4.7 kΩ)
+  and R10 (10 kΩ to GND); VBUS is not on a HAT power rail. PA10/USB ID and
+  SBU1/SBU2 are explicitly unconnected.
+- PA13/pin 46 and PA14/pin 49 map to SWDIO and SWCLK. The keyed 10-pin SWD
+  header also exposes target 3.3 V reference, GND, and NRST; SWO is
+  unconnected, and the debugger reference is not a target-power input.
+- Unallocated F405 GPIOs are explicitly marked no-connect in this minimum
+  support project; this does not reserve or remove their frozen Rev-D
+  assignments from the full-HAT design.
+
+Review findings and qualification status:
+
+- The 8.000 MHz crystal and two 10 pF C0G/NP0 load capacitors are marked
+  `candidate; UNVERIFIED` in their schematic Value fields. The two capacitors
+  are DNP pending selection of the crystal, load calculation including board
+  parasitics, and oscillator-startup review.
+- The optional 1 µF C3 CHIP_EN capacitor is marked
+  `candidate; UNVERIFIED` and DNP. Confirm its fit/value against the exact
+  ESP32-C3-MINI-1U ordering code and 3.3 V rail ramp before populating it.
+- J4 is an interface connector, not the C3 module symbol. C3 local supply
+  bypassing, GPIO2/GPIO8 strap pulls, UART0 recovery, module/antenna choice,
+  RF keep-out, and antenna validation are not implemented by this support
+  sheet.
+- Exact SWD connector/footprint selection and validation of the USB4105
+  footprint against the orderable GCT variant remain open. No PCB, DRC, USB
+  powered/unpowered insertion test, crystal startup test, or bench test was
+  performed. Review ESD placement and 90 Ω USB routing during layout.
 
 ## Session breakdown
 
