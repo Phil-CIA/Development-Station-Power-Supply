@@ -1,8 +1,11 @@
 # HAT Rev-D F405 Pin and Minimum-Support Contract
 
-**Status:** Draft for schematic implementation and electrical review.
-No Rev-D schematic has been created or reviewed yet. This document does not
-establish fabrication readiness or change the Rev-C pin contract.
+**Status:** F405RG pin allocation and minimum-support values frozen for
+schematic implementation. No Rev-D schematic has been created or electrically
+reviewed; this is not fabrication readiness and does not change the Rev-C pin
+contract. Session 3 confirmed the PC0/PC1 C3 control assignments for the bare
+ESP32-C3-MINI-1U external-antenna module; exact ordering code, antenna, and
+electrical implementation still require schematic/layout verification.
 
 Selected architecture: bare STM32F405RG LQFP64 plus a separate ESP32-C3
 Wi-Fi coprocessor. See [controller decision](HAT_CONTROLLER_EVALUATION.md).
@@ -15,64 +18,111 @@ Wi-Fi coprocessor. See [controller decision](HAT_CONTROLLER_EVALUATION.md).
 - Keep SWD programming/recovery independent of USB and Wi-Fi firmware.
 - Continue compatible Rev-C work separately; do not replace its design files.
 
-## Proposed STM32 pin allocation
+## Frozen STM32 pin allocation
 
-Physical pad numbers below were checked against the installed KiCad 10
-`MCU_ST_STM32F4:STM32F405RGTx` symbol. Alternate functions and electrical
-limits still require verification against ST DS8626 before schematic freeze.
-Assignments are proposals, not evidence that a net is routed.
+LQFP64 pin numbers were cross-checked against ST DS8626 Rev. 9, Table 7.
+Alternate functions were checked against Table 9; citations below apply to
+each allocation row. `DS-PIN` means Table 7, pp. 47–58; `DS-AF` means Table 9,
+pp. 62–71. The allocation is frozen as a design contract, not evidence that
+any Rev-D net is routed.
 
-| Function | F405 pin | LQFP64 pad | Peripheral / proposal | Migration notes |
-|---|---|---|---|---|
-| 5V control | PA0 | 14 | GPIO | Preserve logical Rev-C function; confirm safe external bias |
-| 3V3 control | PA1 | 15 | GPIO | Preserve logical Rev-C function; confirm safe external bias |
-| Legacy CH3 control reservation | PA2 | 16 | GPIO reservation | Confirm actual retained purpose before connecting; not a new adjustable rail |
-| Shift-register latch | PA4 | 20 | GPIO | Preserve latch ownership |
-| SPI clock | PA5 | 21 | SPI1 SCK, AF5 | Verify against routed SR/flash nets, not just firmware defaults |
-| SPI input | PA6 | 22 | SPI1 MISO, AF5 | W25Q128 return; check bus sharing |
-| SPI output | PA7 | 23 | SPI1 MOSI, AF5 | W25Q128 / shift-register data; audit transaction/latch isolation |
-| W25Q128 CS | PA8 | 41 | GPIO | Pull inactive during reset |
-| CH340 debug TX | PB6 | 58 | USART1 TX, AF7 | Moves from PA9 to free native USB VBUS sensing |
-| CH340 debug RX | PB7 | 59 | USART1 RX, AF7 | Moves from PA10; displaces Rev-C AW9523 interrupt |
-| AW9523 interrupt | PC4 | 24 | GPIO / EXTI4 | Moves from PB7; check polarity, pull-up voltage and interrupt ownership |
-| UDI host TX | PB10 | 29 | USART3 TX, AF7 | Preserve display interface |
-| UDI host RX | PB11 | 30 | USART3 RX, AF7 | Preserve display interface |
-| I2C clock | PB8 | 61 | I2C1 SCL, AF4 | Preserve bus; verify pull-ups and any remap assumptions |
-| I2C data | PB9 | 62 | I2C1 SDA, AF4 | Preserve bus |
-| Fan control | PB5 | 57 | GPIO / TIM3 CH2, AF2 proposal | Actual PWM requirement and circuit must be verified; no tach assumed |
-| C3 link TX | PC10 | 51 | UART4 TX, AF8 | F405 TX -> C3 RX; C3-side pins not selected yet |
-| C3 link RX | PC11 | 52 | UART4 RX, AF8 | C3 TX -> F405 RX |
-| Native USB VBUS sense | PA9 | 42 | OTG_FS VBUS | Define compliant sensing circuit and unpowered behavior; never connect to HAT power rail |
-| Native USB D- | PA11 | 44 | OTG_FS DM, AF10 | Dedicated USB differential pair |
-| Native USB D+ | PA12 | 45 | OTG_FS DP, AF10 | Dedicated USB differential pair |
-| USB ID reservation | PA10 | 43 | Unused in device-only design | No USB host/OTG role requested |
-| SWD data | PA13 | 46 | SWDIO, AF0 | Keep accessible and unshared |
-| SWD clock | PA14 | 49 | SWCLK, AF0 | Keep accessible and unshared |
-| Optional SWO | PB3 | 55 | Trace, AF0 reservation | Do not allocate before debug decision |
-| Status LED | PC13 | 2 | GPIO proposal | Review drive limits; Blue Pill's LED circuit is not present automatically |
-| HSE clock | PH0 / PH1 | 5 / 6 | OSC_IN / OSC_OUT | Reserve both until crystal or external-clock circuit is selected |
-| Boot configuration | BOOT0 / PB2 | 60 / 28 | Boot straps | Define deterministic normal boot and recovery access |
+| Function | F405 pin | LQFP64 pin | Peripheral / mode | Reset/boot safe state and external bias | Evidence |
+|---|---|---:|---|---|---|
+| 5V control | PA0 | 14 | GPIO | High-Z during reset; 10 kΩ pull-down holds LOW/inactive. Firmware must preload LOW before output mode. | DS-PIN |
+| 3V3 control | PA1 | 15 | GPIO | High-Z during reset; 10 kΩ pull-down holds LOW/inactive. Firmware must preload LOW before output mode. | DS-PIN |
+| Legacy CH3 control reservation | PA2 | 16 | GPIO, reserved | Keep unconnected unless its retained purpose is confirmed; if connected as a control, 10 kΩ pull-down and LOW/inactive startup. Not a new adjustable rail. | DS-PIN |
+| Shift-register latch | PA4 | 20 | GPIO; SPI1 NSS unused | Reset LOW; 10 kΩ pull-down. Load the all-off shift-register word before the first latch pulse. | DS-PIN; DS-AF (PA4/NSS) |
+| SPI clock | PA5 | 21 | SPI1 SCK, AF5 | Reset Hi-Z; 47 kΩ pull-down gives SPI mode 0 idle LOW. | DS-PIN; DS-AF (AF5) |
+| SPI input | PA6 | 22 | SPI1 MISO, AF5 | Input during reset; no external bias required. | DS-PIN; DS-AF (AF5) |
+| SPI output | PA7 | 23 | SPI1 MOSI, AF5 | Reset Hi-Z; 47 kΩ pull-down keeps the line LOW until selected. | DS-PIN; DS-AF (AF5) |
+| W25Q128 chip select | PA8 | 41 | GPIO | Reset HIGH/inactive; 10 kΩ pull-up to 3.3 V. Firmware preloads HIGH before SPI starts. | DS-PIN |
+| CH340 debug TX | PB6 | 58 | USART1 TX, AF7 | UART idle HIGH; 10 kΩ pull-up. | DS-PIN; DS-AF (AF7) |
+| CH340 debug RX | PB7 | 59 | USART1 RX, AF7 | Input idle HIGH; 10 kΩ pull-up. This displaces the Rev-C AW9523 interrupt from PB7. | DS-PIN; DS-AF (AF7) |
+| AW9523 interrupt | PC4 | 24 | GPIO / EXTI4 | Input; 10 kΩ pull-up to the AW9523 logic rail for its active-low open-drain interrupt. | DS-PIN |
+| UDI host TX | PB10 | 29 | USART3 TX, AF7 | UART idle HIGH; 10 kΩ pull-up to the shared 3.3 V logic rail. | DS-PIN; DS-AF (AF7) |
+| UDI host RX | PB11 | 30 | USART3 RX, AF7 | Input idle HIGH; 10 kΩ pull-up to the shared 3.3 V logic rail. | DS-PIN; DS-AF (AF7) |
+| I2C clock | PB8 | 61 | I2C1 SCL, AF4 | Open-drain bus idle HIGH; 4.7 kΩ pull-up to 3.3 V, sized again for final bus capacitance. | DS-PIN; DS-AF (AF4) |
+| I2C data | PB9 | 62 | I2C1 SDA, AF4 | Open-drain bus idle HIGH; 4.7 kΩ pull-up to 3.3 V, sized again for final bus capacitance. | DS-PIN; DS-AF (AF4) |
+| Fan control | PB5 | 57 | GPIO / TIM3_CH2, AF2 | High-Z during reset; 10 kΩ pull-down at the MOSFET gate holds fan OFF. No tach input is allocated. | DS-PIN; DS-AF (AF2) |
+| C3 link TX | PC10 | 51 | UART4 TX, AF8 | UART idle HIGH; 10 kΩ pull-up to the shared C3/F405 3.3 V domain. C3 GPIO0 is the application UART RX; no RTS/CTS. | DS-PIN; DS-AF (AF8) |
+| C3 link RX | PC11 | 52 | UART4 RX, AF8 | Input idle HIGH; 10 kΩ pull-up to the shared C3/F405 3.3 V domain. C3 GPIO1 is the application UART TX; no RTS/CTS. | DS-PIN; DS-AF (AF8) |
+| C3 active-low enable/reset | PC0 | 8 | GPIO, open-drain; confirmed by session 3 | `C3_EN_N`: HIGH-Z releases reset; drive LOW to hold C3 in reset. Add a 10 kΩ pull-up; 1 µF from CHIP_EN to GND is the Espressif reference, but fit/value remains gated on exact module and rail-ramp review. | DS-PIN; session 3 C3 audit |
+| C3 active-low boot strap | PC1 | 9 | GPIO, open-drain; confirmed by session 3 | `C3_BOOT_N` controls C3 GPIO9: 10 kΩ pull-up to C3 3.3 V selects normal boot; assert LOW only while resetting for ROM download mode, then release HIGH-Z. | DS-PIN; session 3 C3 audit |
+| Native USB VBUS sense | PA9 | 42 | OTG_FS_VBUS input | Sense through 4.7 kΩ series from connector VBUS and 10 kΩ from PA9 to GND. No connection to any HAT power rail; the divider keeps PA9 within the unpowered-pin voltage limit. | DS-PIN |
+| Native USB D− | PA11 | 44 | OTG_FS_DM, AF10 | USB peripheral pins remain Hi-Z until configured; no external pull-up/down. Route as a 90 Ω differential pair through the ESD device. | DS-PIN; DS-AF (AF10) |
+| Native USB D+ | PA12 | 45 | OTG_FS_DP, AF10 | USB peripheral pins remain Hi-Z until configured; no external pull-up/down. Route as a 90 Ω differential pair through the ESD device. | DS-PIN; DS-AF (AF10) |
+| USB ID reservation | PA10 | 43 | OTG_FS_ID function unused | Device-only design; leave unconnected and do not enable USB host/ID behavior. | DS-PIN; DS-AF (AF10) |
+| SWD data | PA13 | 46 | SWDIO, AF0 | Keep on the programming header; configure SWD-only (disable JTAG). No user circuit or external pull. | DS-PIN; DS-AF (AF0) |
+| SWD clock | PA14 | 49 | SWCLK, AF0 | Keep on the programming header; configure SWD-only. No user circuit or external pull. | DS-PIN; DS-AF (AF0) |
+| Optional SWO | PB3 | 55 | TRACESWO, AF0 reservation | Debug-only; disabled and high-Z in normal operation. Do not use as SPI1 SCK. | DS-PIN; DS-AF (AF0) |
+| Status LED | PC13 | 2 | GPIO, active-low | Reset Hi-Z; 10 kΩ pull-up keeps LED OFF. Limit LED sink current to 2 mA pending package current review. | DS-PIN |
+| HSE crystal | PH0 / PH1 | 5 / 6 | OSC_IN / OSC_OUT | Reserve exclusively for the crystal and its two ground-referenced load capacitors. | DS-PIN |
+| Boot configuration | BOOT0 / PB2 (BOOT1) | 60 / 28 | Boot straps | Fit 10 kΩ pull-down on each. Normal boot is BOOT0=0; recovery boot raises BOOT0 while PB2 stays LOW. | DS-PIN |
 
-The C3 control signals are defined below; their F405 GPIO assignments remain
-open for Session 2. Do not wire module boot pins by assumption.
+The LOW defaults for the ISET controls follow the existing firmware's
+initialization intent. The Rev-C schematic/netlist source conflict remains a
+gate: confirm the copied Rev-D control polarity and all-off shift-register
+word against the reconciled hardware source before wiring the new sheet.
+Passive pulls define reset behavior; they do not replace hardware interlocks
+or protection.
 
-## Minimum-support schematic scope
+### Peripheral resource conflict check
 
-| Circuit block | Required content | Open review item |
+- The selected pins support SPI1 AF5, USART1/USART3 AF7, UART4 AF8, I2C1 AF4,
+  TIM3_CH2 AF2, USB OTG FS AF10, and SWD/SWO AF0 with no pin mux overlap
+  (DS8626 Table 9, pp. 62–71).
+- PA4 is used as a GPIO latch, not SPI1 hardware NSS. PB5 is TIM3_CH2, not
+  SPI1 MOSI or I2C1_SMBA. USART3 stays on PB10/PB11 while UART4 uses PC10/PC11.
+- If DMA is enabled, the following RM0090 Rev. 19 Tables 42–43 stream/channel
+  choices are mutually distinct: SPI1 RX DMA2 Stream 0 Channel 3 / TX Stream
+  3 Channel 3; USART1 RX DMA2 Stream 2 Channel 4 / TX Stream 7 Channel 4;
+  USART3 RX DMA1 Stream 1 Channel 4 / TX Stream 3 Channel 4; UART4 RX DMA1
+  Stream 2 Channel 4 / TX Stream 4 Channel 4 (pp. 307–308). No DMA stream
+  collision is present in this candidate allocation.
+- TIM3_CH2 is the only allocated TIM3 channel. No timer conflict is present
+  in this map; the PWM frequency and any future timer/timebase use remain
+  firmware integration decisions.
+
+## Minimum-support values for schematic capture
+
+| Circuit block | Frozen target values / connection | Evidence and remaining qualification |
 |---|---|---|
-| Exact MCU | STM32F405RG LQFP64 symbol and matching footprint | Confirm full ordering code/temperature grade and symbol-to-pad mapping |
-| Digital power | VDD pads 19, 32, 48, 64; VSS pads 18, 63; local bypass for every supply pin and bulk bypass | Calculate regulator capacity including radio peaks; choose capacitor parts/placement per ST |
-| Analog power | VDDA pad 13, VSSA pad 12; bypass/filter network | Verify sequencing and supply requirements; no separate floating analog ground |
-| Internal regulator | VCAP_1 pad 31 and VCAP_2 pad 47, each with its required dedicated capacitor to ground | Check ST capacitance/ESR requirements; never tie VCAP to 3.3V or use it to power loads |
-| Backup domain | VBAT pad 1 | Define no-battery connection per ST guidance; do not leave floating |
-| Clock | PH0/PH1 allocation, HSE source, and firmware PLL configuration | Choose crystal/oscillator and validate USB 48 MHz clock accuracy; crystal load capacitors depend on chosen part/layout |
-| Reset/boot | NRST pad 7, BOOT0 pad 60, PB2 pad 28 straps; reset/recovery access | Verify reset defaults keep outputs inactive before firmware starts |
-| Programming/debug | SWDIO, SWCLK, NRST, GND, target-voltage reference | Preserve recovery access and prevent external debugger back-powering |
-| USB device | D+/D-, VBUS sensing, connector, ESD and shield/ground policy | Connector type and protection parts not selected; supply-powered device must survive cable insertion/removal and HAT power-off |
-| UART interfaces | CH340 debug, UDI, dedicated C3 UART | Check voltages, disconnected/unpowered endpoints and reset behavior |
-| Control/measurement | Existing GPIO/I2C/SPI/fault interfaces with safe external biases | Reconcile Rev-C source conflicts before copying gate/protection circuitry |
+| Exact MCU | STM32F405RGT6, LQFP64; retain the LQFP64 pin assignments above. | DS8626 Rev. 9 Table 7, pp. 47–58. Verify selected ordering code and footprint before capture. |
+| Digital power | 100 nF ceramic at each VDD pin, plus 4.7 µF local bulk on the 3.3 V MCU rail; VSS to the common ground plane. | AN4488 §2.2, p. 8. Confirm regulator headroom for C3 radio peaks and capacitor DC-bias derating. |
+| Analog power | VDDA from 3.3 V through a 0 Ω link (ferrite option only if analog-noise review requires); 100 nF + 1 µF local bypass; VSSA to common ground. | AN4488 §2.2, p. 8. No separate floating analog ground. |
+| Internal regulator | VCAP_1 (pad 31) and VCAP_2 (pad 47): one 2.2 µF low-ESR ceramic (ESR <2 Ω) from each pin to GND; no other load. | AN4488 §2.2, p. 8. Place each capacitor adjacent to its pin. |
+| Backup domain | VBAT (pad 1) tied to VDD/3.3 V when no backup battery is fitted; do not leave it floating. | AN4488 §2.1.2, p. 7. Add a local 100 nF bypass if required by the final layout. |
+| HSE clock | 8.000 MHz crystal, target ±20 ppm and CL=8 pF; start with two 10 pF C0G/NP0 load capacitors to GND. Firmware PLL target: PLLM=8, PLLN=336, PLLP=2, PLLQ=7 (168 MHz SYSCLK and 48 MHz USB). | AN4488 §4.1.1, p. 27 and crystal-load calculation, p. 26. 10 pF assumes about 3 pF stray capacitance; recalculate from the selected crystal datasheet/layout and validate oscillator startup before fabrication. |
+| Reset | NRST (pad 7): 10 kΩ pull-up to 3.3 V, 100 nF to GND, reset switch and SWD header able to pull low. | AN4488 §2.3.5, p. 14, and reference design, p. 58. Confirm release timing with the selected reset supervisor/debugger circuit. |
+| Boot/recovery | BOOT0: 10 kΩ pull-down; PB2/BOOT1: 10 kΩ pull-down; provide a jumper/test point to raise BOOT0 for system-memory recovery. | AN4488 §5.1, p. 30, and reference design, p. 58. Normal boot selects main Flash. |
+| Programming/debug | SWDIO, SWCLK, NRST, GND, and target 3.3 V reference on a keyed header; debugger must not source target power. | DS8626 Table 7, pp. 47–58; keep the F405 as the sole board-power source. |
+| USB connector | GCT USB4105-GF-A USB Type-C receptacle, USB 2.0 only; 5.1 kΩ Rd from each CC pin to GND; connector shield bonded to GND at the connector. | [GCT USB4105-GF-A](https://gct.co/connector/usb4105-gf-a). No SuperSpeed or source/host role. |
+| USB protection and VBUS | ST USBLC6-2SC6 for D+/D− ESD protection, placed at the receptacle. VBUS reaches PA9 only through 4.7 kΩ series / 10 kΩ pulldown sensing; never connect VBUS to +5V_Boot, 3.3 V, or any HAT supply rail. | [ST USBLC6-2](https://www.st.com/en/protections-and-emi-filters/usblc6-2.html); [ST VBUS-sensing guidance](https://community.st.com/stm32-mcus-60/management-of-vbus-sensing-for-usb-device-design-93); [AN4879](https://www.st.com/resource/en/application_note/dm00296349-usb-hardware-and-pcb-guidelines-using-stm32-mcus-stmicroelectronics.pdf). The divider is a sense path only and keeps PA9 within its unpowered input limit. |
+| C3 support/control | Bare ESP32-C3-MINI-1U with external antenna; PC0=`C3_EN_N`, PC1=`C3_BOOT_N`, confirmed by session 3. Both are F405 open-drain controls with 10 kΩ pull-ups to C3 3.3 V. | See the C3 audit below for 3.3 V power, RF, UART, strap, timing, recovery, and authority requirements. Confirm exact orderable module/antenna and qualify EN capacitor population against the final rail ramp. |
+| UART interfaces | CH340 debug (USART1), UDI (USART3), and C3 application UART (UART4) are separate 3.3 V logic links. UART lines idle HIGH; keep endpoints on a common powered logic domain and avoid driving an unpowered target. | Verify final interface circuits, series protection, and startup behavior in the schematic review. |
 
-## C3 coprocessor audit and proposed Rev-D contract
+## Remaining uncertainties and gates
+
+- Session 3 confirmed the bare ESP32-C3-MINI-1U external-antenna module path
+  and PC0=`C3_EN_N` / PC1=`C3_BOOT_N`. Confirm the exact orderable module and
+  antenna/connector before layout; verify the EN capacitor and reset timing
+  against the selected module and final 3.3 V rail ramp.
+- The Rev-C source reconciliation / #62 conflict must confirm the ISET
+  control polarity and the shift-register all-off word before those safe
+  states are copied into the new schematic.
+- The chosen crystal's exact manufacturer part and load must be checked
+  against its datasheet and final PCB parasitics. The 8 MHz / CL=8 pF /
+  2×10 pF target is not startup- or USB-bench-validated.
+- Verify PA9 VBUS sensing with both HAT-powered and HAT-unpowered cable
+  insertion, including VBUS maximum and divider tolerance. USB routing,
+  connector footprint, ESD placement, and signal-integrity review remain open.
+- Confirm the reset-capacitor release time, regulator headroom, VDDA noise,
+  PC13 sink-current margin, and fan PWM frequency during schematic/firmware
+  integration.
+- No Rev-D schematic, ERC/netlist review, PCB DRC, or bench validation exists
+  yet; this frozen table is a design input only.
+
+## C3 coprocessor audit and Rev-D contract
 
 The Rev-C schematic and exported netlist were inspected without modifying
 either file. U2 is named `ESP32_C3_mini`, but its footprint and part metadata
@@ -126,16 +176,15 @@ bare module, or an implemented C3 programming/recovery path.
 ### UART4 link and STM32-owned controls
 
 Use the dedicated 3.3 V UART4 interface already reserved on the F405. Route
-the following signal names. Session 2 has confirmed provisional F405
-assignments PC0 and PC1 for the control signals; retain these as provisional
-until its complete pin-freeze review is finalized:
+the following signal names. Session 2 froze the F405 assignments, and session
+3 confirmed PC0 and PC1 for the selected MINI-1U control signals:
 
 | Net name | C3 connection | F405 connection | Direction |
 |---|---|---|---|
 | `C3_UART_RX` | GPIO0, app UART RX | UART4 TX, PC10 | STM32 -> C3 |
 | `C3_UART_TX` | GPIO1, app UART TX | UART4 RX, PC11 | C3 -> STM32 |
-| `C3_EN_N` | CHIP_EN | PC0, provisional | Active-low reset/disable, open-drain |
-| `C3_BOOT_N` | GPIO9 strap | PC1, provisional | Active-low download-mode request, open-drain |
+| `C3_EN_N` | CHIP_EN | PC0, confirmed | Active-low reset/disable, open-drain |
+| `C3_BOOT_N` | GPIO9 strap | PC1, confirmed | Active-low download-mode request, open-drain |
 
 Use 3.3 V CMOS levels and common ground; no level shifter is needed when both
 devices use the same 3.3 V logic rail. A 115200-baud 8-N-1 link is adequate
@@ -192,9 +241,11 @@ deterministic STM32 control.
    Identify the physical HAT/Regulator revisions and measure or trace the
    ISET, fault, shift-register, fan, and U2 paths before treating the
    unresolved circuits as reusable.
-2. Check this complete allocation in ST's LQFP64 pin/alternate-function
-   tables, including DMA/timer conflicts if used. Freeze GPIO safety states
-   and resolve the clock, C3 module/boot access and USB connector details.
+2. The F405 pin allocation, reset-safe bias targets, clock target, boot straps,
+   and USB connector/protection choices are frozen here with citations.
+   Session 3 confirmed the C3 module path and PC0/PC1 controls; schematic
+   capture must still qualify the exact module/antenna, EN circuit, crystal
+   load, VBUS divider, and unresolved Rev-C source conflicts.
 3. Create a separate Rev-D KiCad project and MCU minimum-support sheet.
    Keep Rev-C untouched; do not present a copied PCB as migrated or validated.
 4. Export the schematic netlist and inspect every MCU power/support pin,
@@ -205,8 +256,9 @@ deterministic STM32 control.
    MCU sheet into the full HAT. Full-board ERC/DRC and bench validation remain
    separate fabrication-release gates.
 
-The controller choice and interface decisions are settled. The proposed
-allocation and support circuit are **not yet electrically reviewed**.
+The controller choice and cited F405 allocation/support targets are settled.
+They are **not yet routed or electrically reviewed**; schematic ERC, netlist
+inspection, USB timing/ESD review, and bench validation remain open.
 
 ## Session breakdown
 
@@ -219,8 +271,8 @@ Rev-C KiCad files unchanged.
 | # | Branch | Prompt | Scope | Depends on |
 |---|---|---|---|---|
 | 1 | `hw/revc-source-reconcile` | `revd-1-revc-source-reconcile` | Reconcile the Rev-C schematic and netlist, including the #62 Q9/Q3/Q12/U4 conflicts | — |
-| 2 | `hw/revd-f405-pin-freeze` | `revd-2-f405-pin-freeze` | Verify the pins and alternate functions against ST; freeze clock, boot, USB connector and ESD | — |
-| 3 | `hw/revd-c3-coprocessor` | `revd-3-c3-coprocessor` | Audit the C3 module: footprint, power, RF keep-out, UART, reset/boot access | — |
+| 2 | `phil-cia-f405-pin-freeze` | `revd-2-f405-pin-freeze` | Freeze cited F405 pins, reset-safe states, clock, boot, and USB support choices | C3 control GPIOs confirmed by session 3; electrical fit/value checks remain |
+| 3 | `hw/revd-c3-coprocessor` | `revd-3-c3-coprocessor` | Select bare ESP32-C3-MINI-1U external-antenna path and define power, RF, UART, reset/boot, and recovery requirements | — |
 | 4 | `hw/revd-f405-support-sheet` | `revd-4-f405-support-sheet` | Separate Rev-D KiCad project, MCU support sheet, ERC and netlist review | 2, 3 |
 | 5 | `hw/revd-hat-integration` | `revd-5-hat-integration` | Full Rev-D HAT integration, ERC and DRC | 1, 4 |
 | 6 | `firmware/f405-target` | `revd-6-f405-firmware-target` | F405 PlatformIO target using the frozen pin map | 2 |
@@ -232,7 +284,9 @@ reports to the gitignored `build_kicad/` directory.
 ## References
 
 - [ST DS8626, STM32F405/407 datasheet](https://www.st.com/resource/en/datasheet/stm32f405rg.pdf)
-- [ST AN4488, STM32F4 hardware development](https://www.st.com/resource/en/application_note/dm00084117.pdf)
+- [ST AN4488, STM32F4 hardware development](https://www.st.com/resource/en/application_note/dm00115714.pdf)
+- [ST RM0090, STM32F405/407 reference manual](https://www.st.com/resource/en/reference_manual/dm00031020.pdf)
+- [ST AN4879, USB hardware and PCB guidelines](https://www.st.com/resource/en/application_note/dm00296349-usb-hardware-and-pcb-guidelines-using-stm32-mcus-stmicroelectronics.pdf)
 - [Rev-C signal contract](STM32_BLUEPILL_PIN_TABLE.md)
 - [UDI contract](DISPLAY_INTERFACE_STANDARD.md)
 

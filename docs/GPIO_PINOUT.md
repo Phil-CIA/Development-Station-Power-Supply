@@ -8,7 +8,7 @@ used by this repo. It links each subsystem to its authoritative mapping source.
 | Subsystem | Authoritative source |
 |---|---|
 | STM32 controller path (Rev-C HAT + `stm32-bluepill-bringup`) | `docs/STM32_BLUEPILL_PIN_TABLE.md` |
-| Future Rev-D STM32F405RG controller (draft, not routed) | `docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md` |
+| Future Rev-D STM32F405RG controller (pin allocation frozen; not routed) | `docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md` |
 | Custom front-panel board (ESP32-C6 + ST7796S path) | This file, sections below |
 | Display host interface standard (both display paths) | `docs/DISPLAY_INTERFACE_STANDARD.md` |
 

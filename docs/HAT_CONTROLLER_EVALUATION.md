@@ -35,9 +35,14 @@ The selected architecture is:
 - Keep Wi-Fi/network activity from directly owning time-critical rail control
   or bypassing STM32 safety/fault handling.
 
-The STM32F405RG selection is final for this architecture decision. Detailed
-pin assignment, clocking, support circuitry, USB routing, and C3 interface
-must be engineered and verified before the Rev-D schematic or PCB is ready.
+The STM32F405RG selection is final for this architecture decision. The cited
+F405 pin allocation and minimum-support targets are frozen in the
+[Rev-D pin and support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md);
+schematic capture, electrical review, USB routing, and C3 module integration
+remain open before a Rev-D schematic or PCB is ready. Session 3 confirmed
+PC0=`C3_EN_N` and PC1=`C3_BOOT_N` for the bare ESP32-C3-MINI-1U external-antenna
+module path; exact ordering code and electrical implementation remain to be
+verified.
 The exact C3 module variant and its use of the current Rev-C U2 footprint and
 routing also require verification; the existing `ESP32_C3_mini` symbol at U2
 does not prove that it is fully wired or firmware-ready. The Rev-C netlist
@@ -83,10 +88,11 @@ infer the full requirement from the present build alone.
 ## Migration and implementation checklist
 
 The [Rev-D pin and minimum-support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md)
-now provides the proposed allocation and schematic review gates. Confirmed
-interface decisions: supply-powered USB device (data/VBUS sensing only) and
-a dedicated UART between the STM32 and C3. The schematic is not yet created
-or electrically reviewed.
+provides the frozen, cited F405 allocation and schematic review gates.
+Confirmed interface decisions: supply-powered USB device (data/VBUS sensing
+only) and a dedicated UART between the STM32 and C3. Session 3 confirmed the
+bare ESP32-C3-MINI-1U external-antenna path and PC0/PC1 as the C3 EN/BOOT
+controls. The schematic is not yet created or electrically reviewed.
 
 The F405RG provides up to 1 MiB of flash, 192 KiB SRAM, and USB OTG FS
 according to ST documentation. Confirm the exact datasheet limits and memory
