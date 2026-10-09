@@ -40,7 +40,16 @@ pin assignment, clocking, support circuitry, USB routing, and C3 interface
 must be engineered and verified before the Rev-D schematic or PCB is ready.
 The exact C3 module variant and its use of the current Rev-C U2 footprint and
 routing also require verification; the existing `ESP32_C3_mini` symbol at U2
-does not prove that it is fully wired or firmware-ready.
+does not prove that it is fully wired or firmware-ready. The Rev-C netlist
+identifies that footprint as Seeed SKU `113991054` (XIAO ESP32C3), not a bare
+ESP32-C3-MINI module. Its 5 V input is connected, its 3.3 V output is
+explicitly no-connected, two GPIOs link to the STM32, two more have isolated
+RTS/CTS-named net stubs, and nine GPIOs are explicit no-connects. EN and USB
+programming signals are not exposed by the schematic symbol. Rev-D therefore
+uses a bare ESP32-C3-MINI-1U module with external antenna, with explicit
+power, EN/boot control, UART, and recovery access. Confirm the exact orderable
+module variant and antenna/connector before layout; see the C3 audit in the
+[Rev-D pin and minimum-support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md).
 
 The STM32F405RG is an LQFP64 device, not a Blue Pill module. Rev-D must
 provide the MCU's required board-level power, clock/reset/boot, programming,

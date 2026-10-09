@@ -53,9 +53,8 @@ Assignments are proposals, not evidence that a net is routed.
 | HSE clock | PH0 / PH1 | 5 / 6 | OSC_IN / OSC_OUT | Reserve both until crystal or external-clock circuit is selected |
 | Boot configuration | BOOT0 / PB2 | 60 / 28 | Boot straps | Define deterministic normal boot and recovery access |
 
-C3 reset/enable and boot-mode control pins are deliberately unassigned until
-the exact U2 module and programming/update requirements are verified.
-Reserve GPIO capacity; do not wire module boot pins by assumption.
+The C3 control signals are defined below; their F405 GPIO assignments remain
+open for Session 2. Do not wire module boot pins by assumption.
 
 ## Minimum-support schematic scope
 
@@ -72,6 +71,113 @@ Reserve GPIO capacity; do not wire module boot pins by assumption.
 | USB device | D+/D-, VBUS sensing, connector, ESD and shield/ground policy | Connector type and protection parts not selected; supply-powered device must survive cable insertion/removal and HAT power-off |
 | UART interfaces | CH340 debug, UDI, dedicated C3 UART | Check voltages, disconnected/unpowered endpoints and reset behavior |
 | Control/measurement | Existing GPIO/I2C/SPI/fault interfaces with safe external biases | Reconcile Rev-C source conflicts before copying gate/protection circuitry |
+
+## C3 coprocessor audit and proposed Rev-D contract
+
+The Rev-C schematic and exported netlist were inspected without modifying
+either file. U2 is named `ESP32_C3_mini`, but its footprint and part metadata
+identify Seeed SKU `113991054` (XIAO ESP32C3), a development board rather than
+a bare ESP32-C3-MINI module. The symbol does not expose the board's EN or USB
+signals, so this footprint does not support the required STM32-controlled
+reset or a schematic-verifiable USB programming path. Select a bare module
+with exposed EN and strap pins for Rev-D. The selected module path is a bare
+ESP32-C3-MINI-1U with an external antenna, allowing the antenna to be
+positioned clear of the HAT's switching power hardware. Confirm the exact
+orderable module variant and antenna/connector before layout.
+
+### Rev-C U2 netlist findings
+
+| U2 pad | Symbol signal | Current net | Finding |
+|---:|---|---|---|
+| 16 | 5V | `+5V_reg` | U2 is powered from 5 V through the XIAO board |
+| 15 | GND | GND | Common ground |
+| 14 | 3.3V | Explicit no-connect | The XIAO's regulated 3.3 V output is not used |
+| 9 | GPIO0 | `RXD_ESP` | Connected to STM32 U11 pad 28 (A3) |
+| 10 | GPIO1 | `TXD_ESP` | Connected to STM32 U11 pad 27 (A2) |
+| 7 | GPIO20 | `CTS_ESP` | Net has no other endpoint; no working CTS connection |
+| 8 | GPIO21 | `RTS_ESP` | Net has no other endpoint; no working RTS connection |
+| 11, 12, 13, 1-6 | GPIO2-10 | Explicit no-connects | Nine GPIOs are explicitly unused |
+
+Only GPIO0 and GPIO1 have peer connections to the STM32; GPIO20 and GPIO21
+have isolated net stubs, and GPIO2-10 are no-connects. In total, 11 of the
+13 symbol GPIOs have no functional external peer. The current netlist does
+not provide explicit C3 EN or boot control, supply-decoupling evidence for a
+bare module, or an implemented C3 programming/recovery path.
+
+### Power and RF requirements
+
+- Supply the bare module from a regulated 3.3 V rail within its 3.0-3.6 V
+  operating range. Size the source for at least 500 mA; the module datasheet
+  lists 350 mA peak for 802.11b transmit at 20.5 dBm. Include local 10 uF
+  bulk and 0.1 uF high-frequency decoupling at the module supply entry, with
+  short return paths. Recalculate the shared 3.3 V rail budget; do not assume
+  the Rev-C `+5V_reg`/XIAO regulator arrangement transfers to a bare module.
+- For ESP32-C3-MINI-1, preserve the datasheet's marked antenna keep-out:
+  no copper, traces, or components beneath the antenna region on any layer;
+  observe the keep-out in the recommended land-pattern drawing (datasheet
+  Figure 11-1), place the antenna at a board edge, and keep nearby metal
+  clear. MINI-1U uses an external antenna connector instead of the integrated
+  antenna; the antenna is not included and must be placed clear of metal.
+  Validate RF performance in the final HAT/enclosure.
+- References: [ESP32-C3-MINI-1 datasheet](https://documentation.espressif.com/esp32-c3-mini-1_datasheet_en.html),
+  [ESP32-C3 schematic checklist](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c3/schematic-checklist.html),
+  and [Seeed XIAO ESP32C3 documentation](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/).
+
+### UART4 link and STM32-owned controls
+
+Use the dedicated 3.3 V UART4 interface already reserved on the F405. Route
+the following signal names. Session 2 has confirmed provisional F405
+assignments PC0 and PC1 for the control signals; retain these as provisional
+until its complete pin-freeze review is finalized:
+
+| Net name | C3 connection | F405 connection | Direction |
+|---|---|---|---|
+| `C3_UART_RX` | GPIO0, app UART RX | UART4 TX, PC10 | STM32 -> C3 |
+| `C3_UART_TX` | GPIO1, app UART TX | UART4 RX, PC11 | C3 -> STM32 |
+| `C3_EN_N` | CHIP_EN | PC0, provisional | Active-low reset/disable, open-drain |
+| `C3_BOOT_N` | GPIO9 strap | PC1, provisional | Active-low download-mode request, open-drain |
+
+Use 3.3 V CMOS levels and common ground; no level shifter is needed when both
+devices use the same 3.3 V logic rail. A 115200-baud 8-N-1 link is adequate
+for command/telemetry framing. Hardware RTS/CTS is not required for this
+traffic; leave C3 UART0 GPIO20/21 available for programming and do not carry
+the Rev-C `CTS_ESP`/`RTS_ESP` stubs forward as flow-control signals.
+
+Provide 10 kOhm pull-ups from both `C3_EN_N` and `C3_BOOT_N` to C3 3.3 V.
+The module datasheet's peripheral reference circuit recommends a 10 kOhm
+CHIP_EN pull-up and 1 uF capacitor to ground; the capacitor value and
+population remain gated on verification against the exact orderable MINI-1U
+variant and the board's power-up behavior. Keep the CHIP_EN trace short.
+Allow the 3.3 V rail to stabilize for at least 50 us before enabling the chip;
+hold CHIP_EN low for at least 50 us to reset. These controls are open-drain /
+low-side so the F405 cannot back-power an unpowered C3. Default both controls
+released so the C3 boots normally.
+
+GPIO2, GPIO8, and GPIO9 are boot strapping pins. Pull GPIO2 and GPIO8 high
+for deterministic SPI-flash boot and download-mode entry; keep GPIO9 high by
+default. To request ROM download mode, hold GPIO9 low while resetting via
+CHIP_EN, then keep the strap stable for at least 3 ms after CHIP_EN rises.
+GPIO9 is the `C3_BOOT_N` control; GPIO2 and GPIO8 must not be repurposed
+without rechecking boot behavior.
+
+### Programming, recovery, and authority boundary
+
+Use a dedicated 3.3 V UART0 recovery header rather than adding another USB
+device path. Expose C3 GPIO21/U0TXD (`C3_PROG_TX`, C3-to-adapter RX),
+GPIO20/U0RXD (`C3_PROG_RX`, adapter TX-to-C3), GND, a 3.3 V
+target-reference pin, `C3_EN_N`, and `C3_BOOT_N`. Connect an external 3.3 V
+USB-UART adapter to the UART signals; the reference pin is not a power input.
+The boot and reset controls must remain manually accessible at the header so
+recovery does not depend on the STM32 firmware running.
+
+The C3 owns local-network telemetry and, subject to a separately reviewed
+security/recovery policy, OTA of its own firmware only. It must never drive
+a power-stage, rail-enable, current-limit, or protection signal directly.
+All power-control requests pass through the STM32's validated command
+handling; safety limits, fault handling, and power-stage state remain
+STM32-owned. C3 OTA must not write or alter STM32 firmware/configuration or
+safety limits. Loss of C3, Wi-Fi, or an update must not interrupt
+deterministic STM32 control.
 
 ## Work sequence and review gates
 
