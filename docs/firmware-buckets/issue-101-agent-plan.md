@@ -307,5 +307,14 @@ Step 7: partial bench evidence captured 2026-10-09; further hardware testing sto
 Bench status: PARTIAL; blocked and unmeasured criteria remain open.
 Flash ceiling approval: compact complete-image ceiling 52,428 B APPROVED; full-bench limit is 65,536 B.
 Independent review: record inconsistencies corrected; checker unit tests now run in CI.
+Main reconciliation (2026-10-09): integrated Rev-D F405 support from `main`
+while preserving both F103 profiles, their single-owner console and budgets.
+	- All three STM32 builds and the existing five checker tests passed locally.
+	- F103 compact: PlatformIO flash 44,944 B, RAM 2,000 B; complete image 45,264 B.
+	- F103 bench: PlatformIO flash 52,236 B, RAM 2,000 B; complete image 52,556 B.
+	- Both F103 image budgets passed with matching ELF spans.
+	- F405 build-only: PlatformIO flash 66,252 B, RAM 6,428 B; complete image 66,708 B. No F103 budget is imposed on F405.
+	- User deferred the uncommitted parser proposal; it is preserved separately in local git stash `eb480419cb96ebb05364ffaf349776e179623584`, not included in this PR or claimed as reviewed Step 5 work.
+	- New GitHub Actions evidence is pending; no hardware was accessed.
 Step 7a: planning-only handoff prepared at user request; investigation results pending. Hardware execution remains unauthorized.
 PR #103: remains draft pending disposition of the remaining open acceptance criteria.

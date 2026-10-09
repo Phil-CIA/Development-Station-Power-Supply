@@ -119,6 +119,32 @@
 				"upload"
 			],
 			"group": "none"
+		},
+		{
+			"label": "Rev-C: KiCad ERC",
+			"detail": "Read-only ERC report to build_kicad/ (Rev-C files unchanged)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"New-Item -ItemType Directory -Force build_kicad | Out-Null; $k = (Get-Command kicad-cli -ErrorAction SilentlyContinue).Source; if (-not $k) { $k = \"$env:LOCALAPPDATA\\Programs\\KiCad\\10.0\\bin\\kicad-cli.exe\" }; & $k sch erc --severity-all -o build_kicad/revc-erc.rpt hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch"
+			],
+			"group": "none",
+			"problemMatcher": []
+		},
+		{
+			"label": "Rev-C: Export netlist",
+			"detail": "Fresh netlist to build_kicad/ for comparison with committed .net",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"New-Item -ItemType Directory -Force build_kicad | Out-Null; $k = (Get-Command kicad-cli -ErrorAction SilentlyContinue).Source; if (-not $k) { $k = \"$env:LOCALAPPDATA\\Programs\\KiCad\\10.0\\bin\\kicad-cli.exe\" }; & $k sch export netlist -o build_kicad/revc-fresh.net hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch"
+			],
+			"group": "none",
+			"problemMatcher": []
 		}
 	]
 }

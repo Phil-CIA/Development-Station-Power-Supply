@@ -1,4 +1,22 @@
-# STM32 Blue Pill Bring-up (First Flash)
+# STM32 Bring-up Firmware
+
+## Targets
+
+- `bluepill_f103c8`: compact/default Rev-C STM32F103C8 Blue Pill target.
+- `bluepill_f103c8_bench`: full-bench F103 profile with bring-up commands.
+- `f405rg`: build-only Rev-D STM32F405RG target using the frozen pin
+  allocation in `docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`. Rev-D hardware is
+  not available; this build does not validate electrical behavior or imply
+  bench readiness.
+
+Board-specific GPIO and UART assignments are held in `src/board_pins_*.h`.
+The F103 assignments follow `docs/STM32_BLUEPILL_PIN_TABLE.md`; the F405
+assignments follow the Rev-D pin/support contract. The F405 environment
+enables USB CDC on OTG FS PA11/PA12 with PA9 VBUS sensing, USART1 debug on
+PB6/PB7, USART3 UDI on PB10/PB11, and UART4 for C3 on PC10/PC11. This build
+configuration is not evidence that those interfaces are routed or bench-tested.
+
+## Rev-C F103 Blue Pill bring-up (First Flash)
 
 This project is the active bench-controller firmware baseline for STM32F103C8 (Blue Pill) on the current Rev-B HAT bring-up branch.
 
@@ -80,7 +98,30 @@ AW9523 mode notes:
 - Full-bench profile:
   - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench`
 
-Native USB CDC is absent in both maintained profiles.
+Native USB CDC is absent in both maintained F103 profiles. The build-only
+F405 target retains USB CDC and its full bring-up command set.
+
+## Issue #101 main reconciliation (2026-10-09)
+
+Reconciled the F103 profile work with `main`'s Rev-D F405 target. Board pin
+headers are shared without changing the F103 USART1 owner or USART3 UDI.
+F405 retains USB CDC, USART1 debug on PB6/PB7, and UART4 C3 support.
+CI builds all three STM32 environments; the 52,428/65,536-byte budgets and
+size-evidence uploads apply only to the two F103 profiles.
+
+Local Python 3.13 / PlatformIO builds and all five checker tests passed:
+
+| Target | PlatformIO flash | Static RAM | Complete `firmware.bin` |
+|---|---:|---:|---:|
+| Compact F103 | 44,944 / 65,536 B | 2,000 / 20,480 B | 45,264 B |
+| Full-bench F103 | 52,236 / 65,536 B | 2,000 / 20,480 B | 52,556 B |
+| F405 (build-only) | 66,252 / 1,048,576 B | 6,428 / 131,072 B | 66,708 B |
+
+Both F103 complete-image checks passed and matched ELF flash spans. Earlier
+Step 3 and bench measurements below remain historical evidence; these
+reconciled binaries have not been uploaded or bench-tested. The proposed
+ILIM parser rewrite was deferred by user decision and is not included.
+Hardware work remains blocked pending an approved isolated procedure.
 
 ## STM32 flash budget checks (Issue #101 Step 6)
 
@@ -398,6 +439,10 @@ Some bench-facing commands call helpers that are also used by startup, periodic 
 - Fault/UDI contract helpers that must remain ungated: `sendUdiAck()`, `sendUdiErr()`, `sendUdiEvt()`, `handleUdiCommandLine()`, `pollUdiCommands()`, and AW9523 fault-event signaling (`EVT:FAULT TRIP/CLEAR`).
 
 Bench-only command handlers should be the gating boundary, not the low-level helper functions above.
+
+Build the Rev-D target:
+
+`platformio run -d stm32-bluepill-bringup -e f405rg`
 
 ## Upload (ST-Link)
 

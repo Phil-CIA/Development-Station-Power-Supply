@@ -41,6 +41,11 @@ jobs:
             env: bluepill_f103c8_bench
             flash-limit-bytes: 65536
             allow-failure: false
+          - name: stm32-bluepill-bringup (f405rg)
+            working-directory: stm32-bluepill-bringup
+            env: f405rg
+            # Build-only target; Rev-D hardware is not available for validation.
+            allow-failure: false
     steps:
       - uses: actions/checkout@v4
 
@@ -75,7 +80,7 @@ jobs:
           pio run -e ${{ matrix.env }} 2>&1 | tee ci-artifacts/build-${{ matrix.env }}.log
 
       - name: Enforce STM32 image and RAM budgets (${{ matrix.env }})
-        if: ${{ matrix.working-directory == 'stm32-bluepill-bringup' }}
+        if: ${{ matrix.env == 'bluepill_f103c8' || matrix.env == 'bluepill_f103c8_bench' }}
         working-directory: ${{ matrix.working-directory }}
         run: |
           python tools/check_stm32_size_budget.py \
@@ -88,7 +93,7 @@ jobs:
             --report-json ci-artifacts/size-report-${{ matrix.env }}.json
 
       - name: Upload STM32 size evidence (${{ matrix.env }})
-        if: ${{ always() && matrix.working-directory == 'stm32-bluepill-bringup' }}
+        if: ${{ always() && (matrix.env == 'bluepill_f103c8' || matrix.env == 'bluepill_f103c8_bench') }}
         uses: actions/upload-artifact@v4
         with:
           name: stm32-size-evidence-${{ matrix.env }}

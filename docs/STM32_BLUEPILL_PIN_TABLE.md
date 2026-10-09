@@ -5,12 +5,68 @@ path (`stm32-bluepill-bringup`) against current Rev-C hardware files.
 
 ## Scope and sources
 
-- **Hardware source of truth:** `hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net`
+- **Hardware source of truth for this reconciliation:** the Rev-C HAT
+  schematic and its committed netlist,
+  `hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch`
+  and `.net`. A fresh KiCad 10.0.5 export on 2026-10-09 confirmed the
+  committed netlist's electrical component/net topology.
 - **Firmware source of truth:** `stm32-bluepill-bringup/src/main.cpp`
 - **System/docs entry point:** `docs/GPIO_PINOUT.md`
 
 This table intentionally tracks both aligned and mismatched signals so drift
 is visible and actionable.
+
+## Rev-C source reconciliation for Rev-D (2026-10-09)
+
+The fresh export contains 64 components and 105 nets, matching the committed
+`.net` electrically. The only text differences are the export source path and
+timestamp plus five missing third-party symbol-library URI entries; no
+component, pin, or net connectivity changed. The committed export is dated
+2026-08-18. Therefore the Q9/Q3/Q12/U4 discrepancy is not explained by a
+stale committed HAT netlist.
+
+The HAT PCB is not electrically reconciled to the current schematic: it
+contains PCB-only circuitry including U7 (74HC595D), while the schematic and
+both netlists have no U7, Q3, Q12, or U4. The schematic/netlist is the source
+for signal routing below; PCB-only circuitry is not approved as a Rev-D copy
+source. Issue #62's documented physical board and authoritative design source
+are for the separate **Regulator Rev-C**, not this HAT. Do not merge
+designators or circuitry between those two boards.
+
+| Rev-D reuse block | Status | Source of truth / evidence and disposition |
+|---|---|---|
+| Power stage | Unknown / not on HAT | The HAT Rev-C schematic/netlist does not contain the regulator power stage. Issue #62 identifies the separate Regulator Rev-C source as `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net`; use that board's schematic/netlist, not HAT designators, for regulator circuitry. Physical assembly and probe-to-net mapping still need bench confirmation. |
+| ISET DAC/control | Conflicting | The HAT schematic/netlist routes `ISET_MPU_5V` and `ISET_MPU_3V3` directly between STM32 U11 PA0/PA1 and J12. It contains no DAC or AW9523 path for these nets. Rev-C has no MCU control for CH3; PA2 as CH3 ISET is a Rev-B leftover, while PA2/PA3 are the ESP32-C3 link pair. This is the source for the current connector signal contract only; the intended Rev-D analog/control circuitry is not established. |
+| Shift-register latch | Conflicting | The HAT schematic/netlist has `SR_Latch` on U11 PA4 only; ERC calls the label isolated, and there is no shift-register device or data/clock path. The PCB has U7 74HC595D, which is not in the schematic/netlist. Do not copy the PCB-only circuit until board/source identity is resolved. |
+| I2C / AW9523 | Conflicting | The HAT schematic/netlist routes PB8/PB9 to J10 and U13 (AHT20); it contains no AW9523 or AW9523 interrupt net. The documented U5/P0.x screenshot mapping is not supported by the current HAT source and is not a Rev-D source. |
+| Fan | Confirmed (schematic only) | HAT Q9 is AO3400A: PB5 -> R63 -> Q9 gate, with R64 pull-down; Q9 switches the D11/J7 pin-1 path and J7 pin 2 is `+5V_Boot`. No tach net is present. This confirms the designed HAT fan path, not the installed assembly. |
+| W25Q flash | Confirmed (schematic only) | U12 is W25Q128JVSIQ; `Memory_CS` is U11 PA8 to U12 CS, with SPI SCK/MISO/MOSI on PA5/PA6/PA7. It is external data flash, not MCU executable memory. |
+| UDI | Confirmed (schematic only) | U11 PB10/PB11 route through 33-ohm series resistors to J9 as `DISP_UART_TX/RX`. |
+| CH340 debug | Confirmed (schematic only) | U16 CH340C routes UART1 (`UART1_TX/RX`, U11 PA9/PA10) and USB D+/D- through D14 to J8. |
+| ESP32-C3 (U2) | Unknown / incomplete | The schematic identifies U2 as `ESP32_C3_mini`; PA2/PA3 connect to U2 GPIO1/GPIO0, and U2 has `+5V_Boot` and GND. Its 3.3V pin is unconnected, CTS/RTS labels are isolated, and ERC reports missing footprint-library and symbol-mismatch warnings. The exact module, power design, footprint, and intended functions require verification before reuse. |
+
+Issue #62's HAT-relevant Q9/Q3/Q12/U4 findings resolve as follows in the
+current HAT source: Q9 is the AO3400A fan switch; Q3, Q12, and U4 are absent
+from the schematic and fresh/committed HAT netlists. The HAT PCB still has
+PCB-only Q3/U4 circuitry, confirming a schematic-to-PCB source conflict.
+The issue #62 Regulator Rev-C findings (Q3/Q9/Q12/U4 in that board's
+namespace) do not identify HAT parts and cannot resolve this HAT PCB conflict.
+
+The `Rev-C: KiCad ERC` task (KiCad 10.0.5, all severities) produced 82
+warnings and 0 errors. They comprise 34 footprint-library issues, 33
+symbol-library issues, 5 symbol/library mismatches, and 10 isolated-label
+warnings. Relevant findings include isolated `SR_Latch`, `FAULT_WARNING_SUM`,
+`CTS_ESP`, and `RTS_ESP` labels; U2 has a missing footprint-library entry and
+symbol mismatch. The committed `ERC.rpt` (2026-08-14, 0 warnings) is stale
+relative to this run. ERC does not prove board population, connectivity,
+electrical adequacy, or safe behavior.
+
+Bench/source work still needed before copying unresolved blocks: identify the
+physical HAT revision and installed assembly against the schematic and PCB;
+trace U7 and the Q3/U4/Q12 discrepancy; measure/trace the actual ISET and
+fault-control paths; verify U2's exact module and power/serial behavior; and
+confirm the regulator-board power-stage net/probe mapping against its own
+identified assembly. No Rev-C KiCad source was edited for this reconciliation.
 
 ## Canonical pin matrix
 
@@ -18,17 +74,18 @@ is visible and actionable.
 |---|---|---|---|---|---|---|
 | Rail 5V control | PA0 | Output | GPIO | `ISET_MPU_5V` | `PIN_ISET_5V` | Implemented (aligned) |
 | Rail 3V3 control | PA1 | Output | GPIO | `ISET_MPU_3V3` | `PIN_ISET_3V3` | Implemented (aligned) |
-| Rail CH3 control | PA2 | Output | GPIO | `ISET_MPU_Channel_3` | `PIN_ISET_CH3` | Implemented (aligned) |
-| Fault summary input | PB7 (via AW9523 INT) | Input | GPIO interrupt | `FAULT_CRITICAL_SUM` -> AW9523 input -> `AW9523_INT` | `PIN_AW9523_INT = PB7`, `PIN_FAULT_CRITICAL_SUM = -1` | Implemented (interrupt-driven via AW9523, no direct STM32 FAULT_SUM net) |
-| Shift-register latch | PA4 | Output | GPIO | `SR_Latch` | `PIN_SR_LATCH` | Implemented (aligned) |
-| External flash CS | PA8 | Output | SPI CS (GPIO) | `Flash_CS` | `PIN_FLASH_CS` | Implemented (aligned) |
+| Channel 3 control | None | — | No MCU control | — | `PIN_ISET_CH3 = -1` | Not present on Rev-C; PA2 CH3 ISET is a Rev-B leftover |
+| ESP32-C3 serial link | PA2 / PA3 | Bidirectional pair; direction TBD | UART signals | `TXD_ESP` / `RXD_ESP` | (not in this firmware contract) | Routed to U2 GPIO1/GPIO0; module/interface not verified |
+| Fault summary input | (none verified) | — | Fault path | `FAULT_CRITICAL_SUM` -> R65/R84/TP10; no MCU or expander node | `PIN_AW9523_INT = PB7`, `PIN_FAULT_CRITICAL_SUM = -1` | Mismatch: current HAT source has no AW9523/INT or routed fault input |
+| Shift-register latch | PA4 | Output | GPIO label only | `SR_Latch` | `PIN_SR_LATCH` | Mismatch: label ends at U11; isolated in ERC, no shift-register device/path |
+| External flash CS | PA8 | Output | SPI CS (GPIO) | `Memory_CS` | `PIN_FLASH_CS` | Routed to U12 CS; firmware alias differs from net label |
 | CH340 debug TX | PA9 | Output | UART1 TX | `UART1_TX` | `SerialDbg` TX (`Uart SerialDbg(PA10, PA9)`) | Implemented (aligned) |
 | CH340 debug RX | PA10 | Input | UART1 RX | `UART1_RX` | `SerialDbg` RX (`Uart SerialDbg(PA10, PA9)`) | Implemented (aligned) |
 | Display-link TX | PB10 | Output | USART3 TX | `DISP_UART_TX` | `SerialU3` TX (`Uart SerialU3(PB11, PB10)`) | Implemented (aligned) |
 | Display-link RX | PB11 | Input | USART3 RX | `DISP_UART_RX` | `SerialU3` RX (`Uart SerialU3(PB11, PB10)`) | Implemented (aligned) |
-| Telemetry I2C clock | PB8 | Bidirectional | I2C SCL | `I²C SCL_0` | `I2C_SCL_PIN` | Implemented (aligned) |
-| Telemetry I2C data | PB9 | Bidirectional | I2C SDA | `I²C SDA_0` | `I2C_SDA_PIN` | Implemented (aligned) |
-| Fan gate control path | PB5 | Output (intended) | GPIO | `PB5` -> `R63` -> `Net-(Q9-G)` | (not yet defined in firmware) | Planned/board-wired |
+| Telemetry I2C clock | PB8 | Bidirectional | I2C SCL | `I²C SCL_0` | `I2C_SCL_PIN` | Routed to J10 and U13 AHT20; no AW9523 |
+| Telemetry I2C data | PB9 | Bidirectional | I2C SDA | `I²C SDA_0` | `I2C_SDA_PIN` | Routed to J10 and U13 AHT20; no AW9523 |
+| Fan gate control path | PB5 | Output (intended) | GPIO | `PB5` -> `R63` -> `Net-(Q9-G)` | (not yet defined in firmware) | Schematic/netlist path confirmed; PCB assembly not verified |
 | Fan tach feedback | (none) | Input (N/A) | Tach input | (none on J7 in current Rev-C netlist) | (none) | Deprecated/not present on current Rev-C |
 
 ## Fan contract (Issue #29)
@@ -44,45 +101,20 @@ Policy for this revision:
 - Any tach/RPM feature work requires a hardware-net addition and a follow-up
   pin-contract update in this file before firmware work starts.
 
-## AW9523 (U5) P0.x sub-pin mapping (Rev-C, via I2C)
+## Superseded AW9523/Q3/Q9/Q12 mapping
 
-These are not direct STM32 pins - they sit behind the AW9523 I2C GPIO
-expander (`AW95XX_ADDR_ACTIVE`, accessed over `I2C_SCL_PIN`/`I2C_SDA_PIN`
-above). Confirmed against a Rev-C schematic screenshot (U5 AW9523B +
-Q9/Q12 gate-drive sheet) on 2026-09-28.
+The former U5 AW9523 P0.x table was screenshot-sourced and does not match the
+current Rev-C HAT schematic or fresh/committed netlists. Those sources contain
+no U5/AW9523, Q3, or Q12. Their Q9 is the fan MOSFET described above, not the
+range-switch MOSFET shown in the screenshot. The screenshot mapping and
+firmware range/fault behavior must not be treated as this revision's hardware
+contract. Issue #62 concerns the separate Regulator Rev-C board and does not
+resolve the HAT mapping.
 
-> **Unresolved data conflict (see issue #62):** the current
-> `DSP-Regulator-HAT-RevC.net` lists `Q9` as an AO3400A power MOSFET wired to
-> the fan-control connector (`J7`), not the BSS138 shown in the schematic
-> screenshot this table is based on. `Q3`, `Q12`, and `U4` do not appear in
-> the current `.net` file at all. This means either the netlist is stale or
-> there's a genuine reference-designator collision across sheets. The P0.0/
-> P0.5/P0.7 rows below (Q3, Q9, Q12 gate paths) are schematic-screenshot-
-> sourced and **not yet cross-verified against a current netlist export** -
-> treat them as provisional until issue #62 resolves the conflict. The P0.1/
-> P0.2/P0.3/P0.4 rows are lower-risk: they match firmware function names
-> already in use (`setQ1PathEnabled()` etc.), independent of the Q9/Q12/U4
-> question.
-
-| AW9523 pin | Net label | Gate path | Controllable from firmware? | Notes |
-|---|---|---|---|---|
-| P0.0 | `ISET_MPU_5V` | Q3 gate | Yes - `setQ3OnlyEnabled()` | CH1 current-range select, not a full output on/off. Schematic-sourced, see conflict note above |
-| P0.1 | `ESP- GPIO 5V Hi` | Q2/Q8 gate | Yes - `setQ2PathEnabled()` | Was previously mislabeled "Q6/Q12 path" in code comments - corrected; not related to Q12 |
-| P0.2 | `ESP- GPIO 5V Low` | Q1/Q7 gate | Yes - `setQ1PathEnabled()` | |
-| P0.3 | `ESP- GPIO 3V3 High` | Q5/Q11 gate | Yes - `setQ5PathEnabled()` | Net comment previously said "Channel 3 Hi-Range" - Channel 3 was repurposed to the fixed 5V bootstrap supply in Rev B and is no longer an adjustable output, but this AW9523 net/gate path itself is unchanged |
-| P0.4 | `ESP- GPIO 3V3 Low` | Q4/Q10 gate | Yes - `setQ4PathEnabled()` | |
-| P0.5 | `ISET_MPU_3V3` | Q9 gate | Yes - `setQ9OnlyEnabled()` | CH2 current-range select, not a full output on/off. Schematic-sourced, see conflict note above |
-| P0.6 | `FAULT_WARNING_SUM` | — (input only) | No (input) | |
-| P0.7 | `FAULT_CRITICAL_SUM` | Q12 gate (via D14/R53, pulled up through R50 to `+5V_Boot`) | Schematic shows **No** - Q12 is a hardware fault cutoff, not firmware-commandable | Same net is read as an AW9523 input on P0.7 *and* drives Q12's gate directly in hardware per the schematic screenshot; unverified against current netlist (see conflict note above) |
-
-**Open item:** whether `setQ3OnlyEnabled()`/`setQ9OnlyEnabled()` (independent
-per-pin control) or the combined `Q39ON`/`Q39OFF` console command (which
-forces both together) reflects the actual intended hardware behavior for the
-CH1/CH2 current-range MOSFETs is unresolved - tracked in issue #62, not here.
-Separately: `setD9PathEnabled()` (the only thing the UDI `OUTPUT ON`/
-`OUTPUT OFF` command drives, via P1.0) is confirmed as a single output-enable
-shared by both CH1 and CH2 by hardware design - this is intentional, not a
-gap, and does not need a per-channel command.
+The current export's `FAULT_CRITICAL_SUM` reaches R65, R84, and TP10, but not
+U11 or an expander; `FAULT_WARNING_SUM` is an isolated global label. Keep
+unavailable direct fault inputs explicitly disabled until a verified board
+source and route are supplied.
 
 ## Drift-check workflow (for PRs touching STM32 pins)
 

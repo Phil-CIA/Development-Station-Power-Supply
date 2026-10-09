@@ -4,33 +4,34 @@
 #include <string.h>
 #include <Adafruit_AW9523.h>
 
-// NOTE: framework-arduinoststm32 4.21200.0 (core 2.12) provides concrete
-// `HardwareSerial` instances (Serial1..). Keep one USART1 owner for console.
-HardwareSerial& SerialConsole = Serial1; // USART1 via CH340 on HAT
-HardwareSerial SerialU3(PB11, PB10); // RX, TX (USART3)
+#if defined(FIRMWARE_BOARD_F405RG)
+#include "board_pins_f405rg.h"
+#else
+#include "board_pins_f103c8.h"
+#endif
+
+// F103 keeps one core-owned USART1 console; F405 retains its separate debug UART.
+#if defined(FIRMWARE_BOARD_F405RG)
+HardwareSerial SerialDbg(PIN_DEBUG_RX, PIN_DEBUG_TX);
+HardwareSerial& SerialConsole = SerialDbg;
+#else
+HardwareSerial& SerialConsole = Serial1;
+#endif
+HardwareSerial SerialU3(PIN_UDI_RX, PIN_UDI_TX);
+#if defined(FIRMWARE_BOARD_F405RG)
+HardwareSerial SerialC3(PIN_C3_UART_RX, PIN_C3_UART_TX);
+#endif
 
 #ifndef STM32_ENABLE_BRINGUP_BENCH_COMMANDS
 #define STM32_ENABLE_BRINGUP_BENCH_COMMANDS 0
 #endif
-
-// Project bring-up signals from docs/STM32_BLUEPILL_PIN_TABLE.md (Draft A)
-static const uint8_t PIN_ISET_5V = PA0;
-static const uint8_t PIN_ISET_3V3 = PA1;
-static const uint8_t PIN_ISET_CH3 = PA2;
 // Rev-C netlist currently does not route FAULT_CRITICAL_SUM to an STM32 GPIO.
 // Fault observation on Rev-C is handled through AW9523 input + INT signaling.
-static const int8_t PIN_FAULT_CRITICAL_SUM = -1;
-static const uint8_t PIN_AW9523_INT = PB7;
-static const uint8_t PIN_STATUS_LED = PC13; // Blue Pill onboard LED (active-low on most boards)
-static const uint8_t PIN_FLASH_CS = PA8;
-static const uint8_t PIN_SR_LATCH = PA4;
 // U4 shift-register bits controlling 3.3V rail path (PMOS: 0=ON, 1=OFF)
 static const uint8_t SR_BIT_3V3_HI = 3;
 static const uint8_t SR_BIT_3V3_LO = 4;
 static const uint8_t SR_BIT_ADJ_LO = 5;
 
-static const uint8_t I2C_SCL_PIN = PB8;
-static const uint8_t I2C_SDA_PIN = PB9;
 static const uint8_t AHT20_ADDRESS = 0x38;
 static const uint8_t INA3221_ADDR_5V = 0x40;
 static const uint8_t INA3221_ADDR_3V3 = 0x41;
@@ -272,6 +273,9 @@ void serviceAw9523FaultPath();
 bool sampleFaultSumFromAw9523();
 
 void logConsole(const char* msg) {
+#if defined(FIRMWARE_BOARD_F405RG)
+  Serial.println(msg);
+#endif
   SerialConsole.println(msg);
 }
 void onAw9523Interrupt() {
@@ -1563,6 +1567,12 @@ void handleCommand(const String& cmd_in) {
 }
 
 void pollCommands() {
+#if defined(FIRMWARE_BOARD_F405RG)
+  if (Serial.available()) {
+    const String cmd = Serial.readStringUntil('\n');
+    handleCommand(cmd);
+  }
+#endif
   if (SerialConsole.available()) {
     const String cmd = SerialConsole.readStringUntil('\n');
     handleCommand(cmd);
@@ -2653,7 +2663,9 @@ void setup() {
   // Keep control outputs inactive as early as possible.
   pinMode(PIN_ISET_5V, OUTPUT);
   pinMode(PIN_ISET_3V3, OUTPUT);
-  pinMode(PIN_ISET_CH3, OUTPUT);
+  if (PIN_ISET_CH3 >= 0) {
+    pinMode(static_cast<uint8_t>(PIN_ISET_CH3), OUTPUT);
+  }
   if (PIN_FAULT_CRITICAL_SUM >= 0) {
     pinMode(static_cast<uint8_t>(PIN_FAULT_CRITICAL_SUM), INPUT_PULLUP);
   }
@@ -2661,7 +2673,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_AW9523_INT), onAw9523Interrupt, FALLING);
   digitalWrite(PIN_ISET_5V, LOW);
   digitalWrite(PIN_ISET_3V3, LOW);
-  digitalWrite(PIN_ISET_CH3, LOW);
+  if (PIN_ISET_CH3 >= 0) {
+    digitalWrite(static_cast<uint8_t>(PIN_ISET_CH3), LOW);
+  }
 
   pinMode(PIN_STATUS_LED, OUTPUT);
   digitalWrite(PIN_STATUS_LED, HIGH); // LED off (active-low)
@@ -2679,12 +2693,19 @@ void setup() {
   Wire.setSDA(I2C_SDA_PIN);
   Wire.begin();
 
-  SerialConsole.setRx(PA10);
-  SerialConsole.setTx(PA9);
+  SerialConsole.setRx(PIN_DEBUG_RX);
+  SerialConsole.setTx(PIN_DEBUG_TX);
+#if defined(FIRMWARE_BOARD_F405RG)
+  Serial.begin(115200);
+#endif
   SerialConsole.begin(115200);
   delay(150);
-  SerialConsole.println("stm32-bluepill bringup: boot");
-  SerialConsole.println("fault path: AW9523 INT PB7");
+  logConsole("stm32-bluepill bringup: boot");
+#if defined(FIRMWARE_BOARD_F405RG)
+  logConsole("fault path: configured AW9523 INT");
+#else
+  logConsole("fault path: AW9523 INT PB7");
+#endif
 
   aw95xxBootInit();
   g_aw_int_pending = true;
@@ -2694,6 +2715,11 @@ void setup() {
   SerialU3.begin(115200);
   SerialU3.println("stm32-bluepill usart3: ready");
   SerialConsole.println("stm32-bluepill usart3: ready");
+#if defined(FIRMWARE_BOARD_F405RG)
+  SerialC3.begin(115200);
+  SerialC3.println("uart4 configured: 115200");
+  SerialDbg.println("uart4 configured: 115200");
+#endif
 
   printCommandHelp();
   flash_test_passed = runFlashBringupTest();
@@ -2736,7 +2762,7 @@ void loop() {
     refreshIncomingRailSample();
 
     if (g_hb_print_enabled) {
-      SerialConsole.println("hb");
+      logConsole("hb");
 
       if (g_incoming_rail.valid) {
         char ina_hb_msg[96];
@@ -2754,7 +2780,7 @@ void loop() {
       }
 
       if (!flash_test_passed) {
-        SerialConsole.println("flash: HOLD (bring-up test failed)");
+        logConsole("flash: HOLD (bring-up test failed)");
       }
     }
   }
