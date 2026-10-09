@@ -10,7 +10,7 @@ static constexpr uint8_t PIN_UDI_TX = PB10;
 
 static constexpr int8_t PIN_ISET_5V = PA0;
 static constexpr int8_t PIN_ISET_3V3 = PA1;
-// PA2/PA3 are an unresolved C3 link pair in the Rev-C contract, not CH3 ISET.
+// Rev-C has no CH3 MCU control; PA2/PA3 are the C3 link pair.
 static constexpr int8_t PIN_ISET_CH3 = -1;
 static constexpr int8_t PIN_FAULT_CRITICAL_SUM = -1;
 static constexpr uint8_t PIN_AW9523_INT = PB7;

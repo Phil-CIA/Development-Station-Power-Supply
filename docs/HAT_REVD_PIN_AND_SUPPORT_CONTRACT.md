@@ -30,7 +30,7 @@ any Rev-D net is routed.
 |---|---|---:|---|---|---|
 | 5V control | PA0 | 14 | GPIO | High-Z during reset; 10 kΩ pull-down holds LOW/inactive. Firmware must preload LOW before output mode. | DS-PIN |
 | 3V3 control | PA1 | 15 | GPIO | High-Z during reset; 10 kΩ pull-down holds LOW/inactive. Firmware must preload LOW before output mode. | DS-PIN |
-| Legacy CH3 control reservation | PA2 | 16 | GPIO, reserved | Keep unconnected unless its retained purpose is confirmed; if connected as a control, 10 kΩ pull-down and LOW/inactive startup. Not a new adjustable rail. | DS-PIN |
+| Free spare | PA2 | 16 | Unused GPIO | High-Z during reset and normal operation; no external bias required. Leave unconnected and do not configure as a CH3 control; Rev-D has no CH3 MCU control. | DS-PIN |
 | Shift-register latch | PA4 | 20 | GPIO; SPI1 NSS unused | Reset LOW; 10 kΩ pull-down. Load the all-off shift-register word before the first latch pulse. | DS-PIN; DS-AF (PA4/NSS) |
 | SPI clock | PA5 | 21 | SPI1 SCK, AF5 | Reset Hi-Z; 47 kΩ pull-down gives SPI mode 0 idle LOW. | DS-PIN; DS-AF (AF5) |
 | SPI input | PA6 | 22 | SPI1 MISO, AF5 | Input during reset; no external bias required. | DS-PIN; DS-AF (AF5) |

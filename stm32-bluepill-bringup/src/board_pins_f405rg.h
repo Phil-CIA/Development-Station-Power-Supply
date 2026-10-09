@@ -17,6 +17,7 @@ static constexpr uint8_t PIN_USB_DP = PA12;
 
 static constexpr int8_t PIN_ISET_5V = PA0;
 static constexpr int8_t PIN_ISET_3V3 = PA1;
+// Rev-D has no CH3 MCU control; PA2 is a free spare.
 static constexpr int8_t PIN_ISET_CH3 = -1;
 static constexpr int8_t PIN_FAULT_CRITICAL_SUM = -1;
 static constexpr uint8_t PIN_AW9523_INT = PC4;

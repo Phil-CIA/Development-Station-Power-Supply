@@ -36,7 +36,7 @@ designators or circuitry between those two boards.
 | Rev-D reuse block | Status | Source of truth / evidence and disposition |
 |---|---|---|
 | Power stage | Unknown / not on HAT | The HAT Rev-C schematic/netlist does not contain the regulator power stage. Issue #62 identifies the separate Regulator Rev-C source as `hardware/kicad/dsp-regulator-rev-c/DSP-Regulator-RevC.net`; use that board's schematic/netlist, not HAT designators, for regulator circuitry. Physical assembly and probe-to-net mapping still need bench confirmation. |
-| ISET DAC/control | Conflicting | The HAT schematic/netlist routes `ISET_MPU_5V` and `ISET_MPU_3V3` directly between STM32 U11 PA0/PA1 and J12. It contains no DAC or AW9523 path for these nets. This is the source for the current connector signal contract only; the intended Rev-D analog/control circuitry is not established. |
+| ISET DAC/control | Conflicting | The HAT schematic/netlist routes `ISET_MPU_5V` and `ISET_MPU_3V3` directly between STM32 U11 PA0/PA1 and J12. It contains no DAC or AW9523 path for these nets. Rev-C has no MCU control for CH3; PA2 as CH3 ISET is a Rev-B leftover, while PA2/PA3 are the ESP32-C3 link pair. This is the source for the current connector signal contract only; the intended Rev-D analog/control circuitry is not established. |
 | Shift-register latch | Conflicting | The HAT schematic/netlist has `SR_Latch` on U11 PA4 only; ERC calls the label isolated, and there is no shift-register device or data/clock path. The PCB has U7 74HC595D, which is not in the schematic/netlist. Do not copy the PCB-only circuit until board/source identity is resolved. |
 | I2C / AW9523 | Conflicting | The HAT schematic/netlist routes PB8/PB9 to J10 and U13 (AHT20); it contains no AW9523 or AW9523 interrupt net. The documented U5/P0.x screenshot mapping is not supported by the current HAT source and is not a Rev-D source. |
 | Fan | Confirmed (schematic only) | HAT Q9 is AO3400A: PB5 -> R63 -> Q9 gate, with R64 pull-down; Q9 switches the D11/J7 pin-1 path and J7 pin 2 is `+5V_Boot`. No tach net is present. This confirms the designed HAT fan path, not the installed assembly. |
@@ -74,6 +74,7 @@ identified assembly. No Rev-C KiCad source was edited for this reconciliation.
 |---|---|---|---|---|---|---|
 | Rail 5V control | PA0 | Output | GPIO | `ISET_MPU_5V` | `PIN_ISET_5V` | Implemented (aligned) |
 | Rail 3V3 control | PA1 | Output | GPIO | `ISET_MPU_3V3` | `PIN_ISET_3V3` | Implemented (aligned) |
+| Channel 3 control | None | — | No MCU control | — | `PIN_ISET_CH3 = -1` | Not present on Rev-C; PA2 CH3 ISET is a Rev-B leftover |
 | ESP32-C3 serial link | PA2 / PA3 | Bidirectional pair; direction TBD | UART signals | `TXD_ESP` / `RXD_ESP` | (not in this firmware contract) | Routed to U2 GPIO1/GPIO0; module/interface not verified |
 | Fault summary input | (none verified) | — | Fault path | `FAULT_CRITICAL_SUM` -> R65/R84/TP10; no MCU or expander node | `PIN_AW9523_INT = PB7`, `PIN_FAULT_CRITICAL_SUM = -1` | Mismatch: current HAT source has no AW9523/INT or routed fault input |
 | Shift-register latch | PA4 | Output | GPIO label only | `SR_Latch` | `PIN_SR_LATCH` | Mismatch: label ends at U11; isolated in ERC, no shift-register device/path |
