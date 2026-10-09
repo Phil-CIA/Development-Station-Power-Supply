@@ -109,10 +109,13 @@ or protection.
   and PC0=`C3_EN_N` / PC1=`C3_BOOT_N`. Confirm the exact orderable module and
   antenna/connector before layout; verify the EN capacitor and reset timing
   against the selected module and final 3.3 V rail ramp.
-- The Rev-C source reconciliation / #62 conflict must confirm the ISET
-  control polarity and the shift-register all-off word before those safe
-  states are copied into the new schematic.
-- **Production-source identity gate (2026-10-09):** the user selected the
+- Rev-C ISET control polarity, fault routing, and the shift-register all-off
+  word remain unverified because of source conflicts. Per user direction,
+  these are not prerequisites to starting Rev-D integration: treat existing
+  circuits as reuse candidates and replace them as integration review
+  requires. Do not describe these safe states as verified or release them
+  without resolving the applicable Rev-D behavior.
+- **Production-source record (non-blocking, 2026-10-09):** the user selected the
   2026-08-28 HAT PCB and its same-day Gerber/drill files as the manufacturing
   reference. KiCad reports that PCB as 50.00 x 100.00 mm with 57 components;
   the repository PCB is 100.00 x 102.57 mm with 163 components. The supplied
@@ -127,6 +130,13 @@ or protection.
   non-blocking for continuing Rev-C work: use the supplied production PCB and
   Gerber/drill set as the manufacturing reference, while leaving physical
   identity and schematic-to-release correlation explicitly unresolved.
+- **Bench scope (user direction, 2026-10-09):** no full Rev-C requalification
+  is requested before integration; prior circuits are assumed usable unless
+  source or integration review calls for replacement. The only specific
+  remaining Rev-C bench check identified is the untested fan path. It may be
+  done after the memory-free-up session and need not block starting session 5.
+  Do not test the old ESP32-C3 for reuse; Rev-D replaces it and must validate
+  its new module/interface separately.
 - The chosen crystal's exact manufacturer part and load must be checked
   against its datasheet and final PCB parasitics. The 8 MHz / CL=8 pF /
   2×10 pF target is not startup- or USB-bench-validated.

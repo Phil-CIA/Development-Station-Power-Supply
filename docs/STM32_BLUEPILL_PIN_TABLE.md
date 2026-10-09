@@ -53,6 +53,26 @@ continuing Rev-C work. Use the supplied production PCB/Gerber/drill set as the
 manufacturing reference; retain the physical-board and schematic-to-release
 correlation as unresolved evidence, not a reason to stop the next check.
 
+### Rev-C carry-forward and bench plan (user direction, 2026-10-09)
+
+The user reports no known issues in prior HAT use and says most circuits were
+plug-and-play. Treat the existing circuits as reuse candidates; do not require
+a full Rev-C requalification before beginning Rev-D integration. Reuse or
+replace circuits as integration/source review requires. This operating
+assumption is not a new bench-validation claim.
+
+| Item | Plan | Status / gate |
+|---|---|---|
+| Existing Rev-C circuits | Carry forward as candidates based on prior operation; recheck only where Rev-D changes, source conflicts, or integration findings make it necessary. | Working assumption, not fresh measured evidence. |
+| Existing ESP32-C3 | No Rev-C test planned; the current Blue Pill and C3 are being replaced. | The old C3 was not tested. Validate the new Rev-D module and interface on Rev-D. |
+| Fan path | At the next bench window, with power removed and the fan disconnected, identify the installed header and trace its ground, supply, and switched pins against the selected production PCB pack. With no fan attached, use a current-limited supply and controlled PB5 gate-drive test to check off/on levels. Then connect a correctly rated fan, verify start/stop, and record supply voltage and steady/startup current. | The fan circuit has not been tested. This is the only specific Rev-C circuit test the user identified; it does not block starting integration. The repository fan net names are not proof of the production-board mapping. |
+| Unresolved ISET/fault/shift-register source conflicts | Do not claim polarity, fault routing, or an all-off word as verified. Decide reuse/replace during integration and resolve any required safe-state design before release. | No extra Rev-C bench campaign requested at this stage. |
+
+The current firmware pin contract does not define a fan-control test command;
+prepare a controlled PB5 test method before powered switching, and do not
+drive the gate with an improvised live jumper. No tach feedback is present in
+the repository Rev-C fan contract.
+
 Until a physical-board/order identity or source-to-manufacturing mapping is
 established, the table below describes the repository schematic/netlist only.
 Do not use its disputed PCB-only circuitry or the supplied later schematic as
@@ -88,14 +108,14 @@ symbol mismatch. The committed `ERC.rpt` (2026-08-14, 0 warnings) is stale
 relative to this run. ERC does not prove board population, connectivity,
 electrical adequacy, or safe behavior.
 
-Bench/source work still needed before copying unresolved blocks: identify the
-physical HAT/order against the selected production PCB release; reconcile that
-release with the repository project and determine whether the 2026-09-21
-schematic corresponds to any manufactured board; then trace the actual ISET
-and fault-control paths, shift-register circuit/all-off behavior, and fan
-path. The current ESP32 and fan were not tested per operator report. Confirm
-the regulator-board power-stage net/probe mapping against its own identified
-assembly. No Rev-C KiCad source was edited for this reconciliation.
+Source correlation remains useful but is non-blocking by user direction; use
+the selected production PCB pack as the manufacturing reference and do not
+assume the physical HAT or later schematic has been matched to it. The current
+ESP32 is replaced for Rev-D. The fan check above is deferred and does not block
+integration. Resolve any ISET/fault/shift-register uncertainties that affect
+Rev-D implementation during integration, and confirm the separate regulator
+board's power-stage net/probe mapping against its own identified assembly.
+No Rev-C KiCad source was edited for this reconciliation.
 
 ## Canonical pin matrix
 
