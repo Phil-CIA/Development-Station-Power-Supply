@@ -4,14 +4,15 @@ name: PlatformIO Build
 # non-building change is caught before merge. See
 # docs/SYSTEM_DEVELOPMENT_WORKFLOW.md for the branch/PR workflow this supports.
 #
-# This intentionally builds only the default/primary environment per project,
-# not every diagnostic bring-up variant in each platformio.ini — those are
-# bench-probe scratch environments, not maintained build targets.
+# This intentionally builds each project's maintained environment set.
+# For STM32 issue #101, both maintained profiles are required checks and the
+# workflow enforces complete-image flash budgets from linked artifacts.
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -32,7 +33,13 @@ jobs:
           - name: stm32-bluepill-bringup (bluepill_f103c8)
             working-directory: stm32-bluepill-bringup
             env: bluepill_f103c8
+            flash-limit-bytes: 52428
             # Fixed in issue #3 (HardwareSerial -> Uart); now a required check.
+            allow-failure: false
+          - name: stm32-bluepill-bringup (bluepill_f103c8_bench)
+            working-directory: stm32-bluepill-bringup
+            env: bluepill_f103c8_bench
+            flash-limit-bytes: 65536
             allow-failure: false
           - name: stm32-bluepill-bringup (f405rg)
             working-directory: stm32-bluepill-bringup
@@ -59,7 +66,43 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
+      - name: Test STM32 size budget checker
+        if: ${{ matrix.env == 'bluepill_f103c8' }}
+        working-directory: stm32-bluepill-bringup
+        run: python -m unittest discover -s tools/tests -v
+
       - name: Build ${{ matrix.env }}
         working-directory: ${{ matrix.working-directory }}
         continue-on-error: ${{ matrix.allow-failure }}
-        run: pio run -e ${{ matrix.env }}
+        run: |
+          set -o pipefail
+          mkdir -p ci-artifacts
+          pio run -e ${{ matrix.env }} 2>&1 | tee ci-artifacts/build-${{ matrix.env }}.log
+
+      - name: Enforce STM32 image and RAM budgets (${{ matrix.env }})
+        if: ${{ matrix.env == 'bluepill_f103c8' || matrix.env == 'bluepill_f103c8_bench' }}
+        working-directory: ${{ matrix.working-directory }}
+        run: |
+          python tools/check_stm32_size_budget.py \
+            --env ${{ matrix.env }} \
+            --build-dir .pio/build/${{ matrix.env }} \
+            --build-log ci-artifacts/build-${{ matrix.env }}.log \
+            --flash-capacity-bytes 65536 \
+            --flash-limit-bytes ${{ matrix.flash-limit-bytes }} \
+            --report-text ci-artifacts/size-report-${{ matrix.env }}.txt \
+            --report-json ci-artifacts/size-report-${{ matrix.env }}.json
+
+      - name: Upload STM32 size evidence (${{ matrix.env }})
+        if: ${{ always() && (matrix.env == 'bluepill_f103c8' || matrix.env == 'bluepill_f103c8_bench') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32-size-evidence-${{ matrix.env }}
+          path: |
+            ${{ matrix.working-directory }}/ci-artifacts/build-${{ matrix.env }}.log
+            ${{ matrix.working-directory }}/ci-artifacts/size-report-${{ matrix.env }}.txt
+            ${{ matrix.working-directory }}/ci-artifacts/size-report-${{ matrix.env }}.json
+            ${{ matrix.working-directory }}/.pio/build/${{ matrix.env }}/firmware.bin
+            ${{ matrix.working-directory }}/.pio/build/${{ matrix.env }}/firmware.elf
+            ${{ matrix.working-directory }}/.pio/build/${{ matrix.env }}/firmware.map
+          if-no-files-found: error
+          retention-days: 14

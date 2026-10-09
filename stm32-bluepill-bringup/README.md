@@ -2,7 +2,8 @@
 
 ## Targets
 
-- `bluepill_f103c8`: Rev-C STM32F103C8 Blue Pill bring-up target.
+- `bluepill_f103c8`: compact/default Rev-C STM32F103C8 Blue Pill target.
+- `bluepill_f103c8_bench`: full-bench F103 profile with bring-up commands.
 - `f405rg`: build-only Rev-D STM32F405RG target using the frozen pin
   allocation in `docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`. Rev-D hardware is
   not available; this build does not validate electrical behavior or imply
@@ -26,8 +27,9 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
   - PA1 = ISET_MPU_3V3
   - PA2 = ISET_MPU_Channel_3
 - Blinks PC13 status LED every 1 second.
-- Emits heartbeat on USB/USART monitor (`Serial`) at 115200.
+- Emits heartbeat/logging on USART1 (CH340 path, PA10 RX / PA9 TX) at 115200 8N1.
 - Emits extended binary telemetry on USART3 via `HardwareSerial SerialU3(PB11, PB10)` at 115200.
+- Native USB CDC console is not provided by this maintained configuration.
 
 ## Current role in this repo
 
@@ -37,39 +39,25 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
 
 ## Command shell
 
-- `HELP`
-- `FTEST`
-- `AHTNOW`
-- `AHTRESET`
-- `SRTEST`
-- `D9FLASH`
-- `D9ON`
-- `D9OFF`
-- `Q1ON`
-- `Q1OFF`
-- `Q2ON`
-- `Q2OFF`
-- `Q3ON`
-- `Q3OFF`
-- `Q4ON`
-- `Q4OFF`
-- `Q5ON`
-- `Q5OFF`
-- `Q39ON`
-- `Q39OFF`
-- `Q612ON`
-- `Q612OFF`
-- `QSTATE`
-- `QSEQ`
-- `INAPROBE`
-- `INANOW`
-- `INARAILS`
-- Display-over-UDI command channel on USART3:
-  - `CMD:OUTPUT ON|OFF`
-  - `CMD:ILIM CH1|CH2 <mA>`
-  - Responses: `ACK:...` / `ERR:...` / `EVT:...`
-- `AWPROBE`
-- `AWMODE`
+- Compact/default profile (`bluepill_f103c8`) keeps only:
+  - `HELP`, `DIAG`, `D9ON`, `D9OFF`
+  - `CALSHOW`, `CFGSHOW`, `CALSET`, `CFGSAVE`, `CFGLOAD`, `CFGRESET`, `CFGERASE`
+  - Display-over-UDI command channel on USART3:
+    - `CMD:OUTPUT ON|OFF`
+    - `CMD:ILIM CH1|CH2 <mA>`
+    - `CMD:GET OUTPUT|STATE|CFGREC|ILIM CH1|CH2`
+    - Responses: `ACK:...` / `ERR:...` / `EVT:...`
+
+- Full-bench profile (`bluepill_f103c8_bench`) includes all compact commands plus bench-only commands:
+  - `FTEST`, `AHTNOW`, `AHTRESET`, `SRTEST`, `D9FLASH`, `HBON`, `HBOFF`
+  - `Q1ON/Q1OFF`, `Q2ON/Q2OFF`, `Q3ON/Q3OFF`, `Q4ON/Q4OFF`, `Q5ON/Q5OFF`
+  - `Q9ON/Q9OFF`, `Q39ON/Q39OFF`, `Q612ON/Q612OFF`, `QSTATE`, `QSEQ`, `Q9DIAG`
+  - `INAPROBE`, `INANOW`, `INARAILS`, `INADIAG`
+  - `AWPROBE`, `AWMODE`, `AWHB`, `AWP10ON`, `AWP10OFF`
+
+- Compact profile behavior for excluded bench commands:
+  - Bench command names are not listed by `HELP`.
+  - Entering one returns an explicit unsupported response (`cmd: unsupported in compact profile '...'`).
 
 Range pair notes:
 - `Q1ON` / `Q1OFF` drive AW9523 `P0.2` (`ESP- GPIO 5V Low`) for the Q1/Q7 gate path.
@@ -105,9 +93,539 @@ AW9523 mode notes:
 
 ## Build
 
-Build the Rev-C environment:
+- Compact/default profile:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Full-bench profile:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench`
 
-`platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+Native USB CDC is absent in both maintained F103 profiles. The build-only
+F405 target retains USB CDC and its full bring-up command set.
+
+## Issue #101 main reconciliation (2026-10-09)
+
+Reconciled the F103 profile work with `main`'s Rev-D F405 target. Board pin
+headers are shared without changing the F103 USART1 owner or USART3 UDI.
+F405 retains USB CDC, USART1 debug on PB6/PB7, and UART4 C3 support.
+CI builds all three STM32 environments; the 52,428/65,536-byte budgets and
+size-evidence uploads apply only to the two F103 profiles.
+
+Local Python 3.13 / PlatformIO builds and all five checker tests passed:
+
+| Target | PlatformIO flash | Static RAM | Complete `firmware.bin` |
+|---|---:|---:|---:|
+| Compact F103 | 44,944 / 65,536 B | 2,000 / 20,480 B | 45,264 B |
+| Full-bench F103 | 52,236 / 65,536 B | 2,000 / 20,480 B | 52,556 B |
+| F405 (build-only) | 66,252 / 1,048,576 B | 6,428 / 131,072 B | 66,708 B |
+
+Both F103 complete-image checks passed and matched ELF flash spans. Earlier
+Step 3 and bench measurements below remain historical evidence; these
+reconciled binaries have not been uploaded or bench-tested. The proposed
+ILIM parser rewrite was deferred by user decision and is not included.
+Hardware work remains blocked pending an approved isolated procedure.
+
+## STM32 flash budget checks (Issue #101 Step 6)
+
+Approved flash limits for CI size gates:
+
+- Compact/default `bluepill_f103c8`: 52,428 bytes maximum complete image size.
+- Full-bench `bluepill_f103c8_bench`: 65,536 bytes maximum complete image size.
+
+What is measured:
+
+- Acceptance is based on `firmware.bin` byte length (the programmed image).
+- The checker cross-validates with ELF FLASH load-span accounting and fails if
+  `firmware.bin`, `firmware.elf`, `firmware.map`, or the build log is missing,
+  empty, or malformed.
+- The checker reports PlatformIO Flash and static RAM metrics separately; RAM is
+  never counted as flash usage.
+
+Local commands (no upload):
+
+- Build compact profile and capture log:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 | Tee-Object -FilePath stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8.log`
+- Build full-bench profile and capture log:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench | Tee-Object -FilePath stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8_bench.log`
+- Run checker for compact profile:
+  - `py -3.13 stm32-bluepill-bringup/tools/check_stm32_size_budget.py --env bluepill_f103c8 --build-dir stm32-bluepill-bringup/.pio/build/bluepill_f103c8 --build-log stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8.log --flash-capacity-bytes 65536 --flash-limit-bytes 52428 --report-text stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8.txt --report-json stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8.json`
+- Run checker for full-bench profile:
+  - `py -3.13 stm32-bluepill-bringup/tools/check_stm32_size_budget.py --env bluepill_f103c8_bench --build-dir stm32-bluepill-bringup/.pio/build/bluepill_f103c8_bench --build-log stm32-bluepill-bringup/ci-artifacts/build-bluepill_f103c8_bench.log --flash-capacity-bytes 65536 --flash-limit-bytes 65536 --report-text stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8_bench.txt --report-json stm32-bluepill-bringup/ci-artifacts/size-report-bluepill_f103c8_bench.json`
+
+CI evidence artifacts:
+
+- `stm32-size-evidence-bluepill_f103c8`
+- `stm32-size-evidence-bluepill_f103c8_bench`
+
+Each artifact contains the build log, `firmware.bin`, `firmware.elf`,
+`firmware.map`, and concise generated size reports (`.txt` + `.json`).
+
+These CI build/size checks do not replace bench testing; runtime and hardware
+evidence remains required.
+
+## Issue #101 Step 7 (2026-10-09) - bench validation evidence capture
+
+Scope executed: Step 7 bench validation only for issue #101 / draft PR #103.
+No firmware source changes were made in this step.
+
+Authorized deviation recorded before execution:
+
+- CrowPanel remained connected on COM12, and the user explicitly authorized
+  proceeding with outputs isolated.
+- During Setup interaction on this path, CrowPanel automatically generated host
+  traffic that included:
+  - `udi ack: OUTPUT ON`
+  - `udi ack: ILIM CH1 2500`
+  - `udi ack: ILIM CH2 1500`
+- Those write-path commands were not manually issued by this agent.
+- This is an observed deviation from the no-write-command test plan and is
+  recorded as such; the run is not described as no-write-traffic.
+
+Profile uploads and observed artifacts:
+
+- Compact/default upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload`
+  - Result: SUCCESS (exit 0)
+- Full-bench upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload`
+  - Result: SUCCESS (exit 0)
+
+Boot logs (USART1 CH340 @115200 8N1, COM7) captured after each upload confirm:
+
+- startup banner
+- single console path behavior (no duplicate boot line pairs observed)
+- startup external-flash bring-up test sequence and PASS:
+  - `flash: begin bring-up test`
+  - `flash: JEDEC ID mfg=0xEF type=0x40 cap=0x18`
+  - `flash: SR1 before=0x00`
+  - `flash: erase/program/readback PASS`
+- config recovery/load summary (`[CFG] Loaded`, `[CFG] REC r=O d=0 s=0`)
+
+Compact profile command evidence (USART1/COM7):
+
+- `HELP`: core commands + UDI contract line printed; no bench command list.
+- `DIAG`: health snapshot returned.
+- `CFGSHOW`: persisted config values printed.
+- `INAPROBE`: `cmd: unsupported in compact profile 'INAPROBE'`.
+- `INANOW`: `cmd: unsupported in compact profile 'INANOW'`.
+
+Full-bench profile command evidence (USART1/COM7):
+
+- `HELP`: bench command list appears (includes `INAPROBE`, `INANOW`, `AHTNOW`).
+- `INAPROBE`: `ina: 0x40=ACK 0x41=ACK`.
+- `INANOW`: INA readings returned for 0x40/0x41 channels.
+- `AHTNOW`: valid AHT sample returned.
+
+USART3 telemetry and UDI evidence path used:
+
+- Observed via CrowPanel USB console (COM12), where CrowPanel bridges to STM32
+  host-link UART and echoes `udi ack/err/evt` lines.
+- Telemetry continuity observed (`rx frames` counters increase with stable
+  `errs=0`, refreshed `seq` and `age` fields).
+- Read-only GET traffic that is exposed by this path was captured by issuing
+  `SCREEN SETUP`, which triggers:
+  - `GET OUTPUT`
+  - `GET ILIM CH1`
+  - `GET ILIM CH2`
+  and corresponding `udi ack:` lines.
+
+UDI limitations encountered in this setup:
+
+- CrowPanel USB CLI does not expose a raw pass-through command for arbitrary
+  host payloads, so direct `GET STATE`, `GET CFGREC`, and direct malformed
+  host-command injection to STM32 were BLOCKED in this run.
+- Sending `CMD:...` text on COM12 is consumed by CrowPanel CLI itself and
+  returns CrowPanel-local `ERR unknown: ...` (not an STM32 host-link ERR).
+- No further hardware tests were conducted after recognizing and documenting
+  this automatic write traffic.
+
+Safe-output pin verification:
+
+- PA0/PA1/PA2 direct voltage measurement: NOT MEASURED in this step.
+- No invasive probing was performed from this session.
+
+Step 7 criterion status from this run:
+
+| Criterion | Status | Notes |
+|---|---|---|
+| Compact upload/build and boot capture | PASS | Upload succeeded; boot log captured including authorized startup flash-sector test PASS. |
+| Compact read-only USART1 commands (`HELP`, `DIAG`, `CFGSHOW`, `INAPROBE`, `INANOW`) | PASS | `INAPROBE`/`INANOW` correctly reported unsupported in compact profile. |
+| Full-bench upload/build and boot capture | PASS | Upload succeeded; boot log captured including startup flash-sector test PASS. |
+| Full-bench read-only diagnostics (`HELP`, `INAPROBE`, `INANOW`, `AHTNOW`) | PASS | Bench command presence and read-only diagnostics verified. |
+| USART3 telemetry observed | PASS | CrowPanel `RX` output shows ongoing frame updates, `errs=0`. |
+| UDI `GET OUTPUT` / `GET ILIM CH1` / `GET ILIM CH2` | PASS | Observed via CrowPanel `SCREEN SETUP`-triggered host queries and `udi ack:` lines. |
+| UDI `GET STATE` / `GET CFGREC` | BLOCKED | No raw host-command pass-through exposed on CrowPanel USB CLI in this setup. |
+| Malformed/unknown read-only UDI command producing STM32 `ERR:` | BLOCKED | CrowPanel USB CLI intercepts unknown `CMD:` lines locally; cannot inject malformed host payload to STM32 through this interface. |
+| PA0/PA1/PA2 safe inactive-state voltage measurement | NOT MEASURED | Output safety was authorized by isolation, but non-invasive meter measurement was not captured in this session. |
+
+Step 7 command and flash-operation statement:
+
+- The agent did not manually issue `OUTPUT`, `ILIM`, `D9`, range-gate/AW9523,
+  `FTEST`, CFG/CAL write, or deliberate fault-injection commands.
+- CrowPanel automatically sent the host traffic listed above
+  (`udi ack: OUTPUT ON`, `udi ack: ILIM CH1 2500`, `udi ack: ILIM CH2 1500`).
+- The automatic startup flash bring-up test erased/programmed only the
+  user-authorized disposable `FLASH_TEST_ADDR` sector and passed.
+- No other external-flash erase/program operation was performed in this step.
+
+## Issue #101 Step 7b (2026-10-09) - bounded checkpoint closeout (no further hardware actions)
+
+Scope executed: close out the bounded checkpoint report after Step 7 activity.
+No PlatformIO configuration, firmware source, wiring, or profile definitions
+were changed in this closeout step.
+
+Exact source identity used for this bounded run:
+
+- Branch: `phil-cia-stm32-flash-headroom`
+- Source commit: `6ff3562`
+
+Approved setup/isolation and operation scope captured in-session:
+
+- Board revision: Version C.
+- Power path: bench PSU at 12 V, 800 mA limit.
+- User-stated isolation condition for this run: no output connectors unplugged;
+  only 10 ohm resistive loads connected downstream.
+- User approved compact upload and full-bench upload operations and side effects.
+- No additional reset/upload/port activity was performed after full-bench
+  evidence capture for this closeout request.
+
+Profiles uploaded during this bounded run:
+
+- Compact/default profile (`bluepill_f103c8`) upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload`
+  - Result: SUCCESS
+- Full-bench profile (`bluepill_f103c8_bench`) upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload`
+  - Result: SUCCESS
+
+Captured command/response evidence (USART1 COM7, 115200 8N1):
+
+- Compact log: `C:\Users\user\AppData\Local\Temp\issue101-step7b\com7-compact-20261009-084811.log`
+  - `HELP`, `DIAG`, `CFGSHOW` returned normally.
+  - `INAPROBE` and `INANOW` explicitly returned unsupported in compact profile.
+- Full-bench log: `C:\Users\user\AppData\Local\Temp\issue101-step7b\com7-fullbench-20261009-091100.log`
+  - `HELP`, `DIAG`, `CFGSHOW`, `INAPROBE`, `INANOW`, `AHTNOW` returned expected bench responses.
+
+Measurement evidence recorded for this checkpoint (Group 2):
+
+- Instrument: OWON XDM1014.
+- Reference node: H2 pad (ground reference used by operator).
+- PA0, PA1, PA2: each measured <= 0.02 V.
+- User agreed interpretation: logic LOW.
+- Evidence type: steady-state DMM only; this is not startup-glitch verification.
+
+Bounded status retained for unresolved criteria:
+
+- Early boot auto-write/recovery capture: NOT MEASURED in this run's evidence
+  set (early boot lines were not captured in the compact/full-bench COM7 logs
+  above).
+- USART3 direct command/ACK/ERR validation through a raw non-mutating route:
+  BLOCKED with current reported wiring/path; CrowPanel USB CLI interception
+  limits direct host-line injection evidence.
+
+Final hardware/profile state at stop:
+
+- Testing stopped on user request after bounded checkpoint capture.
+- No further resets or uploads were performed for this closeout.
+- Last uploaded profile state: full-bench (`bluepill_f103c8_bench`).
+- Serial captures were closed/released after logging (no active COM7 handle
+  retained by the capture commands).
+- This checkpoint is bounded evidence only and does not claim full bench
+  acceptance.
+
+## Issue #101 Step 7c (2026-10-09) - startup-capture follow-up from installed full-bench image
+
+Scope executed: verify prior upload evidence and attempt a single approved
+startup capture from the already-installed full-bench image without reflashing.
+No firmware, PlatformIO, or wiring/config edits were made.
+
+Source/provenance context used for this attempt:
+
+- Current branch/HEAD during execution: `phil-cia-stm32-flash-headroom` / `6f21a07`
+- Verified firmware/config diff from checkpoint `77275f0` was docs-only.
+- Previously uploaded source identity remains `6ff3562` (compact + full-bench).
+
+User-approved setup and reset gate for this attempt:
+
+- Setup unchanged: ST-Link present, COM7 STM32 CH340 console at 115200 8N1,
+  COM12 CrowPanel USB console.
+- User approved one reset and acknowledged startup side effects:
+  - `FLASH_TEST_ADDR` erase/program at `0x001000`.
+  - Possible defaults save at `FLASH_CFG_ADDR` `0x002000` when persisted config
+    is invalid/missing.
+  - Persisted control-setting restore at boot.
+  - `0x001000` test sector is disposable for this run.
+
+D9 label clarification recorded (pending schematic verification):
+
+- User reports legacy D9 maps to D15 indicator LED on AW9523 `P1_0` (package
+  pin 1) for expander-control proof.
+- `cfg d9=ON` is therefore not treated as proof that a supply rail is enabled.
+- Command names and firmware behavior were unchanged in this step.
+
+Capture execution and artifacts:
+
+- COM7 capture opened with DTR/RTS inactive and timestamped log output.
+- Preserved prior Step 7b logs in session artifacts:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-compact-20261009-084811.log`
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-fullbench-20261009-091100.log`
+- Step 7c startup-attempt logs:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-startup-capture-20261009-095430.log`
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-startup-capture-retry-20261009-095838.log`
+
+Observed result for Step 7c:
+
+- Startup sequence was NOT CAPTURED in the approved window.
+- Captured lines were periodic health summaries (`st f=PASS aw=PASS ...`) only.
+- No boot banner (`stm32-bluepill bringup: boot`) was observed in these logs.
+- Because boot was not observed, this attempt did not issue `HELP`, `DIAG`, or
+  `CFGSHOW` as part of the startup-capture sequence.
+- Per gate constraints, no additional reset/upload attempts were performed.
+
+Representative Step 7c capture excerpt:
+
+- `2026-10-09T09:58:38... INFO COM7 opened 115200 8N1 DTR=0 RTS=0`
+- `2026-10-09T09:58:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T09:59:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T10:00:52... RX st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 ...`
+- `2026-10-09T10:01:39... INFO sawBoot=False ...`
+
+Final state for this follow-up:
+
+- Serial capture handles were closed/released.
+- No reflashes, PlatformIO changes, wiring changes, or additional resets.
+- Last installed firmware profile remains full-bench (`bluepill_f103c8_bench`).
+- Direct USART3 command/error-path validation remains BLOCKED with current path.
+- This remains bounded evidence and not full bench acceptance.
+
+Step 7c addendum (later user-confirmed reset transcript):
+
+- After the bounded NOT CAPTURED window above, user provided a separate COM7
+  transcript and confirmed it was produced by pressing the Blue Pill physical
+  RESET button during active recording (not by restarting the monitor/capture).
+- Approximate reset timing reported by user: about 4-5 minutes into that active
+  recording session.
+- The provided transcript contains startup markers including:
+  - `stm32-bluepill bringup: boot`
+  - startup command tables (`cmd core`, `cmd bench`, `udi: CMD...`)
+  - flash bring-up sequence (`flash: begin bring-up test` through
+    `flash: erase/program/readback PASS`)
+  - config/calibration/startup probes (`[CFG] Loaded`, `[CFG] REC...`,
+    `aht20: startup probe PASS`, `ina: incoming rail sample PASS`)
+- Interpretation boundary: this addendum confirms reset-driven startup output
+  exists in a later user-reported session, while the original Step 7c capture
+  files listed above remain correctly classified as NOT CAPTURED.
+
+Step 7c bounded post-reset console check (no new reset/upload):
+
+- Continuity status: the earlier Step 7c recording handle had already ended and
+  was closed before this check; this run used a new bounded COM7 session.
+- Startup transcript preserved verbatim as a session artifact:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\user-provided-startup-transcript-verbatim-20261009.txt`
+- Provenance/metadata artifact (includes user-confirmed trigger + approximate
+  reset timing, without retroactive exact timestamp invention):
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\user-provided-startup-transcript-provenance-20261009.md`
+- Bounded command-capture artifact:
+  - `C:\Users\user\.copilot\session-state\cd3b8893-68ec-424a-8864-b63ffb19c6b0\files\issue-101-step7c\com7-post-reset-help-diag-cfgshow-20261009.log`
+
+Startup transcript values requested for closeout:
+
+- Flash test result: `flash: erase/program/readback PASS`
+- Config recovery status: `[CFG] REC r=O d=0 s=0`
+- D9/D15 interpretation boundary: user-reported indicator mapping only
+  (`D9 -> D15 -> AW9523 P1.0`), not measured rail-enable state.
+
+Timestamped command results from the bounded COM7 run (115200 8N1):
+
+- `2026-10-09T10:49:07.2335932-05:00 TX HELP`
+  - RX: `cmd core: HELP DIAG D9ON D9OFF CALSHOW CFGSHOW CALSET CFGSAVE CFGLOAD CFGRESET CFGERASE`
+  - RX: `cmd bench: FTEST AHTNOW AHTRESET SRTEST D9FLASH HBON HBOFF Q1/2/3/4/5/9ON/OFF Q39ON/OFF Q612ON/OFF QSTATE QSEQ INAPROBE INANOW INARAILS INADIAG AWPROBE AWMODE AWHB AWP10ON AWP10OFF Q9DIAG`
+  - RX: `udi: CMD:OUTPUT ON|OFF ; CMD:GET OUTPUT|STATE|CFGREC|ILIM CH1|CH2 ; CMD:ILIM CH1|CH2 <mA>`
+- `2026-10-09T10:49:09.0590976-05:00 TX DIAG`
+  - RX: `diag:fault-awint`
+  - RX: `st f=PASS aw=PASS aht=PASS Vin=11.536 Iin=88.89 T=26.84 RH=49.12 n=1`
+- `2026-10-09T10:49:10.9045203-05:00 TX CFGSHOW`
+  - RX: `cfg d9=ON`
+  - RX: `cal 5V vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00`
+  - RX: `cal 3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`
+
+Run-end status:
+
+- `2026-10-09T10:49:13.3260041-05:00 INFO Closed COM7 capture handle`
+- No reset, upload, PlatformIO/firmware change, OUTPUT/ILIM/D9 write, wiring
+  change, or additional USART3 testing was performed in this bounded check.
+
+## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
+
+Scope executed: Step 3 only for issue #101 / draft PR #103.
+
+- Maintained environments:
+  - `bluepill_f103c8`: compact/default profile (`STM32_ENABLE_BRINGUP_BENCH_COMMANDS=0`)
+  - `bluepill_f103c8_bench`: full-bench profile (`STM32_ENABLE_BRINGUP_BENCH_COMMANDS=1`)
+- Shared configuration is defined in non-environment section `stm32_common` and referenced by both maintained environments in `platformio.ini`.
+- Bench evidence status: NOT RUN (build/static analysis only).
+
+Measured build results (clean builds, Python 3.13, no upload):
+
+| Profile | PlatformIO flash used/free | PlatformIO static RAM | Complete loadable image used/free* | firmware.bin length |
+|---|---:|---:|---:|---:|
+| Compact `bluepill_f103c8` | 44,956 / 20,580 B | 2,000 B | 45,276 / 20,260 B | 45,276 B |
+| Full-bench `bluepill_f103c8_bench` | 52,256 / 13,280 B | 2,000 B | 52,576 / 12,960 B | 52,576 B |
+
+*Complete loadable image counts every flash `LOAD` section (`.isr_vector`, `.text`, `.rodata`, `.ARM`, `.init_array`, `.fini_array`, and `.data` initializers).
+
+Delta versus Step 2 baseline (`bluepill_f103c8`, CDC removed, 51,980 B PlatformIO flash and 52,300 B complete image):
+
+- Compact/default profile:
+  - PlatformIO flash delta: -7,024 B
+  - Complete image delta: -7,024 B
+- Full-bench profile:
+  - PlatformIO flash delta: +276 B
+  - Complete image delta: +276 B
+
+Evidence artifacts (ELF/map/objdump/symbol/log extracts):
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-3`
+
+## Issue #101 Step 1 Baseline (2026-10-08)
+
+Measured on branch `phil-cia-stm32-flash-headroom` at commit `cbeee06`.
+
+- Build (unchanged target): `python -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Flash usage: 64,892 / 65,536 bytes (free: 644 bytes)
+- Static RAM usage: 5,536 / 20,480 bytes
+
+Flash accounting note for Step 1 baseline:
+
+- PlatformIO reported metric: 64,892 bytes used / 644 bytes free.
+- Complete loadable image footprint (all flash `LOAD` sections, including vectors/init/fini/.ARM and `.data` initializers): 65,216 bytes used / 320 bytes free.
+
+Resolved tooling and package versions used for this baseline:
+
+- PlatformIO Core: 6.1.19
+- Platform: `ststm32` 19.7.0
+- Arduino core package: `framework-arduinoststm32` 4.21200.0 (core 2.12.0)
+- Toolchain package: `toolchain-gccarmnoneeabi` 1.120301.0 (GCC 12.3.1)
+- Direct library: `Adafruit AW9523` 1.0.5
+- Transitive library (pinned for reproducibility): `Adafruit BusIO` 1.17.4
+
+Reproducibility pinning for STM32 target (`stm32-bluepill-bringup/platformio.ini`):
+
+- `adafruit/Adafruit AW9523@1.0.5`
+- `adafruit/Adafruit BusIO@1.17.4`
+
+Python runtime note for reproducibility on this workstation:
+
+- `python -m platformio ...` under Python 3.14 fails package constraints for this target.
+- `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8` succeeds on the same source/dependencies.
+- Verified with PlatformIO Core 6.2.0 on Python 3.13: flash and RAM remain 64,892 and 5,536 bytes.
+
+Evidence artifacts (ELF, map, section/symbol reports, and build logs) were captured to:
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-1`
+
+Bench evidence status: NOT bench-tested in this step (build and static artifact analysis only).
+
+## Issue #101 Step 2 (2026-10-08) - CDC removal + console consolidation
+
+Scope executed: Step 2 only for issue #101 / draft PR #103.
+
+- Removed `PIO_FRAMEWORK_ARDUINO_ENABLE_CDC` from `bluepill_f103c8`.
+- Console ownership is consolidated to one USART1 owner: core `Serial1` via `HardwareSerial& SerialConsole = Serial1`.
+- Explicit pin setup is applied before `begin()`:
+  - `SerialConsole.setRx(PA10)`
+  - `SerialConsole.setTx(PA9)`
+  - `SerialConsole.begin(115200)`
+- App-owned `SerialDbg(PA10, PA9)` is removed.
+- USART3 UDI path remains independent and unchanged: `HardwareSerial SerialU3(PB11, PB10)` at 115200 8N1.
+
+Measured build (clean, build-only; no upload/bench):
+
+- Command: `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t clean`
+- Command: `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
+- Python: 3.13.15
+- PlatformIO Core: 6.2.0
+- Platform/platform packages: unchanged from baseline (`ststm32` 19.7.0, core 2.12.0, GCC 12.3.1)
+- Direct/transitive libs preserved: `Adafruit AW9523@1.0.5`, `Adafruit BusIO@1.17.4`
+- Flash usage (PlatformIO reported metric): 51,980 / 65,536 bytes (free: 13,556 bytes)
+- Static RAM usage: 2,000 / 20,480 bytes
+
+Complete image accounting (all loadable flash sections):
+
+- `.isr_vector` 268 B
+- `.text` 44,256 B
+- `.rodata` 7,596 B
+- `.ARM` 8 B
+- `.init_array` 28 B
+- `.fini_array` 16 B
+- `.data` initializers (flash load) 128 B
+- Total complete image footprint = 52,300 B
+- Free by complete image accounting = 13,236 B
+
+Method comparison and deltas versus Step 1 baseline:
+
+| Method | Step 1 used/free | Step 2 used/free | Delta used | Delta free |
+|---|---:|---:|---:|---:|
+| PlatformIO reported | 64,892 / 644 | 51,980 / 13,556 | -12,912 | +12,912 |
+| Complete loadable image | 65,216 / 320 | 52,300 / 13,236 | -12,916 | +12,916 |
+
+Compact-ceiling status note:
+
+- Proposed compact ceiling remains pending user review: 52,428 bytes.
+- Current complete image footprint is 52,300 bytes, leaving only 128 bytes to that proposed ceiling; this does not by itself demonstrate adequate remaining feature headroom.
+
+Evidence artifacts for Step 2:
+
+- `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-2`
+
+Bench evidence status: NOT RUN in Step 2.
+
+### User-run bench checklist (not executed in this step)
+
+- Confirm boot logs appear on CH340 USART1 at 115200 8N1.
+- Run `HELP`, `DIAG`, and `CFGSHOW`; verify readable responses and no duplicate lines.
+- Confirm periodic binary telemetry continues on USART3 (PB11/PB10 path).
+- Run read-only UDI round trips and confirm ACK/ERR behavior:
+  - `CMD:GET OUTPUT`
+  - `CMD:GET STATE`
+  - `CMD:GET CFGREC`
+  - `CMD:GET ILIM CH1`
+  - `CMD:GET ILIM CH2`
+  - malformed command (expect `ERR:`)
+
+## Issue #101 Gate A Proposals - Pending Coordinator Review
+
+These are Step 1 proposals only. Approval and Step 2 execution authority belong to the coordinator.
+
+### Console ownership proposal for Step 2
+
+- Proposed single USART1 console owner: `SerialDbg` on PA10/PA9 (CH340 path), 115200 8N1.
+- Keep UDI on `SerialU3` (USART3 PB11/PB10) unchanged.
+- This ownership model is not implemented in Step 1.
+
+Core/linkage evidence from the Step 1 ELF confirms why consolidation is required before CDC removal:
+
+- CDC-enabled image links USB CDC and USB serial symbols (`SerialUSB`, `USBSerial`, `USBD_CDC*`, `CDC_*`).
+- The same image also links core `Serial1` and app-defined `SerialDbg`/`SerialU3`.
+- Symbol evidence file: `C:\Users\user\.copilot\session-state\c4c48da5-f21f-413b-b805-fa311f4486a7\files\issue-101-step-1\serial-symbols-after-pin.txt`.
+
+Step 2 should avoid duplicate USART1 ownership after CDC removal by routing all console init/print/poll paths through one USART1 object and removing the parallel path, while leaving USART3 UDI independent.
+
+### Command-scope proposal for compact profile planning
+
+No gating/deletion is done in Step 1.
+
+- Proposed must-remain commands in compact builds: `HELP`, `DIAG`, `D9ON`, `D9OFF`, `CALSHOW`, `CFGSHOW`, `CALSET`, `CFGSAVE`, `CFGLOAD`, `CFGRESET`, `CFGERASE`, plus UDI contract handlers (`CMD:OUTPUT`, `CMD:GET OUTPUT`, `CMD:GET STATE`, `CMD:GET CFGREC`, `CMD:GET ILIM`, `CMD:ILIM`).
+- Proposed bench-focused candidates behind a bring-up flag: `FTEST`, `AHTNOW`, `AHTRESET`, `SRTEST`, `D9FLASH`, `HBON`, `HBOFF`, `Q1ON/OFF`, `Q2ON/OFF`, `Q3ON/OFF`, `Q4ON/OFF`, `Q5ON/OFF`, `Q9ON/OFF`, `Q39ON/OFF`, `Q612ON/OFF`, `QSTATE`, `QSEQ`, `INAPROBE`, `INANOW`, `INARAILS`, `INADIAG`, `AWPROBE`, `AWMODE`, `AWHB`, `AWP10ON`, `AWP10OFF`, `Q9DIAG`.
+
+### Shared-helper analysis (what must remain ungated)
+
+Some bench-facing commands call helpers that are also used by startup, periodic runtime, output control, fault handling, telemetry, or persistence. Gate command entry points only; do not gate these shared runtime helpers:
+
+- Boot and periodic runtime helpers that must remain ungated: `logHealthSummary()`, `refreshIncomingRailSample()`, `readIna3221()`, `readAht20Now()`, `publishTelemetry()`, `serviceAw9523FaultPath()`, `isFaultCriticalActive()`, `is3v3PathEnabled()`, and boot sequencing in `setup()`.
+- Output-control helpers that must remain ungated: `setD9PathEnabled()` and `g_output_enabled` state flow, because they are used by startup restore and UDI `CMD:OUTPUT` handling.
+- Persistence helpers that must remain ungated: `initPersistentConfigAtBoot()`, `loadPersistentConfig()`, `savePersistentConfig()`, `erasePersistentConfig()`, `printPersistentConfig()`, `configRecoveryReasonCode()`, and CAL/CFG data structures used by startup recovery and UDI-visible state.
+- Fault/UDI contract helpers that must remain ungated: `sendUdiAck()`, `sendUdiErr()`, `sendUdiEvt()`, `handleUdiCommandLine()`, `pollUdiCommands()`, and AW9523 fault-event signaling (`EVT:FAULT TRIP/CLEAR`).
+
+Bench-only command handlers should be the gating boundary, not the low-level helper functions above.
 
 Build the Rev-D target:
 

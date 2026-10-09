@@ -1,0 +1,98 @@
+Issue #101 / draft PR #103 - next handoff: verify uploads and capture startup
+
+Continue the existing VS Code session. Do not restart the entire bench plan.
+
+CURRENT CHECKPOINT
+Commit 77275f0 records compact and full-bench uploads from source 6ff3562,
+allowed COM7 checks, and user-reported PA0/PA1/PA2 <=0.02 V with OWON XDM1014
+referenced to H2. These are steady-state LOW readings, not glitch evidence.
+Last reported installed profile: bluepill_f103c8_bench.
+Missing evidence: early boot flash-test/config-recovery messages.
+Direct USART3 GET STATE/GET CFGREC/ERR checks remain blocked.
+
+CHECKOUT
+C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
+Branch: phil-cia-stm32-flash-headroom.
+Verify branch, HEAD, and status. Preserve coordinator instruction edits.
+Read the existing STM32 README checkpoint and relevant startup code.
+Do not pop/apply the deferred parser stash.
+
+USER-DIRECTED CONSTRAINTS
+Keep every PlatformIO configuration, dependency, environment flag, port
+setting, VS Code task, and firmware source unchanged.
+Existing setup: Blue Pill on ST-Link, CH340 USART1 on COM7 at 115200 8N1,
+CrowPanel USB on COM12. Do not upload F405 or CrowPanel.
+
+HARDWARE LABEL CORRECTION
+User believes legacy D9 is now D15: indicator LED on AW9523 P1_0,
+reported package pin 1, provided only to demonstrate expander control.
+Do not interpret cfg d9=ON as proof a rail is enabled.
+Record this as user-reported pending built-board schematic verification;
+do not rename firmware/protocol or run LED tests for this assignment.
+The firmware's SR fallback is separate and must not be treated as an LED
+path if it is actually used. Determine actual output safety from verified
+hardware and measurements, not a software label.
+
+NEXT WORK
+1. Verify the prior upload evidence for BOTH F103 profiles. Identify the
+   source revision, exact commands, success logs, and available binary/ELF
+   hashes. Preserve existing logs outside Temp in the session artifact area,
+   recording their new locations without altering original captures.
+   If original upload logs/hashes were not saved, report that gap; do not
+   invent provenance from a fresh build or equate current files with those
+   previously uploaded. Do not repeat uploads merely to repeat passed checks.
+
+2. Prepare one early-boot capture of the currently installed full-bench
+   profile, preferably without reflashing. Before accessing COM7 or resetting,
+   confirm the CURRENT power/load arrangement with the user. The checkpoint
+   reports 12 V input limited to 800 mA and connected 10-ohm loads; do not
+   call that physical isolation or assume those conditions still apply.
+   Confirm CrowPanel data state and prevent automatic host writes during
+   this bounded capture. Do not silently disconnect/reconnect anything.
+
+3. Explain the reset/capture sequence and ask the user to approve ONE reset
+   and its startup effects before execution:
+   - FLASH_TEST_ADDR sector (0x001000) erase/program/readback.
+   - Possible automatic config-default save at FLASH_CFG_ADDR if config
+     is missing/invalid; verify address and conditions from current source.
+   - Restoration of persisted control settings.
+   Confirm the test sector is disposable. If any effect is not approved,
+   stop rather than editing firmware to suppress it.
+
+4. Start timestamped COM7 capture BEFORE the approved reset, with DTR/RTS
+   inactive and port ownership confirmed. Do not attach an ST-Link debugger
+   or use commands that could erase/program flash just to reset the board.
+   Prefer one user-performed reset with the monitor already recording.
+   If the user must power-cycle, discuss serial availability/power effects
+   first; do not assume it will preserve early capture.
+   Capture boot banner, AW initialization/backend, flash test result,
+   [CFG] recovery reason/default/save indicators, and restored setting.
+   Then send only HELP, DIAG, CFGSHOW and capture the responses.
+   Verify expected output against current source. Missing lines remain
+   NOT CAPTURED; reported later flash PASS is not a substitute for startup logs.
+   Stop on unexpected behavior and report it before further actions.
+
+5. If an upload is genuinely needed, explain why and ask separately for
+   explicit approval of the profile and the same startup effects.
+   Use the existing ST-Link setup and explicit F103 environment.
+   No upload, repeat reset, profile restoration, or wiring change is
+   implicitly authorized by this prompt. Do not upload compact unless
+   needed for an agreed remaining criterion.
+
+NOT INCLUDED
+No OUTPUT/ILIM/D9/range/AW9523 writes, FTEST, CFG/CAL writes/reset/erase,
+fault injection, loaded regulation tests, adapter rewiring, or COM12
+commands that can trigger Setup writes. No USART3 workaround or new code.
+Do not pursue blocked UDI tests in this step.
+Do not change PR state, commit/push, merge, or close the issue.
+
+REPORT BACK AND STOP
+Report approvals, exact source/artifact identity and provenance limits,
+capture paths, actual startup lines, command results, all observed automatic
+writes, missing evidence, and final installed profile/power/connection state.
+Release serial handles. Do not reset/reconnect/reflash during cleanup.
+Update only the existing STM32 README and directly related firmware-plan
+evidence with the new run, preserving older run identities and limitations.
+Keep D9/D15 LED clarification separate from measured rail state.
+The Markdown execution record is coordinator-owned.
+STOP for coordinator review; no full bench-pass claim.
