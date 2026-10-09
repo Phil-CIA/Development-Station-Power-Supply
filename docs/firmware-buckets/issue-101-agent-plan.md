@@ -315,6 +315,7 @@ while preserving both F103 profiles, their single-owner console and budgets.
 	- Both F103 image budgets passed with matching ELF spans.
 	- F405 build-only: PlatformIO flash 66,252 B, RAM 6,428 B; complete image 66,708 B. No F103 budget is imposed on F405.
 	- User deferred the uncommitted parser proposal; it is preserved separately in local git stash `eb480419cb96ebb05364ffaf349776e179623584`, not included in this PR or claimed as reviewed Step 5 work.
-	- New GitHub Actions evidence is pending; no hardware was accessed.
+	- Actions run [37937148406](https://github.com/Phil-CIA/Development-Station-Power-Supply/actions/runs/37937148406) on merge commit `7527220` passed all five jobs, including compact checker tests and both F103 budget/artifact steps. F405 passed its build and correctly skipped the F103-specific gates.
+	- All five conflicts with `main` are resolved. No hardware was accessed; reconciled binaries are not bench-tested.
 Step 7a: planning-only handoff prepared at user request; investigation results pending. Hardware execution remains unauthorized.
 PR #103: remains draft pending disposition of the remaining open acceptance criteria.
