@@ -5,7 +5,7 @@ Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
 Status: Steps 1-3 and 6 complete and reviewed; Steps 4/5 skipped. Independent review findings are addressed; Step 7 remains partial with open criteria.
-Next authorized handoff: Step 7b gated bench validation using issue-101-agent-plan.txt. Confirm isolation and obtain specific boot/upload approval before hardware access.
+Next authorized handoff: verify prior F103 uploads and prepare a single approved full-bench startup capture using issue-101-agent-plan.txt. No automatic repeat uploads or resets.
 
 ## How we work
 
@@ -323,7 +323,15 @@ permits gated validation, not blanket hardware execution. User reports
 Blue Pill on ST-Link, CrowPanel COM12, and CH340 USART1 COM7.
 	- User explicitly requires existing PlatformIO configuration and port settings to remain unchanged; setup verification does not authorize reconfiguration.
 	- Physical output isolation, CrowPanel data disconnection, board/test-point identity, and port reset behavior must be confirmed before access.
-	- Specific profile upload/boot approval must cover automatic FLASH_TEST_ADDR writes, possible config recovery saves, and persisted D9 output restoration.
+	- Specific profile upload/boot approval must cover automatic FLASH_TEST_ADDR writes, possible config recovery saves, and restoration of the legacy D9 control setting; that label alone does not establish a rail-enable action.
 	- No direct USART3 adapter is confirmed; blocked UDI checks must not be rerouted through COM7 or counted from CrowPanel-local errors.
 	- No new bench results are claimed. Firmware/parser changes and PR merge/closure remain unauthorized.
 PR #103: remains draft pending disposition of the remaining open acceptance criteria.
+
+Hardware clarification (2026-10-09): user believes legacy D9 is now D15,
+an indicator LED on AW9523 P1_0 (reported package pin 1), provided only to
+prove expander control. This is user-reported mapping pending built-board
+schematic verification, not proof of shared rail enable. Firmware still
+uses legacy D9/OUTPUT names and an SR fallback if AW9523 is unavailable.
+Do not infer energized rails from `cfg d9=ON`. No firmware, protocol, or
+PlatformIO rename/change is authorized by this clarification.

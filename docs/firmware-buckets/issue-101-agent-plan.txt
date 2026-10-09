@@ -1,165 +1,98 @@
-Issue #101 / draft PR #103 - Step 7b: gated bench validation
+Issue #101 / draft PR #103 - next handoff: verify uploads and capture startup
 
-ASSIGNMENT
-The user wants to resume bench validation, not change firmware.
-Work through the gates below in order. Do not interpret this prompt as
-blanket permission to flash, reset, write settings, or energize outputs.
-The user performs physical setup and measurements; you capture evidence.
-Stop at every unresolved safety/setup question and ask the user locally.
-User-directed constraint: use the existing PlatformIO configuration exactly
-as committed. Do not edit any platformio.ini, upload/monitor port settings,
-environment flags, board/platform selections, dependencies, or VS Code tasks.
-ST-Link upload and the reported COM7/COM12 connections are unchanged.
-Confirming device identity is a check, not permission to reconfigure anything.
-If the existing setup cannot perform a test, report BLOCKED and stop rather
-than changing the configuration, firmware, or connections without approval.
+Continue the existing VS Code session. Do not restart the entire bench plan.
 
-CHECKOUT AND BASELINE
-Use this existing checkout, not main or another worktree:
+CURRENT CHECKPOINT
+Commit 77275f0 records compact and full-bench uploads from source 6ff3562,
+allowed COM7 checks, and user-reported PA0/PA1/PA2 <=0.02 V with OWON XDM1014
+referenced to H2. These are steady-state LOW readings, not glitch evidence.
+Last reported installed profile: bluepill_f103c8_bench.
+Missing evidence: early boot flash-test/config-recovery messages.
+Direct USART3 GET STATE/GET CFGREC/ERR checks remain blocked.
+
+CHECKOUT
 C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
-Expected branch: phil-cia-stm32-flash-headroom.
-Verify HEAD, branch, and status. Required baseline includes 7507429 and
-merge 7527220; newer handoff-only documentation commits are expected.
-Do not apply/pop the deferred parser stash or change parser behavior.
-Do not discard or overwrite unrelated edits.
+Branch: phil-cia-stm32-flash-headroom.
+Verify branch, HEAD, and status. Preserve coordinator instruction edits.
+Read the existing STM32 README checkpoint and relevant startup code.
+Do not pop/apply the deferred parser stash.
 
-User-reported connections (confirm identity; do not assume still current):
-- Blue Pill STM32F103C8: ST-Link programmer.
-- HAT CH340 / STM32 USART1 console: COM7, 115200 8N1.
-- CrowPanel USB console: COM12. This is NOT direct STM32 USART3 access.
-- No separate 3.3 V TTL USART3 adapter has been confirmed.
+USER-DIRECTED CONSTRAINTS
+Keep every PlatformIO configuration, dependency, environment flag, port
+setting, VS Code task, and firmware source unchanged.
+Existing setup: Blue Pill on ST-Link, CH340 USART1 on COM7 at 115200 8N1,
+CrowPanel USB on COM12. Do not upload F405 or CrowPanel.
 
-READ BEFORE ACCESSING HARDWARE
-README.md; docs\SYSTEM_DEVELOPMENT_WORKFLOW.md;
-docs\FIRMWARE_DEVELOPMENT_PLAN.md;
-docs\firmware-buckets\issue-101-agent-plan.md;
-stm32-bluepill-bringup\README.md;
-docs\GPIO_PINOUT.md; docs\STM32_BLUEPILL_PIN_TABLE.md;
-docs\DISPLAY_INTERFACE_STANDARD.md; docs\display-project\README.md.
-Inspect current STM32 command handlers, startup, board pins, and CrowPanel
-CLI as needed. Resolve actual built-board revision versus Rev-C references.
+HARDWARE LABEL CORRECTION
+User believes legacy D9 is now D15: indicator LED on AW9523 P1_0,
+reported package pin 1, provided only to demonstrate expander control.
+Do not interpret cfg d9=ON as proof a rail is enabled.
+Record this as user-reported pending built-board schematic verification;
+do not rename firmware/protocol or run LED tests for this assignment.
+The firmware's SR fallback is separate and must not be treated as an LED
+path if it is actually used. Determine actual output safety from verified
+hardware and measurements, not a software label.
 
-GATE A - PHYSICAL SETUP, NO PORT ACCESS YET
-Ask one focused setup question at a time. Obtain explicit confirmation:
-1. Actual HAT/Blue Pill revision, power source, and physical output/load
-   isolation. Describe what is disconnected; a software OUTPUT OFF state
-   is not proof of isolation. Do not assume yesterday's isolation persists.
-2. CrowPanel DATA is physically disconnected from STM32 USART3 before
-   boot/reset/upload. The user must identify the data connector and safe
-   power-off wiring procedure for this board. Do not direct blind cable
-   removal or rewiring on powered equipment. Do not open COM12 or navigate
-   SCREEN SETUP as part of this isolated test.
-3. COM7 really is the HAT console, all other serial monitors are closed,
-   and opening it will not unexpectedly reset the STM32 through DTR/RTS.
-   Inspect the connection/tool setup before opening. If reset behavior is
-   uncertain, handle it under Gate B first; never assume a monitor is passive.
-4. Confirm ST-Link device identity before any upload. No CrowPanel upload
-   and no f405rg upload are authorized.
+NEXT WORK
+1. Verify the prior upload evidence for BOTH F103 profiles. Identify the
+   source revision, exact commands, success logs, and available binary/ELF
+   hashes. Preserve existing logs outside Temp in the session artifact area,
+   recording their new locations without altering original captures.
+   If original upload logs/hashes were not saved, report that gap; do not
+   invent provenance from a fresh build or equate current files with those
+   previously uploaded. Do not repeat uploads merely to repeat passed checks.
 
-Known risks to disclose:
-- CrowPanel previously generated OUTPUT ON and ILIM CH1/CH2 writes.
-- STM32 boot restores the persisted D9/output-enable setting; isolated
-  CrowPanel data alone does not guarantee inactive power outputs.
-- Every boot automatically erases/programs external FLASH_TEST_ADDR
-  (0x001000, a 4 KiB sector). Missing/invalid config can also cause an
-  automatic defaults save at FLASH_CFG_ADDR; inspect its address in source.
-- Prior startup-test approval does not authorize this new run or config
-  recovery writes. Disclose BOTH automatic write paths before Gate B.
-If isolation or safe setup cannot be confirmed, STOP with BLOCKED status.
+2. Prepare one early-boot capture of the currently installed full-bench
+   profile, preferably without reflashing. Before accessing COM7 or resetting,
+   confirm the CURRENT power/load arrangement with the user. The checkpoint
+   reports 12 V input limited to 800 mA and connected 10-ohm loads; do not
+   call that physical isolation or assume those conditions still apply.
+   Confirm CrowPanel data state and prevent automatic host writes during
+   this bounded capture. Do not silently disconnect/reconnect anything.
 
-GATE B - EXPLICIT BOOT/UPLOAD APPROVAL
-Build-only work and checker tests are permitted before this gate.
-Present the intended compact/full-bench upload and reset sequence, including
-all automatic flash/config/output side effects identified above.
-Ask the user to approve the specific operations on the confirmed isolated
-setup. If config recovery writes are not approved and cannot be ruled out,
-do not boot/reset/upload; report the blocker without editing firmware.
-Approval for one profile is not permission to continue through both.
+3. Explain the reset/capture sequence and ask the user to approve ONE reset
+   and its startup effects before execution:
+   - FLASH_TEST_ADDR sector (0x001000) erase/program/readback.
+   - Possible automatic config-default save at FLASH_CFG_ADDR if config
+     is missing/invalid; verify address and conditions from current source.
+   - Restoration of persisted control settings.
+   Confirm the test sector is disposable. If any effect is not approved,
+   stop rather than editing firmware to suppress it.
 
-After approval, use ST-Link with explicit environment selection only:
-py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload
-Later, only after separate approval for the second profile:
-py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload
-Confirm Python/tool availability; never silently change target/platform.
-Capture boot from COM7 with timestamps. Do not repeatedly reset to obtain
-logs without approval. Record missed early boot lines as missing evidence.
+4. Start timestamped COM7 capture BEFORE the approved reset, with DTR/RTS
+   inactive and port ownership confirmed. Do not attach an ST-Link debugger
+   or use commands that could erase/program flash just to reset the board.
+   Prefer one user-performed reset with the monitor already recording.
+   If the user must power-cycle, discuss serial availability/power effects
+   first; do not assume it will preserve early capture.
+   Capture boot banner, AW initialization/backend, flash test result,
+   [CFG] recovery reason/default/save indicators, and restored setting.
+   Then send only HELP, DIAG, CFGSHOW and capture the responses.
+   Verify expected output against current source. Missing lines remain
+   NOT CAPTURED; reported later flash PASS is not a substitute for startup logs.
+   Stop on unexpected behavior and report it before further actions.
 
-TEST GROUP 1 - ISOLATED USART1, EACH APPROVED PROFILE
-Once approved setup/port access is established, send one command at a time:
-HELP, DIAG, CFGSHOW.
-Compact: INAPROBE and INANOW must explicitly report unsupported.
-Full bench: INAPROBE, INANOW, and AHTNOW should be available. A sensor HOLD
-must be recorded accurately, not converted into a hardware pass.
-Capture console owner/pins/baud, profile identity, boot health, flash-test
-result, config recovery reason, and reported output state. If boot indicates
-an unexpected recovery/write or state transition, stop and report.
-Do not issue FTEST or any CFG/CAL/output/range-control write command.
+5. If an upload is genuinely needed, explain why and ask separately for
+   explicit approval of the profile and the same startup effects.
+   Use the existing ST-Link setup and explicit F103 environment.
+   No upload, repeat reset, profile restoration, or wiring change is
+   implicitly authorized by this prompt. Do not upload compact unless
+   needed for an agreed remaining criterion.
 
-TEST GROUP 2 - HUMAN PA0/PA1/PA2 MEASUREMENTS
-With actual-board test points verified and hardware isolated, ask the user
-to measure with a high-impedance voltmeter against the verified board ground.
-User places probes safely; agent must not fabricate readings.
-Current F103 firmware configures PA0/PA1/PA2 LOW. Establish and agree a
-numeric acceptable LOW range from the actual board/electrical specification;
-do not invent a universal tolerance from source code alone.
-Record profile, node, ground reference, measured volts, instrument/range,
-measurement timing, and agreed criterion. A later steady LOW reading is
-not proof that no startup glitch occurred; scope evidence is separate.
-Do not enable outputs or change settings to force an expected reading.
-If test points are inaccessible or the criterion is unresolved, NOT MEASURED
-or OPEN is valid. Stop on unexpected voltage; do not change hardware/code.
+NOT INCLUDED
+No OUTPUT/ILIM/D9/range/AW9523 writes, FTEST, CFG/CAL writes/reset/erase,
+fault injection, loaded regulation tests, adapter rewiring, or COM12
+commands that can trigger Setup writes. No USART3 workaround or new code.
+Do not pursue blocked UDI tests in this step.
+Do not change PR state, commit/push, merge, or close the issue.
 
-TEST GROUP 3 - USART3 READ/ERR, CONDITIONAL ON A VERIFIED ROUTE
-COM7 is USART1, not UDI. COM12 CLI intercepted arbitrary CMD: lines in the
-prior run. Do not count a CrowPanel-local ERR as an STM32 ERR.
-Keep CrowPanel data isolated. With the presently reported connections, mark
-these tests BLOCKED unless source inspection proves an existing usable
-non-mutating route, or the user supplies a compatible USART3 adapter.
-If a route needs firmware changes or CrowPanel reconnection, STOP and report
-the proposal to the coordinator rather than implementing or reconnecting.
-
-If a separate adapter is supplied, obtain user approval of power-off setup:
-3.3 V TTL (not RS-232/5 V TX); adapter TX -> STM32 PB11 RX, adapter RX <-
-PB10 TX, verified common ground; adapter VCC left unconnected to avoid
-back-powering. Confirm actual-board connector mapping, not assumed pins.
-Exactly one active transmitter may drive STM32 RX. No reset/control wires.
-Confirm adapter port and permission to open it before capture.
-
-After verified route approval, send these ASCII lines with LF terminators:
-CMD:GET OUTPUT
-CMD:GET STATE
-CMD:GET CFGREC
-CMD:GET ILIM CH1
-CMD:GET ILIM CH2
-CMD:GET ISSUE101_UNKNOWN
-Recheck handler behavior in source before sending. Expected response shapes:
-ACK:STATE O=<ON|OFF> D9=<ON|OFF> CH2=<ON|OFF> F=<NA|TRIP|OK>
-ACK:CFGREC R=<reason> D=<0|1> S=<0|1>
-ERR:UNKNOWN CMD for the unknown GET.
-Validate observed values against contemporaneous console/config evidence,
-not hard-coded assumptions. Account for binary telemetry mixed with text:
-preserve raw bytes and use actual framing; do not treat all bytes as lines.
-This error case is an unknown read request, not electrical fault injection.
-Record both profile results where the approved setup allows.
-
-PROHIBITED
-No OUTPUT/ILIM writes, D9ON/OFF, range/AW9523 writes, CFG/CAL reset/save/erase,
-manual flash tests, fault injection, loaded output testing, or F405 testing.
-No firmware/parser/CI edits, new protocol bypasses, or disabling safeguards.
-Do not reconnect CrowPanel, restore power wiring, change the final firmware
-profile, or reset at cleanup without explicit user approval.
-Stop captures and release serial handles when done; leave hardware state
-and connections exactly as last approved and report them.
-No commit/push, PR readiness change, merge, or issue closure.
-
-REPORT AND EVIDENCE
-Save timestamped captures outside the tracked tree in this session's files
-area; record exact artifact paths and build source/ELF identity.
-Update only the existing STM32 README Step 7 evidence and the directly
-related firmware-plan status if actual new evidence exists. Preserve prior
-results and automatic CrowPanel traffic disclosure; append this run with
-its own profile/commit identity. The execution plan is coordinator-owned.
-Return per-criterion PASS/FAIL/BLOCKED/NOT MEASURED, exact approvals,
-commands, logs, meter readings, unexpected behavior, automatic writes,
-and final wiring/power/profile state. Do not claim CI proves bench behavior.
-STOP after the report for coordinator review.
+REPORT BACK AND STOP
+Report approvals, exact source/artifact identity and provenance limits,
+capture paths, actual startup lines, command results, all observed automatic
+writes, missing evidence, and final installed profile/power/connection state.
+Release serial handles. Do not reset/reconnect/reflash during cleanup.
+Update only the existing STM32 README and directly related firmware-plan
+evidence with the new run, preserving older run identities and limitations.
+Keep D9/D15 LED clarification separate from measured rail state.
+The Markdown execution record is coordinator-owned.
+STOP for coordinator review; no full bench-pass claim.
