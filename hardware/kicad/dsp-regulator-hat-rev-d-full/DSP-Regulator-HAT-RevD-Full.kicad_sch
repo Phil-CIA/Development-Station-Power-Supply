@@ -1,0 +1,51 @@
+(kicad_sch
+  (version 20260306)
+  (generator "eeschema")
+  (generator_version "10.0")
+  (uuid "8eac47b6-9c92-4005-8483-c8ba2676659b")
+  (paper "A4")
+  (title_block
+    (title "DSP Regulator HAT Rev-D Full - Initial Integration")
+    (rev "D / first pass")
+    (comment 1 "Partial HAT reuse integration; bare C3 and missing source blocks pending; NOT RELEASED")
+  )
+  (lib_symbols)
+  (sheet
+    (at 100 25)
+    (size 100 50)
+    (fields_autoplaced yes)
+    (stroke (width 0) (type default))
+    (fill (color 0 0 0 0))
+    (uuid "e086f746-69c6-46b6-a4c0-cc7da8d58477")
+    (property "Sheet name" "HAT" (at 100 23 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom)))
+    (property "Sheet file" "HAT.kicad_sch" (at 100 77 0)
+      (effects (font (size 1.27 1.27)) (justify left top)))
+    (instances
+      (project "DSP-Regulator-HAT-RevD-Full"
+        (path "/8eac47b6-9c92-4005-8483-c8ba2676659b" (page "3"))
+      )
+    )
+  )
+  (sheet
+    (at 100 100)
+    (size 100 80)
+    (fields_autoplaced yes)
+    (stroke (width 0) (type default))
+    (fill (color 0 0 0 0))
+    (uuid "68d9ec0c-08c2-46d2-8f10-4f506138f2ca")
+    (property "Sheet name" "MCU" (at 100 98 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom)))
+    (property "Sheet file" "MCU.kicad_sch" (at 100 182 0)
+      (effects (font (size 1.27 1.27)) (justify left top)))
+    (instances
+      (project "DSP-Regulator-HAT-RevD-Full"
+        (path "/8eac47b6-9c92-4005-8483-c8ba2676659b" (page "2"))
+      )
+    )
+  )
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+  (embedded_fonts no)
+)
