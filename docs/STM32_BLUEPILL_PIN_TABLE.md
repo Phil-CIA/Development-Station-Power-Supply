@@ -48,6 +48,10 @@ show the production package and repository project are not interchangeable;
 the later schematic is explicitly unverified against the selected
 manufacturing release. No production files were copied into or modified in
 the repository, and no visual comparison to the physical HAT has been made.
+**User disposition:** this source-file difference is non-blocking for
+continuing Rev-C work. Use the supplied production PCB/Gerber/drill set as the
+manufacturing reference; retain the physical-board and schematic-to-release
+correlation as unresolved evidence, not a reason to stop the next check.
 
 Until a physical-board/order identity or source-to-manufacturing mapping is
 established, the table below describes the repository schematic/netlist only.

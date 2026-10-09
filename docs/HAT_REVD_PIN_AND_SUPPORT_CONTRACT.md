@@ -123,7 +123,10 @@ or protection.
   no known HAT issues during prior use; most circuitry was plug-and-play, but
   the ESP32 and fan were not tested. Treat this as history, not bench evidence.
   Rev-D replaces the Blue Pill and current ESP32-C3; this does not resolve the
-  production-source mapping.
+  production-source mapping. The user has decided this mismatch is
+  non-blocking for continuing Rev-C work: use the supplied production PCB and
+  Gerber/drill set as the manufacturing reference, while leaving physical
+  identity and schematic-to-release correlation explicitly unresolved.
 - The chosen crystal's exact manufacturer part and load must be checked
   against its datasheet and final PCB parasitics. The 8 MHz / CL=8 pF /
   2×10 pF target is not startup- or USB-bench-validated.
