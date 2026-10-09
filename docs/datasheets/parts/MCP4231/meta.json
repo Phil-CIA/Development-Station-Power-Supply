@@ -1,0 +1,20 @@
+{
+  "part": "MCP4231",
+  "title": "7/8-bit SPI digital potentiometer (dual)",
+  "manufacturer": "Microchip",
+  "tags": [
+    "digipot",
+    "spi"
+  ],
+  "used_in": [
+    "dsp-regulator"
+  ],
+  "documents": [
+    {
+      "file": "MCP4231.pdf",
+      "type": "datasheet",
+      "sha256": "6c60b083b2ef0a92bfd9d3ae16a1d859663219b4d08f9d0a29c8717de05c73ed",
+      "added": "2026-10-09"
+    }
+  ]
+}

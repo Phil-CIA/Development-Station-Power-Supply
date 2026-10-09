@@ -95,3 +95,4 @@ gated on hardware validation.
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
+- docs/datasheets/README.md — local datasheet library; search with `python scripts/datasheet.py find <part>` before fetching

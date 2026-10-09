@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "matcher": "web_fetch|powershell|bash",
+        "powershell": "python scripts/doc_fetch_hook.py pre; exit 0",
+        "bash": "python3 scripts/doc_fetch_hook.py pre || true",
+        "timeoutSec": 120
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "matcher": "web_fetch",
+        "powershell": "python scripts/doc_fetch_hook.py post; exit 0",
+        "bash": "python3 scripts/doc_fetch_hook.py post || true",
+        "timeoutSec": 60
+      }
+    ]
+  }
+}
