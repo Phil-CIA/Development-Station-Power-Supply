@@ -24,6 +24,12 @@ Review these files first for current context:
 - Do not commit directly to main; use a branch per subsystem and open a PR (see docs/SYSTEM_DEVELOPMENT_WORKFLOW.md).
 - Do not create new root-level dated HANDOFF_*/`*_SUMMARY.md` files; update the relevant tracker doc instead.
 
+## Datasheets and reference docs
+- Before fetching any datasheet, app note, or reference manual from the web, run `python scripts/datasheet.py find <part or keyword>` and use the local copy if present (read `NOTES.md`, then the extracted `.txt`, then the PDF).
+- If you do fetch a document, add it with `python scripts/datasheet.py add <PART> --url <URL> ...` and commit it on your branch.
+- Record specs you extract into `docs/datasheets/parts/<PART>/NOTES.md` with page references.
+- See docs/datasheets/README.md for details.
+
 ## Working style for this repo
 - Prefer continuing from the current repo state rather than relying on handoff prose
 - Treat the repo docs as the source of truth
