@@ -6,6 +6,13 @@ Work through the gates below in order. Do not interpret this prompt as
 blanket permission to flash, reset, write settings, or energize outputs.
 The user performs physical setup and measurements; you capture evidence.
 Stop at every unresolved safety/setup question and ask the user locally.
+User-directed constraint: use the existing PlatformIO configuration exactly
+as committed. Do not edit any platformio.ini, upload/monitor port settings,
+environment flags, board/platform selections, dependencies, or VS Code tasks.
+ST-Link upload and the reported COM7/COM12 connections are unchanged.
+Confirming device identity is a check, not permission to reconfigure anything.
+If the existing setup cannot perform a test, report BLOCKED and stop rather
+than changing the configuration, firmware, or connections without approval.
 
 CHECKOUT AND BASELINE
 Use this existing checkout, not main or another worktree:

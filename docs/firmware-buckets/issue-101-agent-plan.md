@@ -321,6 +321,7 @@ Step 7a: planning-only handoff prepared; no completed investigation report accep
 Step 7b (2026-10-09): user requested bench instructions. Current text handoff
 permits gated validation, not blanket hardware execution. User reports
 Blue Pill on ST-Link, CrowPanel COM12, and CH340 USART1 COM7.
+	- User explicitly requires existing PlatformIO configuration and port settings to remain unchanged; setup verification does not authorize reconfiguration.
 	- Physical output isolation, CrowPanel data disconnection, board/test-point identity, and port reset behavior must be confirmed before access.
 	- Specific profile upload/boot approval must cover automatic FLASH_TEST_ADDR writes, possible config recovery saves, and persisted D9 output restoration.
 	- No direct USART3 adapter is confirmed; blocked UDI checks must not be rerouted through COM7 or counted from CrowPanel-local errors.
