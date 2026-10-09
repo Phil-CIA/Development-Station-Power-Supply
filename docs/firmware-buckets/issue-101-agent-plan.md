@@ -5,7 +5,7 @@ Branch: phil-cia-stm32-flash-headroom
 Primary owner: Bucket 6 - bring-up diagnostics and recovery paths.
 Dependencies: Bucket 4 UDI, Bucket 5 persistence/calibration, Bucket 3 faults.
 Status: Steps 1-3 and 6 complete and reviewed; Steps 4/5 skipped. Independent review findings are addressed; Step 7 remains partial with open criteria.
-Next authorized handoff: Step 7a planning-only investigation using issue-101-agent-plan.txt. No further hardware testing is authorized unless the user separately approves it.
+Next authorized handoff: Step 7b gated bench validation using issue-101-agent-plan.txt. Confirm isolation and obtain specific boot/upload approval before hardware access.
 
 ## How we work
 
@@ -317,5 +317,12 @@ while preserving both F103 profiles, their single-owner console and budgets.
 	- User deferred the uncommitted parser proposal; it is preserved separately in local git stash `eb480419cb96ebb05364ffaf349776e179623584`, not included in this PR or claimed as reviewed Step 5 work.
 	- Actions run [37937148406](https://github.com/Phil-CIA/Development-Station-Power-Supply/actions/runs/37937148406) on merge commit `7527220` passed all five jobs, including compact checker tests and both F103 budget/artifact steps. F405 passed its build and correctly skipped the F103-specific gates.
 	- All five conflicts with `main` are resolved. No hardware was accessed; reconciled binaries are not bench-tested.
-Step 7a: planning-only handoff prepared at user request; investigation results pending. Hardware execution remains unauthorized.
+Step 7a: planning-only handoff prepared; no completed investigation report accepted.
+Step 7b (2026-10-09): user requested bench instructions. Current text handoff
+permits gated validation, not blanket hardware execution. User reports
+Blue Pill on ST-Link, CrowPanel COM12, and CH340 USART1 COM7.
+	- Physical output isolation, CrowPanel data disconnection, board/test-point identity, and port reset behavior must be confirmed before access.
+	- Specific profile upload/boot approval must cover automatic FLASH_TEST_ADDR writes, possible config recovery saves, and persisted D9 output restoration.
+	- No direct USART3 adapter is confirmed; blocked UDI checks must not be rerouted through COM7 or counted from CrowPanel-local errors.
+	- No new bench results are claimed. Firmware/parser changes and PR merge/closure remain unauthorized.
 PR #103: remains draft pending disposition of the remaining open acceptance criteria.

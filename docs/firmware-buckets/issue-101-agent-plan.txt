@@ -1,91 +1,158 @@
-Issue #101 / draft PR #103 - Step 7a: planning-only bench follow-up
+Issue #101 / draft PR #103 - Step 7b: gated bench validation
 
 ASSIGNMENT
-Investigate and prepare the remaining bench-validation procedure. Do not
-execute it. Report back and stop for coordinator review and user approval.
-The Markdown issue-101-agent-plan.md is the durable plan; this text file is
-only the current copy/paste handoff.
+The user wants to resume bench validation, not change firmware.
+Work through the gates below in order. Do not interpret this prompt as
+blanket permission to flash, reset, write settings, or energize outputs.
+The user performs physical setup and measurements; you capture evidence.
+Stop at every unresolved safety/setup question and ask the user locally.
 
-CHECKOUT
-Work only in the existing PR branch checkout:
+CHECKOUT AND BASELINE
+Use this existing checkout, not main or another worktree:
 C:\Users\user\Esp32 projects VScode\copilot-worktrees\Development-Station-Power-Supply\phil-cia-fictional-adventure
 Expected branch: phil-cia-stm32-flash-headroom.
-Verify branch, HEAD, and worktree status with read-only git commands.
-The published review corrections include 02159eb; verify it is present.
-Do not switch branches, use the main checkout, discard changes, or assume
-the hardware is running the same revision as this checkout.
-If the checkout is wrong or stale, stop and report.
+Verify HEAD, branch, and status. Required baseline includes 7507429 and
+merge 7527220; newer handoff-only documentation commits are expected.
+Do not apply/pop the deferred parser stash or change parser behavior.
+Do not discard or overwrite unrelated edits.
 
-CURRENT STATE
-USART1 CH340 console is Serial1, PA10 RX / PA9 TX, 115200 8N1.
-USART3 UDI is independent, PB11 RX / PB10 TX.
-Compact and full-bench builds and image-budget gates pass.
-Compact complete-image limit: 52,428 B; full-bench limit: 65,536 B.
-All five size-checker tests run in the compact CI job.
-Actions run 37927216963 passed all four jobs on 1fe8155;
-02159eb records that result. Optional LTO/parser work was skipped.
-PR remains draft. Prior bench evidence is PARTIAL, not a complete pass.
+User-reported connections (confirm identity; do not assume still current):
+- Blue Pill STM32F103C8: ST-Link programmer.
+- HAT CH340 / STM32 USART1 console: COM7, 115200 8N1.
+- CrowPanel USB console: COM12. This is NOT direct STM32 USART3 access.
+- No separate 3.3 V TTL USART3 adapter has been confirmed.
 
-READ FIRST
-README.md
-docs\SYSTEM_DEVELOPMENT_WORKFLOW.md
-docs\FIRMWARE_DEVELOPMENT_PLAN.md
-docs\firmware-buckets\issue-101-agent-plan.md
-stm32-bluepill-bringup\README.md (Step 7 evidence)
-docs\GPIO_PINOUT.md and docs\STM32_BLUEPILL_PIN_TABLE.md
-docs\display-project\README.md and docs\DISPLAY_INTERFACE_STANDARD.md
-Then inspect the relevant current STM32/CrowPanel source and configuration.
-Use code as evidence; flag stale references rather than trusting prose.
+READ BEFORE ACCESSING HARDWARE
+README.md; docs\SYSTEM_DEVELOPMENT_WORKFLOW.md;
+docs\FIRMWARE_DEVELOPMENT_PLAN.md;
+docs\firmware-buckets\issue-101-agent-plan.md;
+stm32-bluepill-bringup\README.md;
+docs\GPIO_PINOUT.md; docs\STM32_BLUEPILL_PIN_TABLE.md;
+docs\DISPLAY_INTERFACE_STANDARD.md; docs\display-project\README.md.
+Inspect current STM32 command handlers, startup, board pins, and CrowPanel
+CLI as needed. Resolve actual built-board revision versus Rev-C references.
 
-AUTHORIZED WORK: READ-ONLY INVESTIGATION AND PROCEDURE DESIGN
-1. Trace the CrowPanel USB CLI and USART3 transmit/receive paths. Explain
-   why direct GET STATE/GET CFGREC and malformed-command injection were
-   blocked. Distinguish a CrowPanel-local ERR from an STM32-origin ERR.
-2. Determine whether an existing supported route can send these commands.
-   If not, propose a direct 3.3 V TTL USART3 adapter procedure, conditional
-   on the user confirming available hardware and actual-board wiring.
-   Do not assume CH340 USART1 commands reach the UDI handler.
-   Never propose connecting two active transmitters to STM32 RX.
-   Specify crossed TX/RX, common ground, voltage compatibility, and how
-   to avoid back-powering. Do not guess connector pins or board revision.
-3. Derive exact proposed GET STATE/GET CFGREC payloads, line terminators,
-   response shapes, and a non-mutating unknown-command error case from
-   source. Account for binary telemetry interleaved with text replies.
-   Identify any side effects; do not equate a GET with no flash access.
-4. For PA0/PA1/PA2, trace boot initialization and subsequent writes.
-   Separate logical control state from electrical proof and rail voltage.
-   Establish source-backed expected inactive levels and proposed meter
-   tolerances; mark hardware-dependent values unresolved when necessary.
-   Verify whether Rev-C pin references apply to the actual built board.
-   Define evidence needed to distinguish boot defaults from later states.
-5. Address known automatic behavior before any future execution:
-   CrowPanel previously sent OUTPUT ON and ILIM CH1/CH2 writes while
-   connected, despite the agent not manually issuing them.
-   STM32 startup automatically erases/programs FLASH_TEST_ADDR.
-   Prior isolation/startup-test approval does NOT authorize a new run.
-   Opening a port can toggle reset lines; do not open ports even to listen.
-6. Classify these three remaining checks against issue #101's acceptance
-   criteria and bucket dependencies. Recommend completion or explicit
-   deferral with rationale; do not waive criteria yourself or add unrelated
-   fault/persistence/range-control testing to this assignment.
+GATE A - PHYSICAL SETUP, NO PORT ACCESS YET
+Ask one focused setup question at a time. Obtain explicit confirmation:
+1. Actual HAT/Blue Pill revision, power source, and physical output/load
+   isolation. Describe what is disconnected; a software OUTPUT OFF state
+   is not proof of isolation. Do not assume yesterday's isolation persists.
+2. CrowPanel DATA is physically disconnected from STM32 USART3 before
+   boot/reset/upload. The user must identify the data connector and safe
+   power-off wiring procedure for this board. Do not direct blind cable
+   removal or rewiring on powered equipment. Do not open COM12 or navigate
+   SCREEN SETUP as part of this isolated test.
+3. COM7 really is the HAT console, all other serial monitors are closed,
+   and opening it will not unexpectedly reset the STM32 through DTR/RTS.
+   Inspect the connection/tool setup before opening. If reset behavior is
+   uncertain, handle it under Gate B first; never assume a monitor is passive.
+4. Confirm ST-Link device identity before any upload. No CrowPanel upload
+   and no f405rg upload are authorized.
 
-NOT AUTHORIZED
-No serial-port access, monitor, upload, reset, power cycle, wiring change,
-probing, measurement, output enable/disable, ILIM/range/AW9523 writes,
-flash test, config/calibration write/reset/erase, or fault injection.
-Do not edit firmware, scripts, workflow, or docs; do not commit, push,
-change PR state, merge, or close the issue. Proposed tooling or firmware
-changes must be described separately for approval, not implemented.
+Known risks to disclose:
+- CrowPanel previously generated OUTPUT ON and ILIM CH1/CH2 writes.
+- STM32 boot restores the persisted D9/output-enable setting; isolated
+  CrowPanel data alone does not guarantee inactive power outputs.
+- Every boot automatically erases/programs external FLASH_TEST_ADDR
+  (0x001000, a 4 KiB sector). Missing/invalid config can also cause an
+  automatic defaults save at FLASH_CFG_ADDR; inspect its address in source.
+- Prior startup-test approval does not authorize this new run or config
+  recovery writes. Disclose BOTH automatic write paths before Gate B.
+If isolation or safe setup cannot be confirmed, STOP with BLOCKED status.
 
-REPORT BACK
-Provide:
-- Branch/HEAD/status and source references with file names and line numbers.
-- Existing blockers and the least-invasive feasible route around each.
-- A proposed procedure table: check, setup, command/action, expected result,
-  evidence to capture, side effects, and stop conditions.
-- Unresolved equipment, board-revision, wiring, and authorization questions.
-- Which exact actions need fresh user approval before execution.
-- Any implementation proposal separated from the bench procedure.
-- Confirmation that no hardware was accessed and no files were changed.
-Label all unexecuted results PROPOSED, OPEN, BLOCKED, or NOT MEASURED.
-STOP after the report. Do not proceed to hardware or implementation.
+GATE B - EXPLICIT BOOT/UPLOAD APPROVAL
+Build-only work and checker tests are permitted before this gate.
+Present the intended compact/full-bench upload and reset sequence, including
+all automatic flash/config/output side effects identified above.
+Ask the user to approve the specific operations on the confirmed isolated
+setup. If config recovery writes are not approved and cannot be ruled out,
+do not boot/reset/upload; report the blocker without editing firmware.
+Approval for one profile is not permission to continue through both.
+
+After approval, use ST-Link with explicit environment selection only:
+py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload
+Later, only after separate approval for the second profile:
+py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload
+Confirm Python/tool availability; never silently change target/platform.
+Capture boot from COM7 with timestamps. Do not repeatedly reset to obtain
+logs without approval. Record missed early boot lines as missing evidence.
+
+TEST GROUP 1 - ISOLATED USART1, EACH APPROVED PROFILE
+Once approved setup/port access is established, send one command at a time:
+HELP, DIAG, CFGSHOW.
+Compact: INAPROBE and INANOW must explicitly report unsupported.
+Full bench: INAPROBE, INANOW, and AHTNOW should be available. A sensor HOLD
+must be recorded accurately, not converted into a hardware pass.
+Capture console owner/pins/baud, profile identity, boot health, flash-test
+result, config recovery reason, and reported output state. If boot indicates
+an unexpected recovery/write or state transition, stop and report.
+Do not issue FTEST or any CFG/CAL/output/range-control write command.
+
+TEST GROUP 2 - HUMAN PA0/PA1/PA2 MEASUREMENTS
+With actual-board test points verified and hardware isolated, ask the user
+to measure with a high-impedance voltmeter against the verified board ground.
+User places probes safely; agent must not fabricate readings.
+Current F103 firmware configures PA0/PA1/PA2 LOW. Establish and agree a
+numeric acceptable LOW range from the actual board/electrical specification;
+do not invent a universal tolerance from source code alone.
+Record profile, node, ground reference, measured volts, instrument/range,
+measurement timing, and agreed criterion. A later steady LOW reading is
+not proof that no startup glitch occurred; scope evidence is separate.
+Do not enable outputs or change settings to force an expected reading.
+If test points are inaccessible or the criterion is unresolved, NOT MEASURED
+or OPEN is valid. Stop on unexpected voltage; do not change hardware/code.
+
+TEST GROUP 3 - USART3 READ/ERR, CONDITIONAL ON A VERIFIED ROUTE
+COM7 is USART1, not UDI. COM12 CLI intercepted arbitrary CMD: lines in the
+prior run. Do not count a CrowPanel-local ERR as an STM32 ERR.
+Keep CrowPanel data isolated. With the presently reported connections, mark
+these tests BLOCKED unless source inspection proves an existing usable
+non-mutating route, or the user supplies a compatible USART3 adapter.
+If a route needs firmware changes or CrowPanel reconnection, STOP and report
+the proposal to the coordinator rather than implementing or reconnecting.
+
+If a separate adapter is supplied, obtain user approval of power-off setup:
+3.3 V TTL (not RS-232/5 V TX); adapter TX -> STM32 PB11 RX, adapter RX <-
+PB10 TX, verified common ground; adapter VCC left unconnected to avoid
+back-powering. Confirm actual-board connector mapping, not assumed pins.
+Exactly one active transmitter may drive STM32 RX. No reset/control wires.
+Confirm adapter port and permission to open it before capture.
+
+After verified route approval, send these ASCII lines with LF terminators:
+CMD:GET OUTPUT
+CMD:GET STATE
+CMD:GET CFGREC
+CMD:GET ILIM CH1
+CMD:GET ILIM CH2
+CMD:GET ISSUE101_UNKNOWN
+Recheck handler behavior in source before sending. Expected response shapes:
+ACK:STATE O=<ON|OFF> D9=<ON|OFF> CH2=<ON|OFF> F=<NA|TRIP|OK>
+ACK:CFGREC R=<reason> D=<0|1> S=<0|1>
+ERR:UNKNOWN CMD for the unknown GET.
+Validate observed values against contemporaneous console/config evidence,
+not hard-coded assumptions. Account for binary telemetry mixed with text:
+preserve raw bytes and use actual framing; do not treat all bytes as lines.
+This error case is an unknown read request, not electrical fault injection.
+Record both profile results where the approved setup allows.
+
+PROHIBITED
+No OUTPUT/ILIM writes, D9ON/OFF, range/AW9523 writes, CFG/CAL reset/save/erase,
+manual flash tests, fault injection, loaded output testing, or F405 testing.
+No firmware/parser/CI edits, new protocol bypasses, or disabling safeguards.
+Do not reconnect CrowPanel, restore power wiring, change the final firmware
+profile, or reset at cleanup without explicit user approval.
+Stop captures and release serial handles when done; leave hardware state
+and connections exactly as last approved and report them.
+No commit/push, PR readiness change, merge, or issue closure.
+
+REPORT AND EVIDENCE
+Save timestamped captures outside the tracked tree in this session's files
+area; record exact artifact paths and build source/ELF identity.
+Update only the existing STM32 README Step 7 evidence and the directly
+related firmware-plan status if actual new evidence exists. Preserve prior
+results and automatic CrowPanel traffic disclosure; append this run with
+its own profile/commit identity. The execution plan is coordinator-owned.
+Return per-criterion PASS/FAIL/BLOCKED/NOT MEASURED, exact approvals,
+commands, logs, meter readings, unexpected behavior, automatic writes,
+and final wiring/power/profile state. Do not claim CI proves bench behavior.
+STOP after the report for coordinator review.
