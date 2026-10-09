@@ -120,6 +120,111 @@ Each artifact contains the build log, `firmware.bin`, `firmware.elf`,
 These CI build/size checks do not replace bench testing; runtime and hardware
 evidence remains required.
 
+## Issue #101 Step 7 (2026-10-09) - bench validation evidence capture
+
+Scope executed: Step 7 bench validation only for issue #101 / draft PR #103.
+No firmware source changes were made in this step.
+
+Authorized deviation recorded before execution:
+
+- CrowPanel remained connected on COM12, and the user explicitly authorized
+  proceeding with outputs isolated.
+- During Setup interaction on this path, CrowPanel automatically generated host
+  traffic that included:
+  - `udi ack: OUTPUT ON`
+  - `udi ack: ILIM CH1 2500`
+  - `udi ack: ILIM CH2 1500`
+- Those write-path commands were not manually issued by this agent.
+- This is an observed deviation from the no-write-command test plan and is
+  recorded as such; the run is not described as no-write-traffic.
+
+Profile uploads and observed artifacts:
+
+- Compact/default upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8 -t upload`
+  - Result: SUCCESS (exit 0)
+- Full-bench upload command:
+  - `py -3.13 -m platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench -t upload`
+  - Result: SUCCESS (exit 0)
+
+Boot logs (USART1 CH340 @115200 8N1, COM7) captured after each upload confirm:
+
+- startup banner
+- single console path behavior (no duplicate boot line pairs observed)
+- startup external-flash bring-up test sequence and PASS:
+  - `flash: begin bring-up test`
+  - `flash: JEDEC ID mfg=0xEF type=0x40 cap=0x18`
+  - `flash: SR1 before=0x00`
+  - `flash: erase/program/readback PASS`
+- config recovery/load summary (`[CFG] Loaded`, `[CFG] REC r=O d=0 s=0`)
+
+Compact profile command evidence (USART1/COM7):
+
+- `HELP`: core commands + UDI contract line printed; no bench command list.
+- `DIAG`: health snapshot returned.
+- `CFGSHOW`: persisted config values printed.
+- `INAPROBE`: `cmd: unsupported in compact profile 'INAPROBE'`.
+- `INANOW`: `cmd: unsupported in compact profile 'INANOW'`.
+
+Full-bench profile command evidence (USART1/COM7):
+
+- `HELP`: bench command list appears (includes `INAPROBE`, `INANOW`, `AHTNOW`).
+- `INAPROBE`: `ina: 0x40=ACK 0x41=ACK`.
+- `INANOW`: INA readings returned for 0x40/0x41 channels.
+- `AHTNOW`: valid AHT sample returned.
+
+USART3 telemetry and UDI evidence path used:
+
+- Observed via CrowPanel USB console (COM12), where CrowPanel bridges to STM32
+  host-link UART and echoes `udi ack/err/evt` lines.
+- Telemetry continuity observed (`rx frames` counters increase with stable
+  `errs=0`, refreshed `seq` and `age` fields).
+- Read-only GET traffic that is exposed by this path was captured by issuing
+  `SCREEN SETUP`, which triggers:
+  - `GET OUTPUT`
+  - `GET ILIM CH1`
+  - `GET ILIM CH2`
+  and corresponding `udi ack:` lines.
+
+UDI limitations encountered in this setup:
+
+- CrowPanel USB CLI does not expose a raw pass-through command for arbitrary
+  host payloads, so direct `GET STATE`, `GET CFGREC`, and direct malformed
+  host-command injection to STM32 were BLOCKED in this run.
+- Sending `CMD:...` text on COM12 is consumed by CrowPanel CLI itself and
+  returns CrowPanel-local `ERR unknown: ...` (not an STM32 host-link ERR).
+- No further hardware tests were conducted after recognizing and documenting
+  this automatic write traffic.
+
+Safe-output pin verification:
+
+- PA0/PA1/PA2 direct voltage measurement: NOT MEASURED in this step.
+- No invasive probing was performed from this session.
+
+Step 7 criterion status from this run:
+
+| Criterion | Status | Notes |
+|---|---|---|
+| Compact upload/build and boot capture | PASS | Upload succeeded; boot log captured including authorized startup flash-sector test PASS. |
+| Compact read-only USART1 commands (`HELP`, `DIAG`, `CFGSHOW`, `INAPROBE`, `INANOW`) | PASS | `INAPROBE`/`INANOW` correctly reported unsupported in compact profile. |
+| Full-bench upload/build and boot capture | PASS | Upload succeeded; boot log captured including startup flash-sector test PASS. |
+| Full-bench read-only diagnostics (`HELP`, `INAPROBE`, `INANOW`, `AHTNOW`) | PASS | Bench command presence and read-only diagnostics verified. |
+| USART3 telemetry observed | PASS | CrowPanel `RX` output shows ongoing frame updates, `errs=0`. |
+| UDI `GET OUTPUT` / `GET ILIM CH1` / `GET ILIM CH2` | PASS | Observed via CrowPanel `SCREEN SETUP`-triggered host queries and `udi ack:` lines. |
+| UDI `GET STATE` / `GET CFGREC` | BLOCKED | No raw host-command pass-through exposed on CrowPanel USB CLI in this setup. |
+| Malformed/unknown read-only UDI command producing STM32 `ERR:` | BLOCKED | CrowPanel USB CLI intercepts unknown `CMD:` lines locally; cannot inject malformed host payload to STM32 through this interface. |
+| PA0/PA1/PA2 safe inactive-state voltage measurement | NOT MEASURED | Output safety was authorized by isolation, but non-invasive meter measurement was not captured in this session. |
+
+Step 7 command and flash-operation statement:
+
+- The agent did not manually issue `OUTPUT`, `ILIM`, `D9`, range-gate/AW9523,
+  `FTEST`, CFG/CAL write, or deliberate fault-injection commands.
+- CrowPanel automatically sent the host traffic listed above
+  (`udi ack: OUTPUT ON`, `udi ack: ILIM CH1 2500`, `udi ack: ILIM CH2 1500`).
+- The automatic startup flash bring-up test erased/programmed only the
+  user-authorized disposable `FLASH_TEST_ADDR` sector and passed.
+- No other external-flash erase/program operation was performed in this step.
+
 ## Issue #101 Step 3 (2026-10-08) - compact + full-bench profiles
 
 Scope executed: Step 3 only for issue #101 / draft PR #103.
