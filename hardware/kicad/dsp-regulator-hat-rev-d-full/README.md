@@ -1,107 +1,122 @@
-# DSP Regulator HAT Rev-D Full - Initial Integration
+# DSP Regulator HAT Rev-D Full - Selected-source integration
 
-**Status: editable PARTIAL INTEGRATION, not a complete full-HAT schematic.**
-Created 2026-10-09 for #102 from the reviewed session-4 support project.
-The first source-backed circuit integration pass is now present; remaining
-bulk circuit edits belong here. This project is not fabrication-ready or
-bench-validated; there is no PCB or PCB DRC result.
+**Status: partial integration, not a complete full-HAT schematic.** The
+editable HAT sheet was rebuilt on 2026-10-10 from the user's explicitly
+selected Rev-C schematic. The design is not a fabrication release or a
+bench-validated hardware identity; there is no PCB or PCB DRC result.
 
 ## Open and edit this project
 
 - `DSP-Regulator-HAT-RevD-Full.kicad_pro` - project setup
 - `DSP-Regulator-HAT-RevD-Full.kicad_sch` - root schematic
-- `MCU.kicad_sch` - independent, local hierarchical F405 support sheet
-- `HAT.kicad_sch` - independent local copy of committed HAT Rev-C reuse
-  candidates, with the old Blue Pill and XIAO C3 removed
-- `build_kicad/` - gitignored ERC reports and exported netlists
+- `MCU.kicad_sch` - local hierarchical F405 support sheet
+- `HAT.kicad_sch` - HAT circuits rebuilt from the selected Rev-C source
+- `build_kicad/` - gitignored KiCad reports and exports
 
-Open the `.kicad_pro` in KiCad 10.0.5, then open its root schematic and enter
-the MCU and HAT sheets. Project/instance names and sheet paths are consistent
-with this three-sheet hierarchy. The MCU is a real local copy, not a shared
-reference to `../dsp-regulator-hat-rev-d/`; all source projects remain separate.
+Open the `.kicad_pro` in KiCad 10.0.5. The root, MCU and HAT pages are
+hierarchical pages 1, 2 and 3. The existing root schematic and MCU sheet were
+left byte-identical. The reviewed support-only project in
+`../dsp-regulator-hat-rev-d/` and the Rev-C projects remain separate and
+unchanged.
 
-The reviewed support-only project in `../dsp-regulator-hat-rev-d/` and all
-Rev-C source files are unchanged. Do not edit those projects when integrating
-here. Preserve the frozen pin/support requirements in
-[`HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`](../../../docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md).
+## Selected HAT source
 
-## Present and intentionally absent
+The user selected this exact file as the Rev-D HAT reuse baseline (the
+2026-09-21 file):
 
-Present: bare STM32F405RGT6 support (power/VCAP, HSE, reset, boot and SWD),
-USB 2.0 Type-C/ESD/CC and isolated PA9 VBUS sensing, J4's logical C3
-UART/EN/BOOT interface, and 62 retained HAT Rev-C components. J4 is not a
-C3 module. Crystal/load and EN candidate/DNP markings remain unchanged.
+`C:\Users\forch\OneDrive\JLCPCB files\Development station supply\Regulator Hat\REV C\KiCad Files\DSP-Regulator-HAT-RevC.kicad_sch`
 
-Source: `../dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch`, not
-the uncorrelated production PCB. Added MCU/HAT global interfaces:
+Its SHA-256 is
+`34EB41BA12237268CF8E8C640CFA2B76A4710CFF8DE99C9E988C9717D22872B3`.
+A fresh KiCad CLI 10.0.5 netlist export contains **57 components and 83
+nets**. This is a design-source selection only; it does not establish that
+the schematic matches the supplied 2026-08-28 production PCB/Gerbers or any
+physical board.
 
-| F405 pins | Reused endpoint |
-|---|---|
-| PA0 / PA1 | J12 ISET 5V / 3V3; each has a new 10k pull-down |
-| PA5 / PA6 / PA7 / PA8 | U12 W25Q128 SPI / CS; new 47k SCK/MOSI pull-downs and 10k CS pull-up |
-| PB6 / PB7 | U16 CH340 debug TX / RX; each has a new 10k pull-up; not legacy PB6/PB7 connector nets |
-| PB10 / PB11 | UDI via R77/R79 to J9; each has a new 10k pull-up |
-| PB8 / PB9 | J10/U13 I2C; retains source R69/R70 4.7k pull-ups |
-| PB5 | R63/Q9 fan control; R64 changed from 100k DNP to populated 10k |
-| PA13 / PA14 / NRST | Existing SWD test points/header plus MCU support header |
+The earlier PR #112 pass used the repository Rev-C schematic (64 components,
+105 nets). That source choice and its 0-error / 80-warning ERC result are
+superseded and are not current validation evidence.
 
-The source `+3.3V Boot` rail is now `+3V3`, joining U15's output to the
-F405 support rail; duplicate MCU rail/ground PWR_FLAGs were removed. This
-is connectivity capture, not proof of regulator headroom for the bare C3.
-The legacy WS2812B D12 is retained with DIN tied LOW, not wired to PC13;
-the frozen low-current sink LED still needs a replacement circuit.
+## HAT rebuild and interface mapping
 
-Absent: AW9523/interrupt and shift-register device (not in this source),
-complete measurement/protection and fault/control integration, bare
-ESP32-C3-MINI-1U and antenna implementation, C3 local supply/straps/UART0
-recovery, and PCB. PA4, PC4 and PC13 remain explicit no-connects pending
-those endpoints/replacements. Legacy expansion, sense and fault-label gaps
-remain visible; do not invent mappings or treat ERC as protection coverage.
+The rebuilt HAT retains 55 of the selected source's 57 components. The old
+Blue Pill U11 and ESP32-C3 development board U2, their no-connects, and
+controller-only dangling labels/stubs were removed. No bare C3 module was
+added. HAT references R1, R2 and R3 were renamed to R20, R21 and R22 because
+the original references collide with the unchanged MCU sheet; their source
+values and footprints are unchanged.
 
-## Integration direction and open gates
+Existing F405 global labels were inspected before mapping. The supported
+source paths are:
 
-User direction (2026-10-09): prior HAT circuits are working reuse candidates,
-replaceable as needed. Full Rev-C bench requalification is not a prerequisite
-to integration; the untested fan's later bench check is nonblocking. Replace
-the old C3 development-board implementation, do not carry it forward.
+| F405 global interface | F405 pins | Selected-source HAT endpoints |
+|---|---|---|
+| `SPI_SCK`, `SPI_MISO`, `SPI_MOSI`, `Memory_CS` | PA5, PA6, PA7, PA8 | U12 W25Q128 |
+| `UART1_TX`, `UART1_RX` | PB6, PB7 | U16 CH340C |
+| `DISP_UART_TX`, `DISP_UART_RX` | PB10, PB11 | R77/R79 and J9 UDI |
+| `I²C SCL_0`, `I²C SDA_0` | PB8, PB9 | J10 and U13 AHT20 |
+| `FAN_PWM` | PB5 | R63/Q9 fan circuit; all source PB5 labels were normalized to this F405 global name without changing connector pin connectivity |
+| `SWDIO`, `SWCLK` | PA13, PA14 | J17 and TP7/TP8 |
 
-The supplied 2026-08-28 production Rev-C PCB/Gerber/drill set is the working
-manufacturing reference, but exact physical-board and schematic correlation
-is unresolved. This starter does not claim a match and does not copy or
-modify external OneDrive production files. PR #111 records the mismatch
-but was not merged when this starter was created. Keep source identity and
-block-level connectivity uncertainties explicit during integration rather
-than treating manufacturing outputs or screenshots as a verified schematic.
+Source interface label changes are limited to `SPI SCK` -> `SPI_SCK`,
+`SWDCLK` -> `SWCLK`, and `PB5` -> `FAN_PWM`; the source `+3.3V Boot` rail
+labels were joined to the MCU's `+3V3` domain. The source J12 connector pin
+mapping and all retained source-component pin connectivity remain unchanged.
+The legacy WS2812B D12 DIN is grounded because its old controller is removed
+and it is not the frozen low-current F405 LED circuit. CH340C CTS/RTS are
+explicitly no-connected because the F405 contract uses TX/RX only.
 
-Still required: integrated pin/net and safe-state review, ISET polarity and
-shift-register all-off verification, complete ERC after integration,
-crystal/load and C3 EN timing qualification, module/antenna and connector
-footprint selection, 3.3 V rail budget, layout/USB/ESD/RF review, PCB DRC,
-and Rev-D hardware/bench validation (including powered/unpowered USB VBUS
-insertion, oscillator startup, reset/boot, fan and protection behavior).
+The fan circuit is retained exactly from the selected schematic: J7 is a
+3-pin connector; JP1 selects the J7/D11 supply path between `+5V_Boot` and
+`+12V`; J7.1 is on the Q9-switched D11 path; J7.3 is a `Fan_Tach` endpoint
+pulled up through source R3 (renumbered R22, 10 kΩ), with no F405 tach input.
+Source R64 remains 100 kΩ. No fan polarity, supply, connector, resistor value
+or population change was made to match the repository copy or frozen pin
+target. The fan remains unbench-tested.
 
-## Validation and unresolved ERC warnings
+## Explicitly absent / unresolved
 
-Original support-only starter: KiCad CLI 10.0.5 reported 0 errors / 0 warnings
-before importing the HAT candidates (31 components, 68 nets).
+- The selected source has no ISET signal destinations at J12; its J12 pins
+  remain GND, `+5V_Boot`, `+3.3V Boot`, `+12V`, GND, GND. F405 PA0/PA1 have
+  their existing local bias circuitry but are not connected to invented HAT
+  endpoints.
+- The selected source has no shift register or AW9523. PA4/PC4/PC13 and the
+  corresponding functions remain unintegrated; no endpoints were imported
+  from the repository-only schematic or inferred from PCB content.
+- MCU J4 remains a logical C3 interface on the support sheet, not a bare
+  ESP32-C3-MINI-1U module implementation. The selected-source HAT UART labels
+  are not connected to J4. C3 module power/straps/recovery/RF remain later
+  work.
+- The fan's source 100 kΩ R64 does not meet the frozen 10 kΩ fan-gate target;
+  it was not changed. The pin-contract and safe-state review is still open.
+- Remaining isolated legacy connector labels and missing custom library
+  definitions are visible ERC warnings, not integrated functions.
 
-**Current first pass: KiCad CLI 10.0.5 reports 0 errors / 80 warnings**:
-32 footprint-library, 32 symbol-library, 3 symbol/library mismatch and
-13 isolated-label warnings. No warning exclusions were added to hide them.
-The three mismatches are inherited `1My_Connectors:5015` test points
-TP9, TP2_+5V1 and TP_+3.3V1.
-Isolated labels are the four VSENSE endpoints, Incoming (+/-), legacy
-PB6/PB7/B13/B14/B15/SPI_CS expansion endpoints and `FAULT_WARNING_SUM`.
-These are unresolved integration gaps, not routed MCU functions.
+## Validation
 
-Exports contain **102 components, 128 nets**, with all 64 F405 pins accounted
-for. Root/MCU/HAT netlist and SVG exports resolve as pages 1/2/3. Pairwise
-connectivity checks cover all 215 retained HAT pins except the deliberate
-D12 DIN grounding, which is checked separately; support pin topology,
-13 frozen interfaces, nine new bias resistors, R64 population, SWD,
-rail joins and native USB VBUS isolation were checked. SHA-256 confirms
-the original support project and HAT Rev-C files remain byte-identical.
-This is not a clean full-HAT release, PCB DRC, fabrication or bench validation.
+KiCad CLI 10.0.5 exports the three-sheet project as **95 components and 107
+nets**. The comparison against the selected source confirms all 55 retained
+source component values/footprints and all **1,056 pairwise source-component
+pin connections** are unchanged, except D12 DIN, which is intentionally
+grounded. Reference mapping is R1/R2/R3 -> R20/R21/R22. The expected SPI
+flash, CH340, UDI, I2C, fan-control and SWD data/clock interfaces were checked
+against the actual F405 global labels and netlist. J12 connector pins and the
+source fan topology were checked separately.
+
+Full-severity ERC reports **0 errors / 64 warnings**: 28 footprint-library,
+28 symbol-library, 3 symbol/library mismatch and 5 isolated-pin-label
+warnings. The report is generated with `--severity-all`; no ERC exclusions
+were added. The warnings expose missing local library tables and unresolved
+single-ended legacy connector labels. ERC/netlist checks are not PCB DRC,
+electrical qualification, physical-board correlation, fabrication approval
+or bench validation.
+
+The exact source file, the full-project root/MCU files, the support-only
+project, both repository Rev-C projects and the external production folder
+were hash-checked; only the intended full-project HAT sheet changed among
+those KiCad design files. See
+[`HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`](../../../docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md)
+for current boundaries and remaining release gates.
 
 Re-run from the repository root in PowerShell:
 
@@ -109,13 +124,8 @@ Re-run from the repository root in PowerShell:
 $project = "hardware\kicad\dsp-regulator-hat-rev-d-full"
 $kicad = "$env:LOCALAPPDATA\Programs\KiCad\10.0\bin\kicad-cli.exe"
 & $kicad sch erc "$project\DSP-Regulator-HAT-RevD-Full.kicad_sch" `
-  --output "$project\build_kicad\ERC.rpt" --format report `
-  --severity-all --exit-code-violations
+  --output "$project\build_kicad\ERC.rpt" --format report --severity-all
 & $kicad sch export netlist "$project\DSP-Regulator-HAT-RevD-Full.kicad_sch" `
   --output "$project\build_kicad\DSP-Regulator-HAT-RevD-Full.net" `
   --format kicadsexpr
 ```
-
-The strict ERC command intentionally returns a nonzero status while these
-warnings remain; inspect the report rather than interpreting export success
-as design acceptance.

@@ -5,9 +5,11 @@ STM32F405RG bare MCU plus ESP32-C3-MINI Wi-Fi coprocessor. Schematic/layout
 migration and verification remain to be done; Rev-C files are not changed by
 this decision. The reviewed F405 support project is preserved; use the
 separate editable integration starter in
-`hardware/kicad/dsp-regulator-hat-rev-d-full/` for full-HAT work. It currently
-contains F405 support and an initial committed-source HAT reuse pass, not
-the complete HAT, bare C3 module or PCB.
+`hardware/kicad/dsp-regulator-hat-rev-d-full/` for full-HAT work. Its HAT
+sheet was rebuilt from the user's exact 2026-09-21 schematic selection
+(SHA-256 recorded in that project's README), not the repository Rev-C copy.
+It retains 55 source components alongside the local F405 support sheet; it is
+still partial and has no bare C3 module or PCB.
 
 This decision applies to the future HAT revision, referred to here as
 Rev-D. Continue Rev-C bring-up and firmware work separately.
@@ -97,15 +99,19 @@ Confirmed interface decisions: supply-powered USB device (data/VBUS sensing
 only) and a dedicated UART between the STM32 and C3. Session 3 confirmed the
 bare ESP32-C3-MINI-1U external-antenna path and PC0/PC1 as the C3 EN/BOOT
 controls. The support schematic has passed initial ERC/netlist review, and a
-separate editable full-HAT project now adds an initial HAT reuse pass.
-The current partial integration has 0 ERC errors and 80 unresolved warnings;
-the earlier support-only 0/0 result is not a current full-HAT claim.
-Full-HAT integration and electrical review remain open. Under the user's 2026-10-09 direction,
-prior HAT circuits are working reuse candidates, replaceable as needed;
-full Rev-C bench requalification and the untested fan's later bench check
-do not block integration. Production-source/physical-board correlation and
-Rev-D validation remain open; see the contract for the manufacturing-reference
-boundary and remaining gates.
+separate editable full-HAT project now has a corrected, partial source-backed
+HAT integration. The latest full project exports 95 components / 107 nets;
+KiCad CLI 10.0.5 reports 0 errors / 64 warnings with all severities enabled.
+The earlier support-only 0/0 result and superseded PR112 repo-source 0/80
+result are not current full-HAT ERC claims. Source-supported SPI flash,
+CH340, UDI, I2C, fan-control and SWD data/clock paths are mapped; ISET
+destinations, shift-register/AW9523 circuits and bare C3 implementation are
+absent from the selected source and remain unintegrated. Under the user's
+2026-10-09 direction, prior HAT circuits are reuse candidates; full Rev-C
+bench requalification and the untested fan's later bench check do not block
+integration. The selected schematic is not proven to match the production
+PCB or any physical board, and Rev-D validation remains open; see the contract
+for the source boundary and remaining gates.
 
 The F405RG provides up to 1 MiB of flash, 192 KiB SRAM, and USB OTG FS
 according to ST documentation. Confirm the exact datasheet limits and memory
