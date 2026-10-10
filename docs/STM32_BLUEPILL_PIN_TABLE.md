@@ -53,6 +53,21 @@ continuing Rev-C work. Use the supplied production PCB/Gerber/drill set as the
 manufacturing reference; retain the physical-board and schematic-to-release
 correlation as unresolved evidence, not a reason to stop the next check.
 
+### User-selected Rev-D HAT reuse source (2026-10-10)
+
+The user explicitly selected the exact file
+`C:\Users\forch\OneDrive\JLCPCB files\Development station supply\Regulator Hat\REV C\KiCad Files\DSP-Regulator-HAT-RevC.kicad_sch`
+as the Rev-D HAT sheet reuse baseline (SHA-256
+`34EB41BA12237268CF8E8C640CFA2B76A4710CFF8DE99C9E988C9717D22872B3`).
+Its fresh KiCad 10.0.5 export is 57 components / 83 nets. This explicitly
+supersedes PR112's earlier use of the repository schematic as the Rev-D HAT
+copy source. It does not replace the repository schematic/netlist as the
+source for the Rev-C firmware pin-contract table above, nor does it prove a
+match to the production PCB or a physical HAT. The rebuilt partial HAT sheet,
+supported interface map, source exceptions and validation are recorded in
+`hardware/kicad/dsp-regulator-hat-rev-d-full/README.md` and
+`docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`.
+
 ### Rev-C carry-forward and bench plan (user direction, 2026-10-09)
 
 The user reports no known issues in prior HAT use and says most circuits were
@@ -75,10 +90,13 @@ the repository Rev-C fan contract.
 
 Until a physical-board/order identity or source-to-manufacturing mapping is
 established, the table below describes the repository schematic/netlist only.
-Do not use its disputed PCB-only circuitry or the supplied later schematic as
-a Rev-D copy source. Issue #62's documented physical board and authoritative
-design source are for the separate **Regulator Rev-C**, not this HAT. Do not
-merge designators or circuitry between those two boards.
+Do not infer the disputed PCB-only circuitry from either HAT schematic. For
+Rev-D HAT reuse, the user-selected 2026-09-21 supplied editable schematic
+above is the authorized baseline; that choice does not establish its
+production-release or physical-board correlation. Issue #62's documented
+physical board and authoritative design source are for the separate
+**Regulator Rev-C**, not this HAT. Do not merge designators or circuitry
+between those two boards.
 
 | Rev-D reuse block | Status | Source of truth / evidence and disposition |
 |---|---|---|
