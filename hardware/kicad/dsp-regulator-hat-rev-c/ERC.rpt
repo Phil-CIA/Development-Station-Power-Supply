@@ -1,9 +1,183 @@
-ERC report (2026-08-14T06:09:18, Encoding UTF8)
-Report includes: Errors, Warnings, Exclusions
+ERC report (2026-08-28T05:29:02, Encoding UTF8)
+Report includes: Errors, Warnings
 
 ***** Sheet /
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(72.39 mm, 168.91 mm): Symbol D1 [LED,0805,Green]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Diodes'
+    ; warning
+    @(72.39 mm, 168.91 mm): Symbol D1 [LED,0805,Green]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(72.39 mm, 176.53 mm): Symbol R1 [0805,470Ω]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(72.39 mm, 176.53 mm): Symbol R1 [0805,470Ω]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(97.79 mm, 130.81 mm): Symbol C34 [1206,100uF]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(97.79 mm, 130.81 mm): Symbol C34 [1206,100uF]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(97.79 mm, 245.11 mm): Symbol R77 [0805,33Ω]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(97.79 mm, 245.11 mm): Symbol R77 [0805,33Ω]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(97.79 mm, 247.65 mm): Symbol R79 [0805,33Ω]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(97.79 mm, 247.65 mm): Symbol R79 [0805,33Ω]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(100.33 mm, 168.91 mm): Symbol C40 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(100.33 mm, 168.91 mm): Symbol C40 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(106.68 mm, 130.81 mm): Symbol C35 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(106.68 mm, 130.81 mm): Symbol C35 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(113.03 mm, 140.97 mm): Symbol R67 [0805,10kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(113.03 mm, 140.97 mm): Symbol R67 [0805,10kΩ]
+[footprint_link_issues]: Footprint 'ESP32 C3 Super Mini' not found in library '1My_Parts_ MPUs'
+    ; warning
+    @(119.38 mm, 88.90 mm): Symbol U2 [ESP32_C3__Super_Mini]
+[lib_symbol_issues]: Symbol 'ESP32_C3__Super_Mini' not found in symbol library '1My_MPUs'
+    ; warning
+    @(119.38 mm, 88.90 mm): Symbol U2 [ESP32_C3__Super_Mini]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(135.89 mm, 132.08 mm): Symbol U12 [16MByte, SPI]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Memory'
+    ; warning
+    @(135.89 mm, 132.08 mm): Symbol U12 [16MByte, SPI]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(139.70 mm, 76.20 mm): Symbol C57 [0805,100nF]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(139.70 mm, 76.20 mm): Symbol C57 [0805,100nF]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(146.05 mm, 168.91 mm): Symbol C41 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(146.05 mm, 168.91 mm): Symbol C41 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(152.40 mm, 140.97 mm): Symbol R68 [0805,10kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(152.40 mm, 140.97 mm): Symbol R68 [0805,10kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(158.75 mm, 166.37 mm): Symbol D2 [LED,0805,Green]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Diodes'
+    ; warning
+    @(158.75 mm, 166.37 mm): Symbol D2 [LED,0805,Green]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(158.75 mm, 173.99 mm): Symbol R2 [0805,150Ω]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(158.75 mm, 173.99 mm): Symbol R2 [0805,150Ω]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(171.45 mm, 107.95 mm): Symbol C32 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(171.45 mm, 107.95 mm): Symbol C32 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(175.26 mm, 166.37 mm): Symbol C36 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(175.26 mm, 166.37 mm): Symbol C36 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(184.15 mm, 166.37 mm): Symbol C37 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(184.15 mm, 166.37 mm): Symbol C37 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(227.33 mm, 143.51 mm): Symbol R69 [0805,4.7kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(227.33 mm, 143.51 mm): Symbol R69 [0805,4.7kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(233.68 mm, 143.51 mm): Symbol R70 [0805,4.7kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(233.68 mm, 143.51 mm): Symbol R70 [0805,4.7kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(234.95 mm, 204.47 mm): Symbol R82 [0805,5.1kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(234.95 mm, 204.47 mm): Symbol R82 [0805,5.1kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(237.49 mm, 204.47 mm): Symbol R83 [0805,5.1kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(237.49 mm, 204.47 mm): Symbol R83 [0805,5.1kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(246.38 mm, 207.01 mm): Symbol C42 [0805,100nF,(2)]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Capacitors'
+    ; warning
+    @(246.38 mm, 207.01 mm): Symbol C42 [0805,100nF,(2)]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(254.00 mm, 102.87 mm): Symbol D12 [LED, WS2812B, 1615]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Extended'
+    ; warning
+    @(254.00 mm, 102.87 mm): Symbol D12 [LED, WS2812B, 1615]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(261.62 mm, 187.96 mm): Symbol J8 [Connector, USB-TYPE-C-16P]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Extended'
+    ; warning
+    @(261.62 mm, 187.96 mm): Symbol J8 [Connector, USB-TYPE-C-16P]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(266.70 mm, 252.73 mm): Symbol R63 [0805,100Ω]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(266.70 mm, 252.73 mm): Symbol R63 [0805,100Ω]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(273.05 mm, 256.54 mm): Symbol R64 [0805,100kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(273.05 mm, 256.54 mm): Symbol R64 [0805,100kΩ]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(281.94 mm, 252.73 mm): Symbol Q9 [NMOS,AO3400A]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Transistors'
+    ; warning
+    @(281.94 mm, 252.73 mm): Symbol Q9 [NMOS,AO3400A]
+[footprint_link_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    ; warning
+    @(288.29 mm, 228.60 mm): Symbol R3 [0805,10kΩ]
+[lib_symbol_issues]: The current configuration does not include the symbol library 'PCM_JLCPCB-Resistors'
+    ; warning
+    @(288.29 mm, 228.60 mm): Symbol R3 [0805,10kΩ]
 
- ** ERC messages: 0  Errors 0  Warnings 0
+ ** ERC messages: 58  Errors 0  Warnings 58
 
  ** Ignored checks:
     - Global label only appears once in the schematic

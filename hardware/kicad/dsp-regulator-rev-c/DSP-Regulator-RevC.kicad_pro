@@ -63,7 +63,7 @@
           "min_clearance": 0.5,
           "min_island_area": 10.0,
           "min_thickness": 0.25,
-          "pad_connection": 1,
+          "pad_connection": 2,
           "remove_islands": 0,
           "thermal_relief_gap": 0.5,
           "thermal_relief_spoke_width": 0.5
@@ -211,6 +211,7 @@
       ],
       "track_widths": [
         0.0,
+        0.5,
         1.2,
         1.5
       ],
@@ -526,7 +527,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 2147483647,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.3,
+        "track_width": 0.2,
         "tuning_profile": "",
         "via_diameter": 0.6,
         "via_drill": 0.3,
@@ -615,7 +616,7 @@
           "group_by": true,
           "label": "Footprint",
           "name": "Footprint",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,
@@ -1196,7 +1197,7 @@
         "uuid": "6256106a-834d-4729-82b2-06b3576c4200"
       }
     ],
-    "used_designators": "RT1,D1-24,#PWR1-108,R1-106,#FLG1-4,10mm1-2,C1-56,5mm1,F1,H1-4,J1-11,J20-21,L1-5,Q1-13,TP1-10,U1-18,POT1-4",
+    "used_designators": "RT1,D1-24,#PWR1-108,R1-106,#FLG1-7,10mm1-2,C1-56,5mm1,F1,H1-6,J1-11,J20-21,L1-5,Q1-13,TP1-10,U1-18,POT1-4",
     "variants": []
   },
   "sheets": [
