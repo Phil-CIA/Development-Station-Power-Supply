@@ -39,3 +39,6 @@ hardware/sim/3v3_sel*_out.txt
 
 # KiCad CLI report output
 build_kicad/
+
+# Python bytecode
+__pycache__/

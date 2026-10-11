@@ -1,9 +1,13 @@
-# Datasheet Staging Area
+# Display Project Datasheets
 
-Place downloaded PDFs, pinouts, and vendor reference files for the display project here.
+Datasheets now live in the shared project library: [`docs/datasheets/`](../../datasheets/README.md).
 
-Suggested first additions:
-- Board wiki export or PDF print
-- ESP32-S3 module datasheet
-- Display/touch controller references from the vendor repo
-- Any pin maps used during bring-up
+Add display-related documents there with `--used-in crowpanel-43-bringup` or
+`--used-in front-display-board`, e.g.:
+
+```powershell
+python scripts/datasheet.py add ESP32-S3 --url <URL> --tags mcu,display --used-in crowpanel-43-bringup
+```
+
+Still wanted: board wiki export/PDF print, ESP32-S3 module datasheet,
+display/touch controller references, and pin maps used during bring-up.

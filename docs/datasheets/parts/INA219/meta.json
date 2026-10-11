@@ -1,0 +1,22 @@
+{
+  "part": "INA219",
+  "title": "Zero-drift bidirectional current/power monitor, I2C",
+  "manufacturer": "Texas Instruments",
+  "tags": [
+    "current-sense",
+    "i2c"
+  ],
+  "used_in": [
+    "dsp-regulator",
+    "stm32-bluepill-bringup"
+  ],
+  "documents": [
+    {
+      "file": "INA219.pdf",
+      "url": "https://www.ti.com/lit/ds/symlink/ina219.pdf",
+      "type": "datasheet",
+      "sha256": "58004eda854d07478e6fc6f4398c114f60a3bcf18d4877471c7c1a306d1fa1cb",
+      "added": "2026-10-09"
+    }
+  ]
+}
