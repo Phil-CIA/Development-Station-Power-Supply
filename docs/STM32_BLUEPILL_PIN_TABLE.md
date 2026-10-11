@@ -5,11 +5,15 @@ path (`stm32-bluepill-bringup`) against current Rev-C hardware files.
 
 ## Scope and sources
 
-- **Hardware source of truth for this reconciliation:** the Rev-C HAT
+- **Repository-design source for this reconciliation:** the Rev-C HAT
   schematic and its committed netlist,
   `hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.kicad_sch`
   and `.net`. A fresh KiCad 10.0.5 export on 2026-10-09 confirmed the
   committed netlist's electrical component/net topology.
+- **Manufacturing reference selected for production-source reconciliation:**
+  the user-supplied 2026-08-28 Rev-C PCB and matching Gerber/drill release
+  files. These have not yet been proven to match the physical HAT or the
+  later-dated schematic in that folder.
 - **Firmware source of truth:** `stm32-bluepill-bringup/src/main.cpp`
 - **System/docs entry point:** `docs/GPIO_PINOUT.md`
 
@@ -18,20 +22,81 @@ is visible and actionable.
 
 ## Rev-C source reconciliation for Rev-D (2026-10-09)
 
-The fresh export contains 64 components and 105 nets, matching the committed
-`.net` electrically. The only text differences are the export source path and
-timestamp plus five missing third-party symbol-library URI entries; no
-component, pin, or net connectivity changed. The committed export is dated
-2026-08-18. Therefore the Q9/Q3/Q12/U4 discrepancy is not explained by a
-stale committed HAT netlist.
+The repository schematic's fresh export contains 64 components and 105 nets,
+matching the committed `.net` electrically. The only text differences are
+the export source path and timestamp plus five missing third-party
+symbol-library URI entries; no component, pin, or net connectivity changed.
+The committed export is dated 2026-08-18. Therefore the Q9/Q3/Q12/U4
+discrepancy is not explained by a stale committed HAT netlist. This validates
+only the repository schematic against its own netlist, not the production
+release.
 
-The HAT PCB is not electrically reconciled to the current schematic: it
-contains PCB-only circuitry including U7 (74HC595D), while the schematic and
-both netlists have no U7, Q3, Q12, or U4. The schematic/netlist is the source
-for signal routing below; PCB-only circuitry is not approved as a Rev-D copy
-source. Issue #62's documented physical board and authoritative design source
-are for the separate **Regulator Rev-C**, not this HAT. Do not merge
-designators or circuitry between those two boards.
+The user reports no known issues from prior HAT use and says most circuitry
+was plug-and-play, but the ESP32 and fan were not tested. This is historical
+operator-reported use, not a pin-by-pin bench validation. The Blue Pill and
+current ESP32-C3 are to be replaced in Rev-D; this does not establish which
+Rev-C controller/module circuits are present in production.
+
+The user selected the 2026-08-28 production PCB plus its same-day Gerber and
+drill files as the manufacturing reference. KiCad 10.0.5 reports the supplied
+PCB as 50.00 x 100.00 mm with 57 components; the repository PCB is 100.00 x
+102.57 mm with 163 components. The supplied folder's BOM/Gerbers/drills are
+dated 2026-08-28, while its editable schematic is dated 2026-09-21. Its
+exported schematic netlist has 57 components and 83 nets, compared with 64
+components and 105 nets in the repository schematic export. These differences
+show the production package and repository project are not interchangeable;
+the later schematic is explicitly unverified against the selected
+manufacturing release. No production files were copied into or modified in
+the repository, and no visual comparison to the physical HAT has been made.
+**User disposition:** this source-file difference is non-blocking for
+continuing Rev-C work. Use the supplied production PCB/Gerber/drill set as the
+manufacturing reference; retain the physical-board and schematic-to-release
+correlation as unresolved evidence, not a reason to stop the next check.
+
+### User-selected Rev-D HAT reuse source (2026-10-10)
+
+The user explicitly selected the exact file
+`C:\Users\forch\OneDrive\JLCPCB files\Development station supply\Regulator Hat\REV C\KiCad Files\DSP-Regulator-HAT-RevC.kicad_sch`
+as the Rev-D HAT sheet reuse baseline (SHA-256
+`34EB41BA12237268CF8E8C640CFA2B76A4710CFF8DE99C9E988C9717D22872B3`).
+Its fresh KiCad 10.0.5 export is 57 components / 83 nets. This explicitly
+supersedes PR112's earlier use of the repository schematic as the Rev-D HAT
+copy source. It does not replace the repository schematic/netlist as the
+source for the Rev-C firmware pin-contract table above, nor does it prove a
+match to the production PCB or a physical HAT. The rebuilt partial HAT sheet,
+supported interface map, source exceptions and validation are recorded in
+`hardware/kicad/dsp-regulator-hat-rev-d-full/README.md` and
+`docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md`.
+
+### Rev-C carry-forward and bench plan (user direction, 2026-10-09)
+
+The user reports no known issues in prior HAT use and says most circuits were
+plug-and-play. Treat the existing circuits as reuse candidates; do not require
+a full Rev-C requalification before beginning Rev-D integration. Reuse or
+replace circuits as integration/source review requires. This operating
+assumption is not a new bench-validation claim.
+
+| Item | Plan | Status / gate |
+|---|---|---|
+| Existing Rev-C circuits | Carry forward as candidates based on prior operation; recheck only where Rev-D changes, source conflicts, or integration findings make it necessary. | Working assumption, not fresh measured evidence. |
+| Existing ESP32-C3 | No Rev-C test planned; the current Blue Pill and C3 are being replaced. | The old C3 was not tested. Validate the new Rev-D module and interface on Rev-D. |
+| Fan path | At the next bench window, with power removed and the fan disconnected, identify the installed header and trace its ground, supply, and switched pins against the selected production PCB pack. With no fan attached, use a current-limited supply and controlled PB5 gate-drive test to check off/on levels. Then connect a correctly rated fan, verify start/stop, and record supply voltage and steady/startup current. | The fan circuit has not been tested. This is the only specific Rev-C circuit test the user identified; it does not block starting integration. The repository fan net names are not proof of the production-board mapping. |
+| Unresolved ISET/fault/shift-register source conflicts | Do not claim polarity, fault routing, or an all-off word as verified. Decide reuse/replace during integration and resolve any required safe-state design before release. | No extra Rev-C bench campaign requested at this stage. |
+
+The current firmware pin contract does not define a fan-control test command;
+prepare a controlled PB5 test method before powered switching, and do not
+drive the gate with an improvised live jumper. No tach feedback is present in
+the repository Rev-C fan contract.
+
+Until a physical-board/order identity or source-to-manufacturing mapping is
+established, the table below describes the repository schematic/netlist only.
+Do not infer the disputed PCB-only circuitry from either HAT schematic. For
+Rev-D HAT reuse, the user-selected 2026-09-21 supplied editable schematic
+above is the authorized baseline; that choice does not establish its
+production-release or physical-board correlation. Issue #62's documented
+physical board and authoritative design source are for the separate
+**Regulator Rev-C**, not this HAT. Do not merge designators or circuitry
+between those two boards.
 
 | Rev-D reuse block | Status | Source of truth / evidence and disposition |
 |---|---|---|
@@ -61,12 +126,14 @@ symbol mismatch. The committed `ERC.rpt` (2026-08-14, 0 warnings) is stale
 relative to this run. ERC does not prove board population, connectivity,
 electrical adequacy, or safe behavior.
 
-Bench/source work still needed before copying unresolved blocks: identify the
-physical HAT revision and installed assembly against the schematic and PCB;
-trace U7 and the Q3/U4/Q12 discrepancy; measure/trace the actual ISET and
-fault-control paths; verify U2's exact module and power/serial behavior; and
-confirm the regulator-board power-stage net/probe mapping against its own
-identified assembly. No Rev-C KiCad source was edited for this reconciliation.
+Source correlation remains useful but is non-blocking by user direction; use
+the selected production PCB pack as the manufacturing reference and do not
+assume the physical HAT or later schematic has been matched to it. The current
+ESP32 is replaced for Rev-D. The fan check above is deferred and does not block
+integration. Resolve any ISET/fault/shift-register uncertainties that affect
+Rev-D implementation during integration, and confirm the separate regulator
+board's power-stage net/probe mapping against its own identified assembly.
+No Rev-C KiCad source was edited for this reconciliation.
 
 ## Canonical pin matrix
 
