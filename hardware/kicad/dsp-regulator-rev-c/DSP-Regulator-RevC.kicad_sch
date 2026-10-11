@@ -54650,7 +54650,7 @@
 				)
 			)
 		)
-		(property "Value" "LM74502DDFR"
+		(property "Value" "LM74502HDDFR"
 			(at 62.23 292.1 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -66837,7 +66837,7 @@
 				)
 			)
 		)
-		(property "Value" "LM74502DDFR"
+		(property "Value" "LM74502HDDFR"
 			(at 62.23 335.28 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -79949,7 +79949,7 @@
 				)
 			)
 		)
-		(property "Value" "LM74502DDFR"
+		(property "Value" "LM74502HDDFR"
 			(at 62.23 256.54 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -93325,7 +93325,7 @@
 				)
 			)
 		)
-		(property "Value" "LM74502DDFR"
+		(property "Value" "LM74502HDDFR"
 			(at 62.23 370.84 0)
 			(show_name no)
 			(do_not_autoplace no)
