@@ -1,0 +1,23 @@
+** Drc report for DSP-Regulator-HAT-RevC.kicad_pcb **
+** Created on 2026-08-28T11:38:51 **
+** Report includes: Errors, Warnings **
+
+** Found 1 DRC violations **
+[lib_footprint_issues]: Footprint 'ESP32 C3 Super Mini' not found in library '1My_Parts_ MPUs'
+    Local override; warning
+    @(147.4800 mm, 141.4600 mm): Footprint U2
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - PTH inside courtyard
+    - NPTH inside courtyard
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

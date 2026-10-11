@@ -1,0 +1,107 @@
+** Drc report for DSP-Regulator-HAT-RevC.kicad_pcb **
+** Created on 2026-08-28T05:29:29 **
+** Report includes: Errors, Warnings **
+
+** Found 29 DRC violations **
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(166.4000 mm, 124.2400 mm): Footprint C36
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(160.7500 mm, 101.1450 mm): Footprint C40
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(162.9100 mm, 142.6300 mm): Footprint R83
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(166.1500 mm, 149.0200 mm): Footprint J8
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(135.8600 mm, 131.6500 mm): Footprint D2
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(166.1550 mm, 72.0050 mm): Footprint C35
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(143.5700 mm, 63.5600 mm): Footprint R63
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(136.2900 mm, 124.4100 mm): Footprint R1
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(163.9000 mm, 117.0600 mm): Footprint R3
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(153.9500 mm, 64.3950 mm): Footprint R77
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(161.4000 mm, 87.9950 mm): Footprint R70
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(160.1800 mm, 142.6400 mm): Footprint C42
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(161.5300 mm, 67.3300 mm): Footprint U12
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(151.1600 mm, 64.3250 mm): Footprint R79
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(144.5400 mm, 68.1650 mm): Footprint Q9
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(160.7200 mm, 96.7150 mm): Footprint C32
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(162.5250 mm, 72.7600 mm): Footprint R68
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(163.3800 mm, 101.2950 mm): Footprint C41
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(168.3550 mm, 66.8800 mm): Footprint C34
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(146.5200 mm, 63.5600 mm): Footprint R64
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(169.7200 mm, 142.5700 mm): Footprint R82
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(159.5750 mm, 72.7600 mm): Footprint R67
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(136.2000 mm, 122.1400 mm): Footprint D1
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(131.1400 mm, 117.2900 mm): Footprint C57
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(163.6200 mm, 81.3650 mm): Footprint R69
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(166.4500 mm, 126.8600 mm): Footprint C37
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(161.9000 mm, 119.8000 mm): Footprint D12
+[lib_footprint_issues]: The current configuration does not include the footprint library 'PCM_JLCPCB'
+    Local override; warning
+    @(136.2300 mm, 134.0400 mm): Footprint R2
+[lib_footprint_issues]: Footprint 'ESP32 C3 Super Mini' not found in library '1My_Parts_ MPUs'
+    Local override; warning
+    @(147.4800 mm, 141.4600 mm): Footprint U2
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - PTH inside courtyard
+    - NPTH inside courtyard
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

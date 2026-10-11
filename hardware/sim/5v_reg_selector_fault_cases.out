@@ -1,0 +1,55 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: * 5v selector fault cases: low and disconnected vsense_5v+
+
+Reset re-loads circuit * 5v selector fault cases: low and disconnected vsense_5v+
+
+Circuit: * 5v selector fault cases: low and disconnected vsense_5v+
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+Using SPARSE 1.3 as Direct Linear Solver
+
+No. of Data Rows : 1
+CASE_1_CONNECTED_LOW
+v(vsense_5vplus) = 0.000000e+00
+v(vlocal) = 5.043000e+00
+v(5v_reg) = 5.043000e+00
+Reset re-loads circuit * 5v selector fault cases: low and disconnected vsense_5v+
+
+Circuit: * 5v selector fault cases: low and disconnected vsense_5v+
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+Using SPARSE 1.3 as Direct Linear Solver
+
+No. of Data Rows : 1
+CASE_2_CONNECTED_HIGH
+v(vsense_5vplus) = 5.200000e+00
+v(vlocal) = 5.043000e+00
+v(5v_reg) = 5.200000e+00
+Reset re-loads circuit * 5v selector fault cases: low and disconnected vsense_5v+
+
+Circuit: * 5v selector fault cases: low and disconnected vsense_5v+
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+Using SPARSE 1.3 as Direct Linear Solver
+
+No. of Data Rows : 1
+CASE_3_DISCONNECTED_NO_LEAK
+v(vsense_5vplus) = 5.199948e-05
+v(vlocal) = 5.043000e+00
+v(5v_reg) = 5.043000e+00
+Reset re-loads circuit * 5v selector fault cases: low and disconnected vsense_5v+
+
+Circuit: * 5v selector fault cases: low and disconnected vsense_5v+
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+Using SPARSE 1.3 as Direct Linear Solver
+
+No. of Data Rows : 21
+ngspice-46 done
