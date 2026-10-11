@@ -828,3 +828,28 @@ Bucket 3 closure state after takeover audit:
 
 - **Evidence-pending** (not closed): required assert+clear paths for B3-S2..B3-S5
   are still missing from attached artifacts.
+
+## Current source-reconciliation constraints (scope recovery)
+
+Recovered from PR #55 via #116. The runbook and historical evidence restored
+by #114 above remain intact; these constraints qualify their use against the
+current source identity, rather than claiming new bench results.
+
+- `docs/STM32_BLUEPILL_PIN_TABLE.md` is authoritative for current HAT source
+  identity and mismatches. Firmware assumes AW9523 input/interrupt signaling
+  on PB7, but the current HAT schematic/netlist contains no AW9523 or interrupt
+  path. Historical startup logs and code-map passes do not prove that path is
+  routed on the current identified assembly.
+- Keep `PIN_FAULT_CRITICAL_SUM = -1`; do not enable a speculative direct GPIO.
+  Separate Regulator Rev-C designators do not establish HAT routing.
+- Every published protection/status bit needs an identified source net/device
+  or explicitly software-derived origin, polarity, firmware path, and bench
+  availability. Missing evidence must not become a healthy-looking zero;
+  this scope recovery does not change the wire schema.
+- Software threshold crossings can prove a software-derived indication, not
+  physical regulation or hardware protection. Automatic CV/CC indication
+  remains gated by #77 and the fixed-rail display plan; comparison against a
+  RAM ILIM value does not prove regulation.
+- No tach-derived fan-fault claim is allowed without a routed tachometer net.
+  Rev-D integration and a full Rev-C requalification campaign are not
+  authorized by this recovery.

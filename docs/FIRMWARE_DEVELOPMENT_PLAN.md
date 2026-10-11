@@ -83,7 +83,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Out of scope now | New protocol families or incompatible framing changes without migration plan. |
 | Exit criteria | 1) End-to-end telemetry frame parse passes on bench. 2) Setup-screen controls round-trip through command channel (read, edit, write, ACK/ERR handling). 3) Protocol docs stay aligned with shipped behavior. |
 | Required evidence | Host/display serial logs for at least one successful command round-trip and one error case; UI behavior notes. |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `crowpanel-43-bringup/src/disp_link_slave.*`, `crowpanel-43-bringup/src/main.cpp`, `docs/DISPLAY_INTERFACE_STANDARD.md` |
+| Base artifacts | `docs/firmware-buckets/bucket-4-telemetry-display-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `crowpanel-43-bringup/src/disp_link_slave.*`, `crowpanel-43-bringup/src/main.cpp`, `docs/DISPLAY_INTERFACE_STANDARD.md` |
 
 ### Bucket 5: Config/persistence/calibration
 
@@ -93,7 +93,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Out of scope now | Broad data-model redesign without migration handling. |
 | Exit criteria | 1) Cold boot restores expected persisted values. 2) Reset-to-defaults path is deterministic. 3) Version mismatch/corruption path recovers safely and logs reason. |
 | Required evidence | Before/after persistence logs and one intentional invalid-config recovery run. |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference), W25Q128 handling paths |
+| Base artifacts | `docs/firmware-buckets/bucket-5-config-persistence-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `src/rev1/main.cpp` (reference), W25Q128 handling paths |
 
 ### Bucket 6: Bring-up diagnostics and recovery paths
 
@@ -103,7 +103,7 @@ artifacts under a bucket, not the scope definition themselves.
 | Out of scope now | Silent fallback behavior that hides hardware/contract problems. |
 | Exit criteria | 1) Startup log clearly states target revision assumptions and unavailable paths. 2) Major initialization failures produce actionable messages. 3) Bench operator can distinguish wiring/contract fault from firmware crash using logs alone. |
 | Required evidence | Boot log snippets covering normal boot and at least one induced failure path. |
-| Base artifacts | `stm32-bluepill-bringup/src/main.cpp`, PR logs/screenshots, this plan doc |
+| Base artifacts | `docs/firmware-buckets/bucket-6-bringup-recovery-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, PR logs/screenshots, this plan doc |
 
 ## Bucket execution model (same going forward)
 
@@ -156,6 +156,15 @@ PR description.
 
 These PRs are scoping/control PRs only. Do not mix in firmware behavior
 expansion until the scoping PR for the relevant bucket is merged.
+
+PRs #51-#55 merged into `phil-cia-firmware-scope-buckets-alignment` after
+the base PR #50 had already merged to main. The P1 branch review recovers
+the missing Bucket 4-6 documents here, updated for current source mismatches,
+the fixed-rail display, and existing recovery commands. Bucket 3 keeps the
+newer scope, runbook, and evidence restored by #114, with the recovered
+source-reconciliation constraints added separately. Bucket 2 keeps its newer
+scope and bench evidence unchanged. This recovery introduces no firmware
+behavior and does not close any bench exit criterion.
 
 | Priority | Bucket | Planned branch | PR scope | Required artifacts in PR description |
 |---|---|---|---|---|
