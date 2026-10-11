@@ -69,10 +69,10 @@ artifacts under a bucket, not the scope definition themselves.
 
 | Item | Definition |
 |---|---|
-| In scope now | Replace placeholder status/protection bytes with real bits only for signals that actually exist in Rev-C; explicitly mark unavailable fault sources as unavailable. |
+| In scope now | Replace placeholder status/protection bytes with real bits only for signals that actually exist in Rev-C; explicitly mark unavailable fault sources as unavailable. Scope/control artifact: `docs/firmware-buckets/bucket-3-fault-scope.md`. |
 | Out of scope now | Claiming OVP/OCP/OTP coverage not backed by routed net + firmware read path. |
 | Exit criteria | 1) `status` and `protection_flags` are computed from real runtime state (not constants). 2) Each reported fault bit maps to a documented source and polarity. 3) Unavailable signals are represented as "not observed on this revision" rather than fake values. |
-| Required evidence | Bit-level mapping table in PR description + validation log excerpt showing asserted and cleared states. |
+| Required evidence | Follow `docs/firmware-buckets/bucket-3-fault-scope.md`: include bit-source map, B3-S0..B3-S7 worksheet results, and asserted/cleared proof logs/captures for every claimed fault class. |
 | Base artifacts | `docs/firmware-buckets/bucket-3-fault-scope.md`, `stm32-bluepill-bringup/src/main.cpp`, `docs/FIRMWARE_DEVELOPMENT_PLAN.md` feature table, `docs/STM32_BLUEPILL_PIN_TABLE.md` |
 
 ### Bucket 4: Telemetry and display-link contract
@@ -159,10 +159,12 @@ expansion until the scoping PR for the relevant bucket is merged.
 
 PRs #51-#55 merged into `phil-cia-firmware-scope-buckets-alignment` after
 the base PR #50 had already merged to main. The P1 branch review recovers
-the missing Bucket 3-6 documents here, updated for current source mismatches,
-the fixed-rail display, and existing recovery commands. Bucket 2 keeps its
-newer scope and bench evidence unchanged. This recovery introduces no
-firmware behavior and does not close any bench exit criterion.
+the missing Bucket 4-6 documents here, updated for current source mismatches,
+the fixed-rail display, and existing recovery commands. Bucket 3 keeps the
+newer scope, runbook, and evidence restored by #114, with the recovered
+source-reconciliation constraints added separately. Bucket 2 keeps its newer
+scope and bench evidence unchanged. This recovery introduces no firmware
+behavior and does not close any bench exit criterion.
 
 | Priority | Bucket | Planned branch | PR scope | Required artifacts in PR description |
 |---|---|---|---|---|
@@ -170,7 +172,7 @@ firmware behavior and does not close any bench exit criterion.
 | 2 | Bucket 6 | `docs/firmware-bucket-6-bringup-recovery-scope` | Startup diagnostics, failure taxonomy, operator recovery expectations | Normal boot + induced-failure logs and recovery steps |
 | 3 | Bucket 4 | `docs/firmware-bucket-4-telemetry-display-scope` | Command/telemetry contract limits and evidence matrix | Host/display command round-trip logs with one error case |
 | 4 | Bucket 2 | `docs/firmware-bucket-2-rail-control-scope` | Rail enable/disable behavior boundaries and safe-state expectations | Bench state table + rail transition captures |
-| 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | Bit-source map + asserted/cleared fault evidence |
+| 5 | Bucket 3 | `docs/firmware-bucket-3-fault-scope` | Fault-bit ownership tied to routed signals only | `docs/firmware-buckets/bucket-3-fault-scope.md` worksheet (B3-S0..B3-S7), bit-source map, and assert/clear evidence with claim separation |
 | 6 | Bucket 5 | `docs/firmware-bucket-5-config-persistence-scope` | Persistence/calibration ownership, corruption behavior, reset semantics | Cold-boot persistence log + invalid-config recovery log |
 
 ## Feature inventory
@@ -181,7 +183,7 @@ firmware behavior and does not close any bench exit criterion.
 | Extended UART telemetry frame, STM32 → display | ✅ Implemented both ends | `stm32-bluepill-bringup/src/main.cpp` (`publishTelemetry`) + `crowpanel-43-bringup/src/disp_link_slave.cpp` (`parseFrame`) | Frame layouts match on both ends and STM32 target now builds. Bench end-to-end capture remains required for bucket exit evidence. |
 | CrowPanel LVGL UI skeleton (Splash/Setup/Main/Graph/Settings) | ✅ Done | `crowpanel-43-bringup/src/main.cpp` | All five screens exist and navigate. |
 | CrowPanel Main/Graph screens bound to live telemetry | ⚠️ Partially implemented | `crowpanel-43-bringup/src/main.cpp` | Graph screen: strip-recorder Graph (D5a/D5b merged: PSRAM history, four pens, feed rate, pause, pen show/hide) plus per-channel Micro view (D5c, `phil-cia-crowpanel-strip-recorder-microview`: Detail/Graph entry, separate V/I bands and axes, autoscale with hysteresis; builds and was flashed and user-reviewed as good enough for this iteration; individual checks are not itemised, see the screens tracker). Main is now the fixed-rail dashboard (CH1 +5 V / CH2 +3.3 V cards, per-rail confirmed `I LIMIT`, status that never asserts CC, shared OUTPUT with ERR/no-ACK notice) with a single-channel detail screen (selected-rail V/I chart, read-only nominal and confirmed Iset). Build-verified only; bench evidence pending. A demo generator (labelled DEMO, centered on 5 V / 3.3 V) remains for use without an STM32. |
-| Fault/status reporting (OVP/OCP/OTP, output-enable, CV/CC) | ⚠️ Runtime-derived, AW9523-interrupt sourced | `stm32-bluepill-bringup/src/main.cpp` (telemetry publish path) | `status` and `protection_flags` are computed from live state (channel enable/CV-CC, OVP thresholds, thermal warn/OTP). Rev-C fault path uses AW9523 input + `AW9523_INT` (`PB7`) to signal MCU fault handling; direct STM32 `FAULT_CRITICAL_SUM` GPIO remains disabled (`PIN_FAULT_CRITICAL_SUM = -1`). |
+| Fault/status reporting (OVP/OCP/OTP, output-enable, CV/CC) | ⚠️ Runtime-derived, AW9523-interrupt sourced; Bucket 3 evidence pending | `stm32-bluepill-bringup/src/main.cpp` (telemetry publish path) | `status` and `protection_flags` are computed from live state (channel enable/CV-CC, OVP thresholds, thermal warn/OTP). Rev-C fault path uses AW9523 input + `AW9523_INT` (`PB7`) to signal MCU fault handling; direct STM32 `FAULT_CRITICAL_SUM` GPIO remains disabled (`PIN_FAULT_CRITICAL_SUM = -1`). Bucket 3 remains evidence-pending until B3-S2/B3-S3/B3-S4/B3-S5 assert+clear artifacts are attached in `docs/firmware-buckets/bucket-3-fault-scope.md`. |
 | Fan control + tach contract (Rev-C) | ⚠️ Hardware control path only, no tach net | `hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net` + `docs/STM32_BLUEPILL_PIN_TABLE.md` | Current Rev-C J7 is a 2-pin fan control connector and does not expose a dedicated tach signal. Treat fan as open-loop for this revision unless hardware adds a tach net. |
 | Rail auto-range (low/high shunt path) | ⚠️ Reference only, not ported | `src/rev1/main.cpp` | Exists and works on the legacy ESP32 firmware. Needs a design decision before porting (see Milestone 3). |
 | Per-rail calibration + persistent config storage | ✅ STM32 persistence + explicit recovery reason surface | `src/rev1/main.cpp` (`Preferences`/NVS) + `stm32-bluepill-bringup/src/main.cpp` (W25Q128) | STM32 now has versioned external-flash config load/save/reset/erase wiring, persisted per-rail calibration coefficients/default D9 path state, deterministic boot recovery summary (`[CFG] REC r=<code> d=<0|1> s=<0|1>`), and additive `CMD:GET CFGREC` reason-code readback (`O/F/N/V/L/C/G` for OK/Flash/NoSig/Version/Length/CRC/Gain). |
