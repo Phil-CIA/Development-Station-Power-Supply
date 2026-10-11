@@ -70,8 +70,8 @@ Tracked modified files include HANDOFF.md plus KiCad project/schematic/netlist/e
 - hardware/kicad/dsp-regulator-rev-b/
 
 New/untracked session artifacts include:
-- HANDOFF_2026-07-28_RANGE_MOSFET_RESTART.md
-- HANDOFF_2026-07-28_SPICE_FOLDER_TRANSITION.md
+- docs/handoff-archive/root-handoffs/HANDOFF_2026-07-28_RANGE_MOSFET_RESTART.md
+- docs/handoff-archive/root-handoffs/HANDOFF_2026-07-28_SPICE_FOLDER_TRANSITION.md
 - docs/DEV_STATION_HANDOFF_2026-07-29.md
 - hardware/sim/
 - hardware/kicad/dsp-regulator-hat-rev-b/backups/

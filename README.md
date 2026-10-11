@@ -87,3 +87,18 @@ Current firmware work in this repo includes:
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
+
+## Root layout guide
+
+Keep the repository root focused on active entry points and code workspaces.
+
+Keep in root:
+- active restart pointers: `HANDOFF.md`, `NEW_CHAT_HANDOFF.rmd`, `NEW_CHAT_HANDOFF_SHORT.rmd`
+- active project entry files: `README.md`, `platformio.ini`
+- active source and project folders: `src/`, `include/`, `lib/`, `scripts/`, `docs/`, `hardware/`
+
+Move historical notes and one-off captures into docs archives:
+- `docs/handoff-archive/root-handoffs/` for historical handoff documents
+- `docs/root-archive/display/` for legacy display bring-up notes
+- `docs/root-archive/bench-notes/` for bench session notes and prompts
+- `docs/root-archive/bench-captures/` for text capture artifacts

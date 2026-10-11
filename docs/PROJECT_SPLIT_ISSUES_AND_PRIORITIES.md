@@ -297,7 +297,7 @@ Netlist baseline verified (2026-05-19):
 - Verify HAT schematic rail-to-INA-channel assignment
 - Confirm shunt value assumptions with actual BOM
 - Update firmware mappings based on truth table  
-**Reference**: [STACKED_BOARD_FIRST_POWER_BASELINE.md](STACKED_BOARD_FIRST_POWER_BASELINE.md) INA Confidence Check section
+**Reference**: [STACKED_BOARD_FIRST_POWER_BASELINE.md](root-archive/bench-notes/STACKED_BOARD_FIRST_POWER_BASELINE.md) INA Confidence Check section
 
 ---
 
@@ -553,7 +553,7 @@ Netlist baseline verified (2026-05-19):
 ## Reference Documents
 
 - [PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md](PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md) — Detailed electrical and design issues (RB-001 through RB-009)
-- [STACKED_BOARD_FIRST_POWER_BASELINE.md](STACKED_BOARD_FIRST_POWER_BASELINE.md) — Bench bring-up measurements and INA confidence assessment
+- [STACKED_BOARD_FIRST_POWER_BASELINE.md](root-archive/bench-notes/STACKED_BOARD_FIRST_POWER_BASELINE.md) — Bench bring-up measurements and INA confidence assessment
 - [GPIO_PINOUT.md](GPIO_PINOUT.md) — I2C bus and control signal mapping
 - [power_telemetry_map.h](../../src/power_telemetry_map.h) — INA address definitions and rail mapping (to be updated based on truth table)
 

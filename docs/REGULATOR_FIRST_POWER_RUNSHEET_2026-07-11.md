@@ -21,7 +21,7 @@ Purpose: execute the first bench power-up of the regulator board safely, using t
 ## Reference Files
 
 1. `docs/REGULATOR_BOARD_CHANGE_TRACKER.md`
-2. `STACKED_BOARD_FIRST_POWER_BASELINE.md`
+2. `docs/root-archive/bench-notes/STACKED_BOARD_FIRST_POWER_BASELINE.md`
 3. `hardware/kicad/dsp-regulator-rev-b/DSP-Regulator-RevB.kicad_sch`
 4. `hardware/kicad/dsp-regulator-rev-b/DSP-Regulator-RevB.net`
 
