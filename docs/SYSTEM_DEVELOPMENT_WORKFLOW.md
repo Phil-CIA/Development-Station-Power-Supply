@@ -12,16 +12,15 @@ debugging one board at a time, but it doesn't scale to system development,
 where firmware, the two display paths, and hardware revisions move in
 parallel and need to be reviewed before they land on `main`.
 
-Evidence this repo already outgrew the old pattern: `main` has dozens of
-direct commits and no pull requests, and there are already several
-unmerged local branches (`phil-cia-*`, `copilot/*`) with no record of why
-they exist or whether they're still needed. See "Branch cleanup" below.
+The earlier direct-commit workflow left unreviewed branches and unclear
+ownership. The one-time repository cleanup is now complete; ongoing branch
+and worktree lifecycle rules are documented under "Branch cleanup" below.
 
 ## Branching model
 
 - `main` is always buildable and reflects the current bench-validated state.
 - Do all new work on a branch, never commit directly to `main`.
-- One branch per unit of work, scoped to a subsystem:
+- One branch per PR, scoped to a subsystem:
   - `firmware/<topic>` — ESP32 control firmware in `src/`
   - `display/<topic>` — CrowPanel or custom front-panel work
   - `hw/<topic>` — KiCad/hardware changes under `hardware/`
@@ -40,7 +39,8 @@ they exist or whether they're still needed. See "Branch cleanup" below.
   3. For firmware PRs, the PR description names the relevant scope bucket
      from `docs/FIRMWARE_DEVELOPMENT_PLAN.md` and includes the matching
      exit-criteria evidence.
-- Delete the branch after merge.
+- Head branches auto-delete on merge. Remove the associated worktree after
+  preserving any remaining local changes; see "Branch cleanup" below.
 
 ### Minimal git cheat-sheet
 
@@ -85,23 +85,48 @@ files themselves under `docs/handoff-archive/root-handoffs/`. Do this as its
 own `docs/cleanup-root-handoffs` PR so it doesn't get mixed with feature
 work — ask if you want this done now.
 
-## Branch cleanup (existing unmerged branches)
+## Branch cleanup
 
-Before adopting this workflow, decide what to do with each pre-existing
-branch instead of letting them accumulate silently:
+The one-time repository cleanup is complete as of 2026-10-12. PRs
+[#113](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/113)
+through [#119](https://github.com/Phil-CIA/Development-Station-Power-Supply/pull/119)
+record the preservation and recovery work (#115 remains open for live
+STM32 flash-headroom work). Obsolete branches and worktrees were retired
+after preserving unmerged ideas; active worktrees remain in use.
 
-- `phil-cia-didactic-invention`, `phil-cia-psychic-eureka`,
-  `phil-cia-reorganize-board-rev-docs`, `phil-cia-rev-c-bringup-docs-update`,
-  `phil-cia-rev-c-bringup-plan`
-- `copilot/channel3-boot-control-voltage-edits`,
-  `copilot/worktree-2026-05-24T08-48-44`, `copilot/worktree-2026-05-24T19-33-35`,
-  `copilot/worktree-2026-05-24T20-07-51`, `copilot/worktree-2026-05-28T07-25-02`
-- `origin/copilot/organize-kicad-files-structure`,
-  `origin/copilot/search-solar-generator-inverter`
+Going forward:
 
-For each: open it, diff against `main`, and either open a PR (if the content
-is still wanted) or delete the branch (if it was superseded). Track this as
-a one-time cleanup pass, not ongoing work.
+- Use one branch per PR. GitHub's "Automatically delete head branches"
+  setting is enabled, so remote PR head branches auto-delete on merge.
+- Never delete a branch without first checking its content against the
+  current `origin/main`. Before merging, ensure the PR covers the branch's
+  current tip and any unmerged ideas have been preserved.
+- Squash merges break ancestry checks: `git branch --merged` or
+  `git merge-base --is-ancestor` alone cannot establish that work was merged.
+  Compare tree IDs for identical snapshots, verify the branch tip against
+  a merged PR's head SHA, or inspect `git cherry` / `git range-diff` and the
+  content diff against `origin/main` to account for remaining changes.
+- Keep live work in a PR. Before deleting a branch with unmerged ideas,
+  preserve its tip as an `archive/<branch>` tag and verify that the tag on
+  origin resolves to that commit. Archive tags are retained, not moved or
+  deleted.
+- Remove worktrees once their PR merges, then remove the obsolete local
+  branch. Inspect tracked and untracked changes first; preserve any unique
+  work before removing a worktree. Do not force-remove a dirty worktree.
+
+List the remote archive tags:
+
+```powershell
+git ls-remote --tags origin 'refs/tags/archive/*'
+```
+
+Restore an archived idea to a new working branch (replace `<b>` with the
+original branch name; the local branch name must be available):
+
+```powershell
+git fetch origin tag archive/<b>
+git switch -c <b> archive/<b>
+```
 
 ## Firmware build check (recommended, not yet added)
 
