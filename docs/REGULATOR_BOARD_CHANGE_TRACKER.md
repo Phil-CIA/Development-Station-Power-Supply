@@ -96,13 +96,15 @@ Rev-B evidence:
 
 **Recommendation:** Treat this as a pre-routing electrical gate. Do not begin Rev-C routing until the selected mitigation demonstrates deterministic fallback behavior under low/open/leakage cases.
 
+**2026-09-21 release check:** A fresh KiCad 10.0.5 run on the Rev-C regulator reported 326 ERC violations and 211 PCB DRC violations plus 470 unconnected items (DRC mix: 153 footprint-library, 36 clearance, 10 silk-overlap, 7 silk-over-copper, 3 silk-edge-clearance, 2 copper-edge-clearance). The commands exited 0 only because `--exit-code-violations` was not supplied. Rerun with violation exit codes before any further fabrication release.
+
 **Design Owner:** TBD (power supply redesign cycle)
 **Next Step:** Correct all U5 TLV9352 BOM metadata, install the replacement device when available, and bench-check normal remote sense plus open-sense fallback before clearing the routing blocker.
 
 ---
 
 ### RB-012 — HAT OCP Comparator Measures Absolute Rail Voltage Instead Of Shunt Differential
-**Status:** 🟡 In progress — Rev-C differential architecture implemented and ERC-clean; PCB layout and bench validation pending
+**Status:** 🟡 In progress — Rev-C differential architecture implemented; 2026-08-14 clean ERC superseded by 2026-09-21 findings; PCB layout and bench validation pending
 **Severity:** High (overcurrent threshold accuracy and repeatability risk)
 **Found by:** Rev-B schematic/netlist review during range-switch bring-up
 **Board Impact:** HAT Rev-B protection path; Rev-C schematic gate
@@ -156,6 +158,8 @@ Rev-B bench evidence at approximately 0.339A illustrates the scale mismatch:
 - [ ] Rerun ERC, export a fresh netlist, run PCB DRC, and audit the resulting connectivity before fabrication release.
 
 **Next Step:** Complete this gate during PCB layout, then perform controlled bench validation before crediting the Rev-C OCP as calibrated protection.
+
+**2026-09-21 release check:** A fresh KiCad 10.0.5 run on HAT Rev-C reported 82 ERC violations and 161 PCB DRC violations plus 129 unconnected items (DRC mix: 94 footprint-library, 48 dangling vias, 18 hole-clearance, 1 footprint mismatch). This supersedes the 2026-08-14 clean ERC checkpoint. Rerun with violation exit codes before any fabrication release.
 
 ---
 
@@ -546,6 +550,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | 2026-08-13 | Corrected RB-011 interpretation; recorded remote-sense redesign bench pass and RB-010 TLV9352 plan | Bench validation and Rev-C schematic session |
 | 2026-08-14 | Implemented dual INA2180A2/TLV1702 four-channel Rev-C OCP, corrected supply and open-collector definitions, validated ERC/netlist, and added mandatory PCB completion gate | Rev-C OCP design session |
 | 2026-09-21 | Logged Rev-C first-power continuation HOLD: +5V_reg about 4.08V, +5V about 4.01V, +3.3V rails collapsed, with R11/R35 removed bypass state | Rev-C bench continuation session |
+| 2026-09-21 | Recorded fresh Rev-C ERC/DRC release check under RB-010 and RB-012 (both boards blocked; HAT 2026-08-14 clean ERC superseded) | Rev-C release validation session |
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
 | 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
 | TBD | Design review and next-iter file creation | TBD |
