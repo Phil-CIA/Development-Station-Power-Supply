@@ -87,3 +87,17 @@ Current firmware work in this repo includes:
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
+
+## Documentation organization
+
+- Current restart state remains at `HANDOFF.md` and `docs/DEV_STATION_HANDOFF_2026-08-14.md`.
+- Active regulator/HAT trackers remain in top-level `docs/` for quick access.
+- Regulator and HAT archived material is grouped by the board revision loop:
+  - `docs/archive/regulator-hat/rev-a-2026-03-31/`
+  - `docs/archive/regulator-hat/rev-b-2026-06-20/`
+  - `docs/archive/dsp-regulator/`
+  - `docs/archive/hat/`
+- Front-panel display and USB hub material are independent board paths and are not sorted into the regulator/HAT revision loop:
+  - `docs/archive/front-panel/`
+  - `docs/archive/usb-hub/`
+  - `docs/boards/usb-hub/current/`

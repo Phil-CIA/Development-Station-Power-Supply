@@ -101,4 +101,4 @@ This redesign is Phase 3 — scoped as a requirements spec. KiCad work starts af
 
 ## Hosyond MSP4021 (secondary path) reference
 - Hardware spec, confirmed pin map, DC polarity, init sequence, and official resource links:
-  - `docs/display-project/hosyond-msp4021-st7796-reference.md`
+  - `docs/display-project/reference/hosyond-msp4021-st7796-reference.md`

@@ -52,7 +52,7 @@ The gate requires:
 ## Documentation state
 
 - RB-012 is the active issue and PCB release gate in `docs/REGULATOR_BOARD_CHANGE_TRACKER.md`.
-- `docs/REVC_3V3_HIGH_RANGE_OCP_DESIGN_2026-08-14.md` records the original single-channel INA180/fixed-reference design calculations. It is useful analysis, but it does not yet describe the implemented dual INA2180/pot-threshold architecture and must not be treated as the final four-channel BOM.
+- `docs/archive/hat/rev-c-2026-08-29/superseded-analysis/REVC_3V3_HIGH_RANGE_OCP_DESIGN_2026-08-14.md` records the original single-channel INA180/fixed-reference design calculations. It is useful analysis, but it does not yet describe the implemented dual INA2180/pot-threshold architecture and must not be treated as the final four-channel BOM.
 - The 2.00A high-range ceiling remains provisional.
 
 ## Other active hardware loops

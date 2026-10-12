@@ -139,7 +139,7 @@ Rev-B bench evidence at approximately 0.339A illustrates the scale mismatch:
 **Rev-B Disposition:** Do not credit U3 as a calibrated fast overcurrent protection function. Continue bench work under the external PSU current limit and retain the range-switch bypass until the switching audit is complete.
 
 **Design Owner:** TBD (HAT Rev-C redesign cycle)
-**First channel design (2026-08-14):** The original 3.3V high-current baseline used R16 = 20mΩ, INA180A2 gain 50, and a nominal 2.00A trip. See `docs/REVC_3V3_HIGH_RANGE_OCP_DESIGN_2026-08-14.md`. The implemented Rev-C schematic consolidates the four channels into dual INA2180A2 current-sense amplifiers and dual TLV1702 open-collector comparators. U2/U6 operate from `+3.3V Boot`; U3/U7 remain on `+12V`. ERC and the regenerated netlist are clean as of 2026-08-14.
+**First channel design (2026-08-14):** The original 3.3V high-current baseline used R16 = 20mΩ, INA180A2 gain 50, and a nominal 2.00A trip. See `docs/archive/hat/rev-c-2026-08-29/superseded-analysis/REVC_3V3_HIGH_RANGE_OCP_DESIGN_2026-08-14.md`. The implemented Rev-C schematic consolidates the four channels into dual INA2180A2 current-sense amplifiers and dual TLV1702 open-collector comparators. U2/U6 operate from `+3.3V Boot`; U3/U7 remain on `+12V`. ERC and the regenerated netlist are clean as of 2026-08-14.
 
 **Mandatory PCB layout completion gate:** Do not finalize the Rev-C PCB or release fabrication outputs until all items below are complete.
 

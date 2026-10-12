@@ -2,7 +2,7 @@
 
 Latest active handoff: [docs/DEV_STATION_HANDOFF_2026-08-14.md](docs/DEV_STATION_HANDOFF_2026-08-14.md)
 
-Previous handoff: [docs/DEV_STATION_HANDOFF_2026-08-13.md](docs/DEV_STATION_HANDOFF_2026-08-13.md)
+Previous handoff: [docs/archive/regulator-hat/rev-b-2026-06-20/transition-to-rev-c/DEV_STATION_HANDOFF_2026-08-13.md](docs/archive/regulator-hat/rev-b-2026-06-20/transition-to-rev-c/DEV_STATION_HANDOFF_2026-08-13.md)
 
 Session status: HAT Rev-C now has a four-channel INA2180A2/TLV1702 differential OCP architecture with clean ERC and netlist validation. PCB completion and bench calibration remain blocked by the mandatory RB-012 layout checklist. The Rev-B range switch remains bypassed.
 
@@ -31,7 +31,7 @@ This stop captured focused SPICE validation for the 5V feedback selector behavio
 4. Added lightweight plotting helper:
 	- hardware/sim/plot_5v_reg_selector.py
 5. Added July 29 project handoff note for range-switch driver checkpoint:
-	- docs/DEV_STATION_HANDOFF_2026-07-29.md
+	- docs/archive/hat/rev-b-2026-06-20/range-switch/DEV_STATION_HANDOFF_2026-07-29.md
 
 ## Key Simulation Findings
 
@@ -70,9 +70,9 @@ Tracked modified files include HANDOFF.md plus KiCad project/schematic/netlist/e
 - hardware/kicad/dsp-regulator-rev-b/
 
 New/untracked session artifacts include:
-- HANDOFF_2026-07-28_RANGE_MOSFET_RESTART.md
-- HANDOFF_2026-07-28_SPICE_FOLDER_TRANSITION.md
-- docs/DEV_STATION_HANDOFF_2026-07-29.md
+- docs/archive/hat/rev-b-2026-06-20/range-switch/HANDOFF_2026-07-28_RANGE_MOSFET_RESTART.md
+- docs/archive/hat/rev-b-2026-06-20/range-switch/HANDOFF_2026-07-28_SPICE_FOLDER_TRANSITION.md
+- docs/archive/hat/rev-b-2026-06-20/range-switch/DEV_STATION_HANDOFF_2026-07-29.md
 - hardware/sim/
 - hardware/kicad/dsp-regulator-hat-rev-b/backups/
 
@@ -87,6 +87,6 @@ Note: a KiCad lock file is present and should be ignored/removed before commit i
 
 ## Next Chat Start
 
-1. Open [docs/DEV_STATION_HANDOFF_2026-08-11.md](docs/DEV_STATION_HANDOFF_2026-08-11.md).
-2. Execute [docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md](docs/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md) in order and log pass/fail per phase.
+1. Open [docs/archive/regulator-hat/rev-b-2026-06-20/transition-to-rev-c/DEV_STATION_HANDOFF_2026-08-11.md](docs/archive/regulator-hat/rev-b-2026-06-20/transition-to-rev-c/DEV_STATION_HANDOFF_2026-08-11.md).
+2. Execute [docs/boards/hat/rev-b-2026-06-20/current/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md](docs/boards/hat/rev-b-2026-06-20/current/REVB_HAT_BYPASS_BENCH_WORKSHEET_2026-08-11.md) in order and log pass/fail per phase.
 3. Keep Rev-B bring-up and Rev-C design work separated: test/debug on Rev-B paths, and apply redesign edits only in Rev-C project folders.

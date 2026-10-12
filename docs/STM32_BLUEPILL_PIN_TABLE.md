@@ -64,7 +64,7 @@ Use it to map each project net to a physical STM32 pin, keep draft/fallback opti
 ## Related Files
 
 - docs/GPIO_PINOUT.md
-- docs/KERC-04_RESET_STARTUP_VALIDATION.md
-- docs/PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md
+- docs/boards/hat/rev-c-2026-08-29/current/KERC-04_RESET_STARTUP_VALIDATION.md
+- docs/archive/regulator-hat/rev-a-2026-03-31/rev-b-planning/PROJECT_SPLIT_ISSUES_AND_PRIORITIES.md
 - hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.kicad_sch
 - hardware/kicad/dsp-regulator-hat-rev-b/DSP-Regulator-HAT-RevB.net
