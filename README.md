@@ -93,6 +93,7 @@ gated on hardware validation.
 
 - docs/SYSTEM_DEVELOPMENT_WORKFLOW.md — branch/PR workflow now in effect
 - docs/FIRMWARE_DEVELOPMENT_PLAN.md — firmware feature inventory and milestone/branch plan
+- docs/FAN_CONTROL_DEFINITION.md — issue #28 enclosure fan-control behavior spec (draft; tach path pending #29)
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
