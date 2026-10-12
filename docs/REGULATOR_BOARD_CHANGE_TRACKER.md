@@ -484,7 +484,7 @@ Primary buck control loops appear functional when enabled; failure remains in do
 ---
 
 ### RB-013 — Rev-C Output Gate Drivers (U9/U14/U15/U16): Wrong LM74502 Variant Populated
-**Status:** 🟡 In progress (schematic fixed; hardware rework pending)
+**Status:** 🟡 In progress (schematic fixed; driver rework done 2026-10-06; post-rework verification pending)
 **Severity:** High (output MOSFETs cannot reach full enhancement)
 **Found by:** Bench measurement of Q1 gate drive on Regulator Rev-C (`Vgs≈1.76V`, `VCAP=12.43V`, `Gate-to-GND=5.13V`, `OV≈0.0044V`), traced through schematic/PCB/net cross-check
 
@@ -503,7 +503,8 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 
 **Still open:**
 - [ ] Update the `LCSC` BOM field on all four (currently `C3236215`, which is the wrong-variant part) once the correct LCSC SKU for `LM74502HDDFR` is confirmed.
-- [ ] Physically rework all four driver ICs on the bench board (same DDF-8/TSOT-23-8 footprint; drop-in swap). Physical spares on hand marked `LM502` are the wrong (base) variant — order/verify parts marked with an `H` suffix (e.g. `L502H`) before installing.
+- [x] Physically rework all four driver ICs on the bench board (same DDF-8/TSOT-23-8 footprint; drop-in swap). Physical spares on hand marked `LM502` are the wrong (base) variant — order/verify parts marked with an `H` suffix (e.g. `L502H`) before installing.
+  - 2026-10-06 bench rework: replaced U9, U14, U15, and U16; reversed D2, D5, D9, and D13. Record the installed driver marking to confirm the `H` variant.
 - [ ] Re-measure `Vgs` per channel after rework to confirm full enhancement is reached.
 - [ ] While reworked, confirm the gate-source zener clamp value/orientation per channel (referenced in prior HAT Rev-B notes) — this determines the practical Vgs ceiling even once gate current is no longer the bottleneck.
 - [ ] Confirm no other boards/sheets in the repo carry the same `LM74502DDFR` substitution.
@@ -511,7 +512,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 **Related but distinct:** RB-003 (LM2596 enable-pin low-side MOSFET drive) is a separate, unrelated gate-drive path — do not conflate the two when reviewing gate-drive issues on this board.
 
 **Design Owner:** TBD (bench rework)
-**Next Step:** Source correct `LM74502HDDFR` stock, rework U9/U14/U15/U16, re-verify Vgs.
+**Next Step:** Under current-limited conditions, re-measure Vgs per channel and output/load behavior after the 2026-10-06 rework; confirm the D2/D5/D9/D13 orientation against the schematic.
 
 ---
 
@@ -548,4 +549,5 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | 2026-09-21 | Logged Rev-C first-power continuation HOLD: +5V_reg about 4.08V, +5V about 4.01V, +3.3V rails collapsed, with R11/R35 removed bypass state | Rev-C bench continuation session |
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
 | 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
+| 2026-10-06 | RB-013 bench rework: replaced U9/U14/U15/U16 and reversed D2/D5/D9/D13; post-rework Vgs verification remains open | Bench continuation session |
 | TBD | Design review and next-iter file creation | TBD |
