@@ -36,6 +36,17 @@ constexpr float    kCh1SetVoltage_V = 5.00f;
 constexpr float    kCh2SetVoltage_V = 3.30f;
 constexpr float    kCh1SetCurrent_A = 3.00f;
 constexpr float    kCh2SetCurrent_A = 2.00f;
+constexpr uint16_t kCh1CurrentLimitMin_mA = 0;
+constexpr uint16_t kCh1CurrentLimitMax_mA = 3000;
+constexpr uint16_t kCh2CurrentLimitMin_mA = 0;
+constexpr uint16_t kCh2CurrentLimitMax_mA = 2000;
+constexpr uint16_t kCh1OvpMin_mV = 4500;
+constexpr uint16_t kCh1OvpMax_mV = 6000;
+constexpr uint16_t kCh2OvpMin_mV = 3000;
+constexpr uint16_t kCh2OvpMax_mV = 4000;
+constexpr uint8_t kOtpMin_C = 45;
+constexpr uint8_t kOtpMax_C = 100;
+constexpr uint32_t kSetupReplyTimeoutMs = 1500;
 
 enum class UiScreen : uint8_t {
   Splash = 0,
@@ -80,8 +91,53 @@ static lv_obj_t* lbl_setup_title = nullptr;
 static lv_obj_t* lbl_setup_param = nullptr;
 static lv_obj_t* lbl_setup_value = nullptr;
 static lv_obj_t* lbl_setup_hint = nullptr;
+static lv_obj_t* lbl_setup_list = nullptr;
+static lv_obj_t* btn_setup_dec = nullptr;
+static lv_obj_t* btn_setup_ok = nullptr;
+static lv_obj_t* btn_setup_inc = nullptr;
 static uint32_t setup_start_ms = 0;
 static bool setup_done = false;
+
+enum class SetupParamId : uint8_t {
+  Ch1ILim = 0,
+  Ch1Ocp,
+  Ch1Ovp,
+  Ch2ILim,
+  Ch2Ocp,
+  Ch2Ovp,
+  Otp,
+  ConfirmStart,
+};
+
+struct SetupConfig {
+  uint16_t ch1_ilim_mA;
+  uint16_t ch1_ocp_mA;
+  uint16_t ch1_ovp_mV;
+  uint16_t ch2_ilim_mA;
+  uint16_t ch2_ocp_mA;
+  uint16_t ch2_ovp_mV;
+  uint8_t otp_C;
+};
+
+static SetupConfig setup_cfg = {
+  2500, 2500, 5500,
+  1500, 1500, 3600,
+  75
+};
+
+static SetupConfig setup_cfg_stm32 = {
+  2500, 2500, 5500,
+  1500, 1500, 3600,
+  75
+};
+
+static uint8_t setup_selected_index = 0;
+static bool setup_editing = false;
+static bool setup_waiting_get = false;
+static uint32_t setup_wait_started_ms = 0;
+static uint32_t setup_last_ack_seen = 0;
+static uint32_t setup_last_err_seen = 0;
+static bool setup_live_loaded = false;
 
 // Main screen (dual-channel layout)
 static lv_obj_t* lbl_main_ch1_voltage = nullptr;

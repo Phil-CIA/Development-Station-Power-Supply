@@ -60,14 +60,17 @@ static const uint8_t FRAME_LEN = 13;
 static const size_t FRAME_SIZE = 17;
 static const uint16_t CH1_ENABLED_MIN_MV = 1000;
 static const uint16_t CH2_ENABLED_MIN_MV = 1000;
-static const uint16_t CH1_OVP_THRESHOLD_MV = 5500;
-static const uint16_t CH2_OVP_THRESHOLD_MV = 3600;
-static const uint8_t OTP_THRESHOLD_C = 75;
 static const uint8_t THERMAL_WARN_THRESHOLD_C = 70;
 static const uint16_t UDI_CH1_LIMIT_MIN_MA = 0;
 static const uint16_t UDI_CH1_LIMIT_MAX_MA = 3000;
 static const uint16_t UDI_CH2_LIMIT_MIN_MA = 0;
 static const uint16_t UDI_CH2_LIMIT_MAX_MA = 2000;
+static const uint16_t UDI_CH1_OVP_MIN_MV = 4500;
+static const uint16_t UDI_CH1_OVP_MAX_MV = 6000;
+static const uint16_t UDI_CH2_OVP_MIN_MV = 3000;
+static const uint16_t UDI_CH2_OVP_MAX_MV = 4000;
+static const uint8_t UDI_OTP_MIN_C = 45;
+static const uint8_t UDI_OTP_MAX_C = 100;
 static const size_t UDI_MAX_LINE = 120;
 static uint8_t frame_seq = 0;
 static bool flash_test_passed = false;
@@ -76,6 +79,11 @@ static uint16_t g_sr_state = 0x0000;
 static bool g_output_enabled = false;
 static uint16_t g_current_limit_ch1_mA = 2500;
 static uint16_t g_current_limit_ch2_mA = 1500;
+static uint16_t g_ocp_threshold_ch1_mA = 2500;
+static uint16_t g_ocp_threshold_ch2_mA = 1500;
+static uint16_t g_ovp_threshold_ch1_mV = 5500;
+static uint16_t g_ovp_threshold_ch2_mV = 3600;
+static uint8_t g_otp_threshold_C = 75;
 static char g_udi_line_buf[UDI_MAX_LINE + 1] = {};
 static size_t g_udi_line_len = 0;
 
@@ -146,6 +154,7 @@ bool loadPersistentConfig(bool verbose);
 bool erasePersistentConfig(bool verbose);
 void printPersistentConfig();
 void pollUdiCommands();
+void sendUdiAck(const char* payload);
 
 void logBoth(const char* msg) {
   Serial.println(msg);
@@ -218,7 +227,22 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 
 void printCommandHelp() {
   logBoth("cmd: HELP | FTEST | AHTNOW | AHTRESET | SRTEST | D9FLASH | D9ON | D9OFF | INAPROBE | INANOW | INARAILS | CALSHOW | CALSET <5V|3V3> <vGain> <vOff_mV> <iGain> <iOff_mA> | CFGSHOW | CFGSAVE | CFGLOAD | CFGRESET | CFGERASE");
-  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA>");
+  logBoth("udi: CMD:OUTPUT <ON|OFF> | CMD:ILIM <CH1|CH2> <mA> | CMD:OCP <CH1|CH2> <mA> | CMD:OVP <CH1|CH2> <mV> | CMD:OTP <degC> | CMD:SETUP GET");
+}
+
+void sendSetupSnapshotAck() {
+  char msg[160];
+  snprintf(msg,
+           sizeof(msg),
+           "SETUP CH1_ILIM=%u CH1_OCP=%u CH1_OVP=%u CH2_ILIM=%u CH2_OCP=%u CH2_OVP=%u OTP=%u",
+           static_cast<unsigned>(g_current_limit_ch1_mA),
+           static_cast<unsigned>(g_ocp_threshold_ch1_mA),
+           static_cast<unsigned>(g_ovp_threshold_ch1_mV),
+           static_cast<unsigned>(g_current_limit_ch2_mA),
+           static_cast<unsigned>(g_ocp_threshold_ch2_mA),
+           static_cast<unsigned>(g_ovp_threshold_ch2_mV),
+           static_cast<unsigned>(g_otp_threshold_C));
+  sendUdiAck(msg);
 }
 
 bool i2cPing(uint8_t address) {
@@ -499,6 +523,146 @@ void handleUdiCommandLine(const String& line_in) {
              channel_token,
              static_cast<unsigned>(*target_limit));
     sendUdiEvt(evt_msg);
+    return;
+  }
+
+  if (sscanf(cmd.c_str(), "OCP %7s %d", channel_token, &limit_mA) == 2) {
+    if (limit_mA < 0) {
+      sendUdiErr("OCP mA must be >= 0");
+      return;
+    }
+
+    uint16_t* target_threshold = nullptr;
+    uint16_t min_mA = 0;
+    uint16_t max_mA = 0;
+    if (strcmp(channel_token, "CH1") == 0) {
+      target_threshold = &g_ocp_threshold_ch1_mA;
+      min_mA = UDI_CH1_LIMIT_MIN_MA;
+      max_mA = UDI_CH1_LIMIT_MAX_MA;
+    } else if (strcmp(channel_token, "CH2") == 0) {
+      target_threshold = &g_ocp_threshold_ch2_mA;
+      min_mA = UDI_CH2_LIMIT_MIN_MA;
+      max_mA = UDI_CH2_LIMIT_MAX_MA;
+    } else {
+      sendUdiErr("OCP channel must be CH1 or CH2");
+      return;
+    }
+
+    if (limit_mA < static_cast<int>(min_mA) || limit_mA > static_cast<int>(max_mA)) {
+      char msg[64];
+      snprintf(msg,
+               sizeof(msg),
+               "OCP %s range %u..%u mA",
+               channel_token,
+               static_cast<unsigned>(min_mA),
+               static_cast<unsigned>(max_mA));
+      sendUdiErr(msg);
+      return;
+    }
+
+    *target_threshold = static_cast<uint16_t>(limit_mA);
+
+    char ack_msg[40];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "OCP %s %u",
+             channel_token,
+             static_cast<unsigned>(*target_threshold));
+    sendUdiAck(ack_msg);
+
+    char evt_msg[48];
+    snprintf(evt_msg,
+             sizeof(evt_msg),
+             "OCP %s %u mA",
+             channel_token,
+             static_cast<unsigned>(*target_threshold));
+    sendUdiEvt(evt_msg);
+    return;
+  }
+
+  int threshold_mV = -1;
+  if (sscanf(cmd.c_str(), "OVP %7s %d", channel_token, &threshold_mV) == 2) {
+    if (threshold_mV < 0) {
+      sendUdiErr("OVP mV must be >= 0");
+      return;
+    }
+
+    uint16_t* target_threshold = nullptr;
+    uint16_t min_mV = 0;
+    uint16_t max_mV = 0;
+    if (strcmp(channel_token, "CH1") == 0) {
+      target_threshold = &g_ovp_threshold_ch1_mV;
+      min_mV = UDI_CH1_OVP_MIN_MV;
+      max_mV = UDI_CH1_OVP_MAX_MV;
+    } else if (strcmp(channel_token, "CH2") == 0) {
+      target_threshold = &g_ovp_threshold_ch2_mV;
+      min_mV = UDI_CH2_OVP_MIN_MV;
+      max_mV = UDI_CH2_OVP_MAX_MV;
+    } else {
+      sendUdiErr("OVP channel must be CH1 or CH2");
+      return;
+    }
+
+    if (threshold_mV < static_cast<int>(min_mV) || threshold_mV > static_cast<int>(max_mV)) {
+      char msg[64];
+      snprintf(msg,
+               sizeof(msg),
+               "OVP %s range %u..%u mV",
+               channel_token,
+               static_cast<unsigned>(min_mV),
+               static_cast<unsigned>(max_mV));
+      sendUdiErr(msg);
+      return;
+    }
+
+    *target_threshold = static_cast<uint16_t>(threshold_mV);
+
+    char ack_msg[40];
+    snprintf(ack_msg,
+             sizeof(ack_msg),
+             "OVP %s %u",
+             channel_token,
+             static_cast<unsigned>(*target_threshold));
+    sendUdiAck(ack_msg);
+
+    char evt_msg[48];
+    snprintf(evt_msg,
+             sizeof(evt_msg),
+             "OVP %s %u mV",
+             channel_token,
+             static_cast<unsigned>(*target_threshold));
+    sendUdiEvt(evt_msg);
+    return;
+  }
+
+  int otp_threshold_C = -1;
+  if (sscanf(cmd.c_str(), "OTP %d", &otp_threshold_C) == 1) {
+    if (otp_threshold_C < static_cast<int>(UDI_OTP_MIN_C) ||
+        otp_threshold_C > static_cast<int>(UDI_OTP_MAX_C)) {
+      char msg[64];
+      snprintf(msg,
+               sizeof(msg),
+               "OTP range %u..%u C",
+               static_cast<unsigned>(UDI_OTP_MIN_C),
+               static_cast<unsigned>(UDI_OTP_MAX_C));
+      sendUdiErr(msg);
+      return;
+    }
+
+    g_otp_threshold_C = static_cast<uint8_t>(otp_threshold_C);
+
+    char ack_msg[24];
+    snprintf(ack_msg, sizeof(ack_msg), "OTP %u", static_cast<unsigned>(g_otp_threshold_C));
+    sendUdiAck(ack_msg);
+
+    char evt_msg[32];
+    snprintf(evt_msg, sizeof(evt_msg), "OTP %u C", static_cast<unsigned>(g_otp_threshold_C));
+    sendUdiEvt(evt_msg);
+    return;
+  }
+
+  if (cmd == "SETUP GET") {
+    sendSetupSnapshotAck();
     return;
   }
 
@@ -1470,9 +1634,11 @@ void loop() {
     const bool ch1_cc = static_cast<uint16_t>(abs(i5_mA)) >= g_current_limit_ch1_mA;
     const bool ch2_cc = static_cast<uint16_t>(abs(i3v3_mA)) >= g_current_limit_ch2_mA;
     const bool thermal_warn = temp_C >= THERMAL_WARN_THRESHOLD_C;
-    const bool ch1_ovp = ok_5v && (v5_mV >= CH1_OVP_THRESHOLD_MV);
-    const bool ch2_ovp = ok_3v3 && (v3v3_mV >= CH2_OVP_THRESHOLD_MV);
-    const bool otp_trip = temp_C >= OTP_THRESHOLD_C;
+    const bool ch1_ovp = ok_5v && (v5_mV >= g_ovp_threshold_ch1_mV);
+    const bool ch2_ovp = ok_3v3 && (v3v3_mV >= g_ovp_threshold_ch2_mV);
+    const bool ch1_ocp_soft = static_cast<uint16_t>(abs(i5_mA)) >= g_ocp_threshold_ch1_mA;
+    const bool ch2_ocp_soft = static_cast<uint16_t>(abs(i3v3_mA)) >= g_ocp_threshold_ch2_mA;
+    const bool otp_trip = temp_C >= g_otp_threshold_C;
     const bool ocp_sum_trip = isFaultCriticalActive();
 
     uint8_t status = 0x00;
@@ -1484,9 +1650,9 @@ void loop() {
 
     uint8_t protection_flags = 0x00;
     protection_flags |= ch1_ovp ? 0x80u : 0x00u;
-    protection_flags |= ocp_sum_trip ? 0x40u : 0x00u;
+    protection_flags |= (ocp_sum_trip || ch1_ocp_soft) ? 0x40u : 0x00u;
     protection_flags |= ch2_ovp ? 0x20u : 0x00u;
-    protection_flags |= ocp_sum_trip ? 0x10u : 0x00u;
+    protection_flags |= (ocp_sum_trip || ch2_ocp_soft) ? 0x10u : 0x00u;
     protection_flags |= otp_trip ? 0x08u : 0x00u;
     protection_flags |= otp_trip ? 0x04u : 0x00u;
     publishTelemetry(v5_mV, i5_mA, v3v3_mV, i3v3_mA, temp_C, status, protection_flags);
