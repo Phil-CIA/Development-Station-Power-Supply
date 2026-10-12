@@ -1,8 +1,8 @@
 (export
 	(version "E")
 	(design
-		(source "C:\\Users\\forch\\GitHub\\Development-Station-Power-Supply\\hardware\\kicad\\dsp-regulator-hat-rev-c\\DSP-Regulator-HAT-RevC.kicad_sch")
-		(date "2026-08-18T06:34:17")
+		(source "C:\\Users\\forch\\GitHub\\copilot-worktrees\\Development-Station-Power-Supply\\phil-cia-friendly-barnacle\\hardware\\kicad\\dsp-regulator-hat-rev-c\\DSP-Regulator-HAT-RevC.kicad_sch")
+		(date "2026-09-21T00:34:12")
 		(tool "Eeschema 10.0.5")
 		(sheet
 			(number "1")
@@ -11627,26 +11627,6 @@
 		(library
 			(logical "Mechanical")
 			(uri "${KICAD10_SYMBOL_DIR}/Mechanical.kicad_sym")
-		)
-		(library
-			(logical "PCM_JLCPCB-Capacitors")
-			(uri "${KICAD10_3RD_PARTY}/symbols/com_github_CDFER_JLCPCB-Kicad-Library/JLCPCB-Capacitors.kicad_sym")
-		)
-		(library
-			(logical "PCM_JLCPCB-Extended")
-			(uri "${KICAD10_3RD_PARTY}/symbols/com_github_CDFER_JLCPCB-Kicad-Library/JLCPCB-Extended.kicad_sym")
-		)
-		(library
-			(logical "PCM_JLCPCB-Memory")
-			(uri "${KICAD10_3RD_PARTY}/symbols/com_github_CDFER_JLCPCB-Kicad-Library/JLCPCB-Memory.kicad_sym")
-		)
-		(library
-			(logical "PCM_JLCPCB-Resistors")
-			(uri "${KICAD10_3RD_PARTY}/symbols/com_github_CDFER_JLCPCB-Kicad-Library/JLCPCB-Resistors.kicad_sym")
-		)
-		(library
-			(logical "PCM_JLCPCB-Transistors")
-			(uri "${KICAD10_3RD_PARTY}/symbols/com_github_CDFER_JLCPCB-Kicad-Library/JLCPCB-Transistors.kicad_sym")
 		)
 		(library
 			(logical "Regulator_Linear")

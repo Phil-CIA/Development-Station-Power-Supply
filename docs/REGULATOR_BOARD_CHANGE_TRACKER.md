@@ -59,7 +59,7 @@ Option 2: Add pre-charge circuit (capacitive divider + small series resistor)
 ---
 
 ### RB-010 — VSENSE_5V+ Open/Floating Dominance Risk In Feedback Selector
-**Status:** 🟡 In progress — mitigation implemented in Rev-C, replacement op-amp bench validation pending
+**Status:** 🟡 In progress — mitigation implemented in Rev-C; release validation blocked
 **Severity:** High (regulation and safety behavior risk)  
 **Found by:** SPICE selector crossover and fault-case simulations (`hardware/sim/5v_reg_selector_sweep.cir`, `hardware/sim/5v_reg_selector_fault_cases.cir`)  
 **Board Impact:** Rev-C routing blocker (must close before PCB routing starts)  
@@ -96,13 +96,15 @@ Rev-B evidence:
 
 **Recommendation:** Treat this as a pre-routing electrical gate. Do not begin Rev-C routing until the selected mitigation demonstrates deterministic fallback behavior under low/open/leakage cases.
 
+**2026-09-21 release check:** Current Rev-C regulator ERC reports 326 violations and PCB DRC reports 211 violations plus 470 unconnected items. The Rev-C fabrication gate remains blocked until the actionable findings are resolved and the checks are rerun with violation exit codes.
+
 **Design Owner:** TBD (power supply redesign cycle)
 **Next Step:** Correct all U5 TLV9352 BOM metadata, install the replacement device when available, and bench-check normal remote sense plus open-sense fallback before clearing the routing blocker.
 
 ---
 
 ### RB-012 — HAT OCP Comparator Measures Absolute Rail Voltage Instead Of Shunt Differential
-**Status:** 🟡 In progress — Rev-C differential architecture implemented and ERC-clean; PCB layout and bench validation pending
+**Status:** 🟡 In progress — Rev-C differential architecture implemented; current release validation blocked
 **Severity:** High (overcurrent threshold accuracy and repeatability risk)
 **Found by:** Rev-B schematic/netlist review during range-switch bring-up
 **Board Impact:** HAT Rev-B protection path; Rev-C schematic gate
@@ -156,6 +158,8 @@ Rev-B bench evidence at approximately 0.339A illustrates the scale mismatch:
 - [ ] Rerun ERC, export a fresh netlist, run PCB DRC, and audit the resulting connectivity before fabrication release.
 
 **Next Step:** Complete this gate during PCB layout, then perform controlled bench validation before crediting the Rev-C OCP as calibrated protection.
+
+**2026-09-21 release check:** Current Rev-C HAT ERC reports 82 violations and PCB DRC reports 161 violations plus 129 unconnected items. The prior 2026-08-14 clean ERC report is superseded by the current schematic state. Fabrication release remains blocked until the current findings are resolved and the checks are rerun with violation exit codes.
 
 ---
 

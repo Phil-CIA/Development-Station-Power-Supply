@@ -2,7 +2,7 @@
 
 ## Session outcome
 
-The HAT Rev-C overcurrent-protection redesign moved from the Rev-B root-cause finding to an implemented, ERC-clean four-channel differential architecture.
+The HAT Rev-C overcurrent-protection redesign moved from the Rev-B root-cause finding to an implemented four-channel differential architecture. The historical clean ERC result recorded below is superseded by the current validation snapshot in `docs/REVC_BRINGUP_PLAN.md`.
 
 The Rev-B OCP comparator arrangement is still not accepted as calibrated protection. Continue using the external bench-supply current limit for Rev-B work.
 
@@ -25,7 +25,7 @@ The INA2180 supply correction is mandatory: its recommended supply range is 2.7V
 
 Fresh KiCad artifacts generated on 2026-08-14:
 
-- `hardware/kicad/dsp-regulator-hat-rev-c/ERC.rpt`: 0 errors, 0 warnings.
+- `hardware/kicad/dsp-regulator-hat-rev-c/ERC.rpt`: 0 errors, 0 warnings at the 2026-08-14 checkpoint; superseded by the 2026-09-21 fresh ERC report.
 - `hardware/kicad/dsp-regulator-hat-rev-c/DSP-Regulator-HAT-RevC.net`: U2/U6 pin 8 are on `+3.3V Boot`.
 - The same netlist keeps U3/U7 pin 8 on `+12V`.
 - U3/U7 pins 1 and 7 export as `open_collector`.
@@ -78,7 +78,7 @@ Remove them only after confirming KiCad is closed; do not commit them.
 ## Safe restart state
 
 - Rev-B remains the bench-learning baseline and requires the external PSU current limit.
-- HAT Rev-C OCP schematic connectivity is ERC-clean, but the OCP is not yet layout-complete or bench-calibrated.
+- HAT Rev-C OCP schematic connectivity was ERC-clean at the 2026-08-14 checkpoint, but the current release validation is blocked; the OCP is not yet layout-complete or bench-calibrated.
 - INA2180 devices must remain powered from `+3.3V Boot` or another supply no higher than 5.5V.
 - TLV1702 comparators may remain on 12V.
 - Range-switch bypasses remain installed for bench work.

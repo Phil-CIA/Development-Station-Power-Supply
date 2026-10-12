@@ -37,8 +37,8 @@ Current power-hardware status:
 - The 3.3V regulator selector redesign is bench-proven in normal remote-sense operation; fallback and 5V TLV9352 checks remain open.
 - The Rev-B HAT current-range switch remains bypassed pending MOSFET pinout and Vgs validation.
 - HAT Rev-C implements four-channel differential OCP with dual INA2180A2 amplifiers and dual TLV1702 comparators.
-- HAT Rev-C ERC is clean, but RB-012 remains a PCB release gate for Kelvin routing, bypassing, thresholds, hysteresis, footprints, and final DRC/connectivity validation.
-- See `docs/DEV_STATION_HANDOFF_2026-08-14.md` for the active restart state.
+- Rev-C fabrication release is currently blocked by fresh 2026-09-21 ERC/DRC reports and unconnected-item findings on both boards; see `docs/REVC_BRINGUP_PLAN.md`.
+- See `docs/REVC_BRINGUP_PLAN.md` for the active release and bring-up state.
 
 ## Hardware scope in this repo
 
@@ -61,7 +61,7 @@ Current power-hardware status:
 - Latest netlist export: 2026-06-11 01:10:51
 - Design: Single +5V_Boot rail (simplified from adjustable 3-channel architecture)
 
-These Rev-B files remain the built/bench baseline. Active redesign work now lives in the corresponding Rev-C project folders; do not release Rev-C fabrication outputs until its tracker gates are closed.
+These Rev-B files remain the built/bench baseline. Active redesign work now lives in the corresponding Rev-C project folders; do not release Rev-C fabrication outputs until the current ERC/DRC and tracker gates are closed.
 
 ## Firmware status
 
@@ -87,3 +87,4 @@ Current firmware work in this repo includes:
 - docs/display-project/README.md
 - docs/GPIO_PINOUT.md
 - docs/USB_HUB_CHANGE_TRACKER.md
+- docs/REVC_BRINGUP_PLAN.md
