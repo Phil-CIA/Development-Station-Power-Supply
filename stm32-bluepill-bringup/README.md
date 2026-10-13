@@ -26,7 +26,7 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
   - PA1 = ISET_MPU_3V3
   - PA2 = ISET_MPU_Channel_3
 - Blinks PC13 status LED every 1 second.
-- Emits heartbeat on USB/USART monitor (`Serial`) at 115200.
+- Uses USART1 (`Serial1`) for the F103 console; the F405 target also retains its USB CDC console.
 - Emits extended binary telemetry on USART3 via `HardwareSerial SerialU3(PB11, PB10)` at 115200.
 
 ## Current role in this repo
@@ -37,14 +37,17 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
 
 ## Command shell
 
-- `HELP`
-- `FTEST`
-- `AHTNOW`
-- `AHTRESET`
-- `SRTEST`
-- `D9FLASH`
+Both F103 profiles include:
+
+- `HELP`, `DIAG`
 - `D9ON`
 - `D9OFF`
+- `CALSHOW`, `CFGSHOW`, `CALSET`, `CFGSAVE`, `CFGLOAD`, `CFGRESET`, `CFGERASE`
+
+The full-bench profile (`bluepill_f103c8_bench`) additionally includes:
+
+- `FTEST`, `AHTNOW`, `AHTRESET`, `SRTEST`, `D9FLASH`
+- `HBON`, `HBOFF`
 - `Q1ON`
 - `Q1OFF`
 - `Q2ON`
@@ -55,21 +58,24 @@ This project is the active bench-controller firmware baseline for STM32F103C8 (B
 - `Q4OFF`
 - `Q5ON`
 - `Q5OFF`
+- `Q9ON`
+- `Q9OFF`
 - `Q39ON`
 - `Q39OFF`
 - `Q612ON`
 - `Q612OFF`
 - `QSTATE`
 - `QSEQ`
-- `INAPROBE`
-- `INANOW`
-- `INARAILS`
-- Display-over-UDI command channel on USART3:
-  - `CMD:OUTPUT ON|OFF`
-  - `CMD:ILIM CH1|CH2 <mA>`
-  - Responses: `ACK:...` / `ERR:...` / `EVT:...`
-- `AWPROBE`
-- `AWMODE`
+- `INAPROBE`, `INANOW`, `INARAILS`, `INADIAG`
+- `AWPROBE`, `AWMODE`, `AWHB`, `AWP10ON`, `AWP10OFF`, `Q9DIAG`
+
+Both profiles retain the display-over-UDI command channel on USART3:
+
+- `CMD:OUTPUT ON|OFF`
+- `CMD:ILIM CH1|CH2 <mA>`
+- Responses: `ACK:...` / `ERR:...` / `EVT:...`
+
+The compact profile responds with an unsupported-command error for full-bench-only commands. Shared runtime, persistence, fault handling, and UDI behavior remain enabled in both profiles.
 
 Range pair notes:
 - `Q1ON` / `Q1OFF` drive AW9523 `P0.2` (`ESP- GPIO 5V Low`) for the Q1/Q7 gate path.
@@ -109,9 +115,30 @@ Build the Rev-C environment:
 
 `platformio run -d stm32-bluepill-bringup -e bluepill_f103c8`
 
+Build the full-bench F103 profile:
+
+`platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench`
+
 Build the Rev-D target:
 
 `platformio run -d stm32-bluepill-bringup -e f405rg`
+
+## F103 flash budgets
+
+The compact `bluepill_f103c8` image is limited to 52,428 bytes of complete
+loadable image size; `bluepill_f103c8_bench` may use up to the 65,536-byte
+F103 capacity. CI checks the `firmware.bin` length against the ELF load span,
+validates ELF load-segment placement in the F103 flash region, reports
+PlatformIO's flash metric separately, and runs the checker unit tests.
+The static RAM check enforces the F103's 20,480-byte `.data/.bss` capacity;
+it does not establish runtime stack/heap headroom.
+The F405 target retains its own USB/debug configuration and is not subject to
+the F103 image budgets.
+
+The profiles and limits are build-verified; the new profile binaries have not
+been bench-validated. Historical bench observations do not establish validation
+of these binaries. See `docs/FIRMWARE_DEVELOPMENT_PLAN.md` for the current
+issue #101 evidence and remaining limits.
 
 ## Upload (ST-Link)
 
