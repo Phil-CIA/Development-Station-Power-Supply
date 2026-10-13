@@ -128,7 +128,10 @@ Build the Rev-D target:
 The compact `bluepill_f103c8` image is limited to 52,428 bytes of complete
 loadable image size; `bluepill_f103c8_bench` may use up to the 65,536-byte
 F103 capacity. CI checks the `firmware.bin` length against the ELF load span,
-reports PlatformIO's flash metric separately, and runs the checker unit tests.
+validates ELF load-segment placement in the F103 flash region, reports
+PlatformIO's flash metric separately, and runs the checker unit tests.
+The static RAM check enforces the F103's 20,480-byte `.data/.bss` capacity;
+it does not establish runtime stack/heap headroom.
 The F405 target retains its own USB/debug configuration and is not subject to
 the F103 image budgets.
 

@@ -15,6 +15,11 @@ import struct
 import sys
 from dataclasses import dataclass
 
+F103_FLASH_BASE = 0x08000000
+F103_FLASH_CAPACITY_BYTES = 65536
+F103_STATIC_RAM_CAPACITY_BYTES = 20480
+F103_ENVS = {"bluepill_f103c8", "bluepill_f103c8_bench"}
+
 
 class BudgetCheckError(RuntimeError):
     """Raised when required inputs are missing, malformed, or over budget."""
@@ -62,8 +67,30 @@ def parse_platformio_metric(log_text: str, metric: str) -> PlatformIOMetric:
     return PlatformIOMetric(metric.lower(), percent, used, capacity)
 
 
-def parse_elf_flash_span(elf_path: pathlib.Path, flash_base: int = 0x08000000) -> int:
-    data = elf_path.read_bytes()
+def _read_elf_u32(data: bytes, offset: int, label: str) -> int:
+    if offset + 4 > len(data):
+        raise BudgetCheckError(f"malformed ELF ({label} truncated)")
+    return struct.unpack_from("<I", data, offset)[0]
+
+
+def _read_elf_u16(data: bytes, offset: int, label: str) -> int:
+    if offset + 2 > len(data):
+        raise BudgetCheckError(f"malformed ELF ({label} truncated)")
+    return struct.unpack_from("<H", data, offset)[0]
+
+
+def parse_elf_flash_span(
+    elf_path: pathlib.Path,
+    *,
+    flash_base: int,
+    flash_capacity_bytes: int,
+    require_flash_base_start: bool,
+) -> int:
+    try:
+        data = elf_path.read_bytes()
+    except OSError as exc:
+        raise BudgetCheckError(f"unable to read ELF: {elf_path}: {exc}") from exc
+
     if len(data) < 52:
         raise BudgetCheckError(f"malformed ELF (too small): {elf_path}")
     if data[0:4] != b"\x7fELF":
@@ -76,63 +103,137 @@ def parse_elf_flash_span(elf_path: pathlib.Path, flash_base: int = 0x08000000) -
     if elf_endian != 1:
         raise BudgetCheckError("unsupported ELF endianness (need little-endian)")
 
-    e_phoff = struct.unpack_from("<I", data, 28)[0]
-    e_phentsize = struct.unpack_from("<H", data, 42)[0]
-    e_phnum = struct.unpack_from("<H", data, 44)[0]
+    e_ehsize = _read_elf_u16(data, 40, "ELF header")
+    if e_ehsize < 52:
+        raise BudgetCheckError(f"malformed ELF (ELF header too small: {e_ehsize})")
+    if e_ehsize > len(data):
+        raise BudgetCheckError("malformed ELF (ELF header exceeds file length)")
 
-    if e_phnum <= 0 or e_phentsize <= 0:
-        raise BudgetCheckError("malformed ELF (missing program headers)")
+    e_phoff = _read_elf_u32(data, 28, "program header offset")
+    e_phentsize = _read_elf_u16(data, 42, "program header entry size")
+    e_phnum = _read_elf_u16(data, 44, "program header count")
 
-    min_addr = None
-    max_end = None
+    if e_phoff <= 0:
+        raise BudgetCheckError("malformed ELF (missing program header table offset)")
+    if e_phnum <= 0:
+        raise BudgetCheckError("malformed ELF (no program headers)")
+    if e_phentsize < 32:
+        raise BudgetCheckError(
+            f"malformed ELF (program header entry too small: {e_phentsize})"
+        )
+
+    ph_table_end = e_phoff + (e_phentsize * e_phnum)
+    if ph_table_end > len(data):
+        raise BudgetCheckError("malformed ELF (truncated program header table)")
+
+    flash_end = flash_base + flash_capacity_bytes
+    min_addr: int | None = None
+    max_end: int | None = None
 
     for i in range(e_phnum):
         off = e_phoff + i * e_phentsize
         if off + 32 > len(data):
-            raise BudgetCheckError("malformed ELF (truncated program header table)")
+            raise BudgetCheckError(
+                f"malformed ELF (truncated program header entry {i})"
+            )
 
-        p_type, p_offset, p_vaddr, p_paddr, p_filesz, _p_memsz, _p_flags, _p_align = struct.unpack_from(
+        p_type, p_offset, _p_vaddr, p_paddr, p_filesz, _p_memsz, _p_flags, _p_align = struct.unpack_from(
             "<IIIIIIII", data, off
         )
         if p_type != 1 or p_filesz <= 0:
             continue
-
-        # Keep only FLASH-resident load segments for programmed image span.
-        if p_paddr < flash_base:
-            continue
-
         if p_offset + p_filesz > len(data):
-            raise BudgetCheckError("malformed ELF (segment exceeds file length)")
+            raise BudgetCheckError(
+                f"malformed ELF (segment {i} exceeds file length)"
+            )
 
         seg_start = p_paddr
         seg_end = p_paddr + p_filesz
+
+        if seg_start < flash_base and seg_end > flash_base:
+            raise BudgetCheckError(
+                "ELF FLASH segment crosses below flash base "
+                f"(segment={hex(seg_start)}..{hex(seg_end)}, flash_base={hex(flash_base)})"
+            )
+
+        is_flash_addressed = flash_base <= seg_start < 0x20000000
+        if not is_flash_addressed:
+            continue
+
+        if seg_start >= flash_end:
+            raise BudgetCheckError(
+                "ELF FLASH segment starts above flash upper bound "
+                f"(segment_start={hex(seg_start)}, flash_end={hex(flash_end)})"
+            )
+
+        if seg_end > flash_end:
+            raise BudgetCheckError(
+                "ELF FLASH segment exceeds flash upper bound "
+                f"(segment={hex(seg_start)}..{hex(seg_end)}, flash_end={hex(flash_end)})"
+            )
+
         min_addr = seg_start if min_addr is None else min(min_addr, seg_start)
         max_end = seg_end if max_end is None else max(max_end, seg_end)
 
     if min_addr is None or max_end is None:
-        raise BudgetCheckError("unable to find FLASH load segments in ELF")
+        raise BudgetCheckError("unable to find FLASH-addressed load segments in ELF")
     if max_end <= min_addr:
-        raise BudgetCheckError("malformed ELF FLASH span")
+        raise BudgetCheckError("malformed ELF FLASH programmed span")
+    if require_flash_base_start and min_addr != flash_base:
+        raise BudgetCheckError(
+            "ELF FLASH image does not start at expected base "
+            f"(start={hex(min_addr)}, expected={hex(flash_base)})"
+        )
 
     return max_end - min_addr
 
 
 def parse_map_sections(map_text: str) -> dict[str, int]:
-    # Parse GNU ld map output section summary lines.
-    # Example: " .text          0x0800010c    0xae90"
-    sec_re = re.compile(r"^\s*\.(\S+)\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\b")
+    marker = "Linker script and memory map"
+    marker_index = map_text.find(marker)
+    if marker_index < 0:
+        raise BudgetCheckError("missing GNU linker 'Linker script and memory map' section")
+
+    # Parse top-level output section entries only.
+    # These start at column 0 in the map's linked memory map block.
+    sec_re = re.compile(r"^\.(\S+)\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\b")
+    sec_name_only_re = re.compile(r"^\.(\S+)\s*$")
+    wrapped_re = re.compile(r"^\s*0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\b")
+
     sections: dict[str, int] = {}
-    for line in map_text.splitlines():
+    pending_name: str | None = None
+
+    for line in map_text[marker_index:].splitlines():
         match = sec_re.match(line)
-        if not match:
+        if match:
+            name = f".{match.group(1)}"
+            size = int(match.group(2), 16)
+            sections.setdefault(name, size)
+            pending_name = None
             continue
-        name = f".{match.group(1)}"
-        size = int(match.group(2), 16)
-        # Keep first top-level section record encountered.
-        sections.setdefault(name, size)
+
+        if pending_name is not None:
+            wrapped = wrapped_re.match(line)
+            if wrapped:
+                size = int(wrapped.group(1), 16)
+                sections.setdefault(pending_name, size)
+                pending_name = None
+                continue
+            pending_name = None
+
+        pending = sec_name_only_re.match(line)
+        if pending:
+            pending_name = f".{pending.group(1)}"
 
     if not sections:
-        raise BudgetCheckError("missing or malformed linker map section table")
+        raise BudgetCheckError("missing or malformed linker map output section table")
+
+    required = (".text", ".rodata", ".data", ".bss")
+    missing = [name for name in required if name not in sections]
+    if missing:
+        raise BudgetCheckError(
+            "missing required output sections in linker map: " + ", ".join(missing)
+        )
 
     return sections
 
@@ -144,11 +245,22 @@ def evaluate_budget(
     build_log: pathlib.Path,
     flash_capacity_bytes: int,
     flash_limit_bytes: int,
+    flash_base: int = F103_FLASH_BASE,
+    ram_capacity_bytes: int = F103_STATIC_RAM_CAPACITY_BYTES,
 ) -> dict:
     if flash_limit_bytes > flash_capacity_bytes:
         raise BudgetCheckError(
             f"invalid limit: {flash_limit_bytes} exceeds flash capacity {flash_capacity_bytes}"
         )
+    if env in F103_ENVS:
+        if flash_capacity_bytes != F103_FLASH_CAPACITY_BYTES:
+            raise BudgetCheckError(
+                f"{env}: configured flash capacity must be {F103_FLASH_CAPACITY_BYTES}, got {flash_capacity_bytes}"
+            )
+        if ram_capacity_bytes != F103_STATIC_RAM_CAPACITY_BYTES:
+            raise BudgetCheckError(
+                f"{env}: configured static RAM capacity must be {F103_STATIC_RAM_CAPACITY_BYTES}, got {ram_capacity_bytes}"
+            )
 
     bin_path = build_dir / "firmware.bin"
     elf_path = build_dir / "firmware.elf"
@@ -165,7 +277,21 @@ def evaluate_budget(
     ram_metric = parse_platformio_metric(log_text, "RAM")
     flash_metric = parse_platformio_metric(log_text, "Flash")
 
-    elf_span = parse_elf_flash_span(elf_path)
+    if flash_metric.capacity_bytes != flash_capacity_bytes:
+        raise BudgetCheckError(
+            f"{env}: PlatformIO flash capacity mismatch: metric={flash_metric.capacity_bytes} configured={flash_capacity_bytes}"
+        )
+    if ram_metric.capacity_bytes != ram_capacity_bytes:
+        raise BudgetCheckError(
+            f"{env}: PlatformIO static RAM capacity mismatch: metric={ram_metric.capacity_bytes} configured={ram_capacity_bytes}"
+        )
+
+    elf_span = parse_elf_flash_span(
+        elf_path,
+        flash_base=flash_base,
+        flash_capacity_bytes=flash_capacity_bytes,
+        require_flash_base_start=(env in F103_ENVS),
+    )
     if elf_span != bin_size:
         raise BudgetCheckError(
             "firmware.bin size does not match ELF FLASH load span "
@@ -187,6 +313,11 @@ def evaluate_budget(
     if not within_limit:
         raise BudgetCheckError(
             f"{env}: complete image exceeds limit: used={flash_used} limit={flash_limit_bytes}"
+        )
+    ram_within_capacity = ram_metric.used_bytes <= ram_capacity_bytes
+    if not ram_within_capacity:
+        raise BudgetCheckError(
+            f"{env}: static RAM metric exceeds capacity: used={ram_metric.used_bytes} capacity={ram_capacity_bytes}"
         )
 
     return {
@@ -217,6 +348,11 @@ def evaluate_budget(
                 "used_bytes": ram_metric.used_bytes,
                 "capacity_bytes": ram_metric.capacity_bytes,
                 "percent": ram_metric.percent,
+                "within_capacity": ram_within_capacity,
+                "note": (
+                    "Static RAM metric reflects link-time .data/.bss usage only; "
+                    "it does not guarantee runtime stack/heap headroom."
+                ),
             },
         },
         "map_sections": map_sections,
@@ -243,6 +379,7 @@ def _render_report(report: dict) -> str:
             "PlatformIO static RAM metric: "
             f"used={ram['used_bytes']} from={ram['capacity_bytes']} ({ram['percent']:.1f}%)"
         ),
+        f"RAM metric note: {ram['note']}",
         (
             "ELF cross-check: "
             f"firmware.bin={flash['used_bytes']} bytes, elf_flash_span={flash['elf_flash_span_bytes']} bytes"
@@ -258,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-log", required=True)
     parser.add_argument("--flash-capacity-bytes", type=int, default=65536)
     parser.add_argument("--flash-limit-bytes", type=int, required=True)
+    parser.add_argument("--ram-capacity-bytes", type=int, default=F103_STATIC_RAM_CAPACITY_BYTES)
     parser.add_argument("--report-text", required=True)
     parser.add_argument("--report-json", required=True)
     args = parser.parse_args(argv)
@@ -274,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
             build_log=build_log,
             flash_capacity_bytes=args.flash_capacity_bytes,
             flash_limit_bytes=args.flash_limit_bytes,
+            ram_capacity_bytes=args.ram_capacity_bytes,
         )
         text = _render_report(report)
 
