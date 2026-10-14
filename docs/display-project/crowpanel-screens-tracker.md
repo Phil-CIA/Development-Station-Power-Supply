@@ -1129,3 +1129,17 @@ When returning to this session for a status sync:
       redesign, persistence changes, or physical ISET control validation.
   - Limitation restated: ILIM still updates a RAM-held status threshold in current STM32 firmware; this checkpoint does not
     prove physical current-limit control or persistence. #77 remains the next technical objective.
+
+- 2026-10-14 PR #123 PRE-BENCH VALIDATION CHECKPOINT (#84 CSV export, branch `phil-cia-issue-triage`, commit `1a20e50`):
+  - Scope in this checkpoint: software validation only plus build; no hardware upload, no serial-port bench capture yet.
+  - Build result: `.\scripts\guarded-flash.ps1 -Target crowpanel -Action build` succeeded for `crowpanel43`.
+  - Firmware/export review: CSV header in `dumpLogCsv()` keeps the original 10 CH1 columns first and appends
+    `v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo`; `has_ch2=0` rows emit empty CH2 value cells.
+  - Script checks (software-only, mocked serial): complete export, no samples, missing `csv_end`, serial open failure, and
+    no partial output file on failure all verified.
+  - Defect found and fixed in this checkpoint: `tools/dump_log_csv.py` previously accepted malformed/noise rows as success.
+    It now validates header presence, 16-field row shape, numeric columns, idx continuity, non-regressing timestamps, CH2
+    empties when `has_ch2=0`, and `# exported_samples` count consistency before writing output.
+  - Pending hardware evidence (not yet run in this checkpoint): COM12 identity probe on the physical panel, UART transport
+    runtime confirmation on the connected setup, and real bench captures (20-row plus full-buffer) required to close #84
+    validation.

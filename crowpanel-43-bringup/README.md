@@ -63,7 +63,9 @@ Pass `--limit N` to capture only the newest N samples or `--output path.csv`
 to choose the destination. The script waits for the complete `csv_begin` /
 `csv_end` block and does not write a file on timeout. Existing CH1 columns
 retain their order; CH2 millivolt/amp values and `has_ch2` validity plus the
-`demo` marker are appended. CH2 value cells are empty when unavailable.
+`demo` marker are appended. CH2 value cells are empty when unavailable. The
+capture is validated before write: malformed rows, console noise, exported
+count mismatch, non-monotonic timestamps, and broken idx order are rejected.
 
 ## Notes
 
