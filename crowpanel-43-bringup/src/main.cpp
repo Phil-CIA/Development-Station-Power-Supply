@@ -4458,11 +4458,12 @@ void dumpLogCsv(int limit) {
   Serial.printf("# buffer_capacity=%lu\n", static_cast<unsigned long>(kTrendCapacity));
   Serial.printf("# exported_samples=%lu\n", static_cast<unsigned long>(trend_count - start_logical));
   Serial.printf("# ota_enabled=%s\n", kOtaEnabled ? "true" : "false");
-  Serial.println("idx,t_ms,seq,v12_mV,v12_V,i12_mA,i12_A,rx_count,err_count,uart_frames");
+  Serial.println("idx,t_ms,seq,v12_mV,v12_V,i12_mA,i12_A,rx_count,err_count,uart_frames,"
+                 "v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo");
   size_t out_idx = 0;
   for (size_t i = start_logical; i < trend_count; ++i) {
     const TrendSample& s = trendAt(i);
-    Serial.printf("%lu,%lu,%u,%u,%.3f,%d,%.3f,%lu,%lu,%lu\n",
+    Serial.printf("%lu,%lu,%u,%u,%.3f,%d,%.3f,%lu,%lu,%lu,",
                   static_cast<unsigned long>(out_idx++),
                   static_cast<unsigned long>(s.t_ms),
                   static_cast<unsigned>(s.seq),
@@ -4472,7 +4473,17 @@ void dumpLogCsv(int limit) {
                   s.i12_mA / 1000.0f,
                   static_cast<unsigned long>(s.rx_count),
                   static_cast<unsigned long>(s.err_count),
-            static_cast<unsigned long>(s.uart_count));
+                  static_cast<unsigned long>(s.uart_count));
+    if (s.has_ch2) {
+      Serial.printf("%u,%.3f,%d,%.3f",
+                    static_cast<unsigned>(s.v3v3_mV),
+                    s.v3v3_mV / 1000.0f,
+                    static_cast<int>(s.i3v3_mA),
+                    s.i3v3_mA / 1000.0f);
+    } else {
+      Serial.print(",,,");
+    }
+    Serial.printf(",%u,%u\n", s.has_ch2 ? 1U : 0U, s.demo ? 1U : 0U);
   }
   Serial.println("csv_end");
 }

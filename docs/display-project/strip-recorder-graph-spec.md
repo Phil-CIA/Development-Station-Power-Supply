@@ -95,8 +95,9 @@ rather than synthetic history. This is documented in the UI (see section 6).
   being added.
 - **CSV/PC export is a separate, already-mostly-built feature.** Tracked in
   issue [#84](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/84),
-  not part of the D5x buckets below. `LOG_DUMP_CSV` already exists; it just
-  needs CH2 columns once D5a lands.
+  not part of the D5x buckets below. D5a added the CH2 samples; the export
+  now appends CH2 columns and has a PC-side USB-serial capture script in
+  `crowpanel-43-bringup/tools/dump_log_csv.py`.
 
 ## 5. Revised scope — D5 sub-buckets
 

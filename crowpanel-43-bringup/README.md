@@ -43,6 +43,28 @@ C:/Users/user/.platformio/penv/Scripts/platformio.exe device monitor -b 115200
 - `UDI_OUTPUT ON|OFF` (sends `CMD:OUTPUT ...` over UDI UART)
 - `UDI_ILIM CH1|CH2 <mA>` (sends `CMD:ILIM ...` over UDI UART)
 
+## Export trend data
+
+Install the PC-side serial dependency once:
+
+```powershell
+python -m pip install pyserial
+```
+
+With the CrowPanel connected over USB, capture up to 4,500 trend samples to
+a timestamped CSV. The elapsed history depends on actual telemetry arrival
+cadence:
+
+```powershell
+python .\tools\dump_log_csv.py COM12
+```
+
+Pass `--limit N` to capture only the newest N samples or `--output path.csv`
+to choose the destination. The script waits for the complete `csv_begin` /
+`csv_end` block and does not write a file on timeout. Existing CH1 columns
+retain their order; CH2 millivolt/amp values and `has_ch2` validity plus the
+`demo` marker are appended. CH2 value cells are empty when unavailable.
+
 ## Notes
 
 - This is a bring-up baseline, not full LVGL UI firmware yet.
