@@ -1143,3 +1143,18 @@ When returning to this session for a status sync:
   - Pending hardware evidence (not yet run in this checkpoint): COM12 identity probe on the physical panel, UART transport
     runtime confirmation on the connected setup, and real bench captures (20-row plus full-buffer) required to close #84
     validation.
+
+- 2026-10-14 PR #123 BENCH EVIDENCE ADDENDUM (same branch, follow-up commit `a9b60d0` for script hardening):
+  - Approved guarded upload executed with identity prechecks: COM12, ESP32-S3, MAC `80:B5:4E:E2:E4:08`; upload succeeded with
+    hash verification (`guarded-upload-pr123.log` in session evidence).
+  - Hardware captures (real serial data): `dump_log_csv.py COM12 --limit 20` produced 20 data rows; full capture produced 48
+    rows; both passed strict validation (16 fields/row, sequential idx, non-regressing timestamps, metadata row-count match).
+  - Header verification on hardware captures: original CH1 columns remained first and unchanged, and appended columns were
+    `v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo`.
+  - Hardware-observed values during this run: `has_ch2=1` and `demo=0` for all captured rows (telemetry source present, demo off).
+  - Software-only edge coverage kept explicit: `has_ch2=0` empty-cell enforcement, `demo=1` acceptance, malformed/noise rejection,
+    missing-`csv_end`, and open-failure paths were validated with controlled mocked-serial tests.
+  - Serial-open reset/history check in this run: repeated COM12 reopen checks showed sample counts increasing (`144 -> 149 -> 153`);
+    no reset/clear event was observed from opening USB serial in this setup.
+  - Still pending for broader coverage (not exercised on hardware in this checkpoint): naturally occurring `has_ch2=0` telemetry
+    rows, live demo-mode rows (`demo=1`), and any unsafe output-changing scenarios (intentionally not run).
