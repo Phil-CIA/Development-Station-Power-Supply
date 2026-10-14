@@ -1161,6 +1161,10 @@ When returning to this session for a status sync:
     distinguish CH1/CH2 rails.
   - Software-only edge coverage kept explicit: `has_ch2=0` empty-cell enforcement, `demo=1` acceptance, malformed/noise rejection,
     missing-`csv_end`, and open-failure paths were validated with controlled mocked-serial tests.
+  - 2026-10-14 software-only correction follow-up: removed sample-period-derived maximum-gap rejection after audit reproduction
+    (valid stop/resume and telemetry interruption gaps were being rejected). Timestamp checks now keep uint32 range validation and
+    half-range modular forward ordering (`delta` must be in `1..2^31-1`), with explicit documentation that gaps near/above the
+    half-range boundary (~24.9 days) are ambiguous from timestamps alone.
   - Serial-open reset/history check in this run: repeated COM12 reopen checks showed sample counts increasing (`144 -> 149 -> 153`);
     no reset/clear event was observed from opening USB serial in this setup.
   - Still pending for broader coverage (not exercised on hardware in this checkpoint): naturally occurring `has_ch2=0` telemetry

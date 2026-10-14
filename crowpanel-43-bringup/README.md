@@ -66,7 +66,10 @@ retain their order; CH2 millivolt/amp values and `has_ch2` validity plus the
 `demo` marker are appended. CH2 value cells are empty when unavailable. The
 capture is validated before write: malformed rows, console noise, exported
 count mismatch, invalid/duplicate metadata, non-contiguous idx values, and
-timestamp ordering outside uint32 rollover-safe bounds are rejected.
+timestamp ordering outside uint32 rollover-safe bounds are rejected. Timestamp
+ordering uses uint32 half-range modular forward-delta rules; gaps of about
+24.9 days or more are inherently ambiguous from timestamps alone and are
+rejected.
 
 ## Notes
 

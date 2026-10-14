@@ -146,21 +146,33 @@ class DumpLogCsvValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "t_ms out of uint32 range"):
             dump_log_csv.validate_csv_lines(too_large)
 
-    def test_accepts_uint32_rollover_when_step_is_plausible(self):
+    def test_accepts_two_minute_stop_resume_gap(self):
         lines = _base_lines(
-            f"0,{dump_log_csv.UINT32_MAX - 150},1,5000,5.000,0,0.000,1,0,1,3300,3.300,0,0.000,1,0",
-            "1,49,2,5001,5.001,0,0.000,2,0,2,3300,3.300,0,0.000,1,0",
-            sample_period_ms=200,
+            "0,1000,1,5000,5.000,0,0.000,1,0,1,3300,3.300,0,0.000,1,0",
+            "1,121000,2,5001,5.001,0,0.000,2,0,2,3300,3.300,0,0.000,1,0",
         )
         dump_log_csv.validate_csv_lines(lines)
 
-    def test_rejects_arbitrary_timestamp_backwards_jump(self):
+    def test_accepts_one_hour_telemetry_interruption(self):
+        lines = _base_lines(
+            "0,1000,1,5000,5.000,0,0.000,1,0,1,3300,3.300,0,0.000,1,0",
+            "1,3601000,2,5001,5.001,0,0.000,2,0,2,3300,3.300,0,0.000,1,0",
+        )
+        dump_log_csv.validate_csv_lines(lines)
+
+    def test_accepts_uint32_rollover(self):
+        lines = _base_lines(
+            f"0,{dump_log_csv.UINT32_MAX - 150},1,5000,5.000,0,0.000,1,0,1,3300,3.300,0,0.000,1,0",
+            "1,49,2,5001,5.001,0,0.000,2,0,2,3300,3.300,0,0.000,1,0",
+        )
+        dump_log_csv.validate_csv_lines(lines)
+
+    def test_rejects_ordinary_backwards_timestamp(self):
         lines = _base_lines(
             "0,50000,1,5000,5.000,0,0.000,1,0,1,3300,3.300,0,0.000,1,0",
             "1,40000,2,5001,5.001,0,0.000,2,0,2,3300,3.300,0,0.000,1,0",
-            sample_period_ms=200,
         )
-        with self.assertRaisesRegex(RuntimeError, "timestamp step"):
+        with self.assertRaisesRegex(RuntimeError, "timestamp ordering ambiguous/backward"):
             dump_log_csv.validate_csv_lines(lines)
 
 

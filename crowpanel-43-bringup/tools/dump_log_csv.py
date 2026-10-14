@@ -11,9 +11,7 @@ EXPECTED_HEADER = (
     "v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo"
 )
 UINT32_MAX = (1 << 32) - 1
-DEFAULT_SAMPLE_PERIOD_MS = 200
-MAX_SAMPLE_PERIOD_GAP_MULTIPLIER = 500
-MIN_ALLOWED_SAMPLE_GAP_MS = 60000
+UINT32_HALF_RANGE = 1 << 31
 
 
 def _parse_metadata(lines):
@@ -67,22 +65,6 @@ def validate_csv_lines(lines):
             "no CSV file was written."
         )
 
-    sample_period_ms = DEFAULT_SAMPLE_PERIOD_MS
-    sample_period_entries = metadata.get("sample_period_ms", [])
-    if sample_period_entries:
-        try:
-            sample_period_ms = int(sample_period_entries[-1])
-        except ValueError as exc:
-            raise RuntimeError(
-                f"Invalid sample_period_ms metadata value: {sample_period_entries[-1]!r}; "
-                "no CSV file was written."
-            ) from exc
-        if sample_period_ms <= 0:
-            raise RuntimeError("sample_period_ms must be greater than zero; no CSV file was written.")
-    max_allowed_step = max(
-        sample_period_ms * MAX_SAMPLE_PERIOD_GAP_MULTIPLIER, MIN_ALLOWED_SAMPLE_GAP_MS
-    )
-
     prev_t_ms = None
     for row_no, line in enumerate(data_lines, start=1):
         cells = line.split(",")
@@ -129,16 +111,13 @@ def validate_csv_lines(lines):
                     f"Malformed row {row_no}: timestamp did not advance ({t_ms}); "
                     "no CSV file was written."
                 )
-            if forward_delta > max_allowed_step:
+            # Use uint32 half-range ordering: deltas in [1, 2^31-1] are forward.
+            # For deltas >= 2^31, timestamps alone are ambiguous (very large forward
+            # gap vs. backward jump), so treat them as invalid for CSV validation.
+            if forward_delta >= UINT32_HALF_RANGE:
                 raise RuntimeError(
-                    f"Malformed row {row_no}: timestamp step {forward_delta} ms exceeds "
-                    f"allowed window {max_allowed_step} ms (sample_period_ms={sample_period_ms}); "
-                    "no CSV file was written."
-                )
-            if t_ms < prev_t_ms and prev_t_ms < UINT32_MAX - max_allowed_step:
-                raise RuntimeError(
-                    f"Malformed row {row_no}: timestamp rollover not plausible at {t_ms}; "
-                    "no CSV file was written."
+                    f"Malformed row {row_no}: timestamp ordering ambiguous/backward at {t_ms} "
+                    f"(delta={forward_delta}); no CSV file was written."
                 )
         prev_t_ms = t_ms
 
