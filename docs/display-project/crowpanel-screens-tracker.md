@@ -1148,10 +1148,17 @@ When returning to this session for a status sync:
   - Approved guarded upload executed with identity prechecks: COM12, ESP32-S3, MAC `80:B5:4E:E2:E4:08`; upload succeeded with
     hash verification (`guarded-upload-pr123.log` in session evidence).
   - Hardware captures (real serial data): `dump_log_csv.py COM12 --limit 20` produced 20 data rows; full capture produced 48
-    rows; both passed strict validation (16 fields/row, sequential idx, non-regressing timestamps, metadata row-count match).
+    rows; both passed strict validation (16 fields/row, sequential idx, rollover-aware uint32 timestamps, metadata row-count match).
+    The "full capture" in this checkpoint means all 48 samples available at capture time, not a filled 4,500-sample ring.
   - Header verification on hardware captures: original CH1 columns remained first and unchanged, and appended columns were
     `v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo`.
   - Hardware-observed values during this run: `has_ch2=1` and `demo=0` for all captured rows (telemetry source present, demo off).
+    This checkpoint did not produce naturally occurring `has_ch2=0` or `demo=1` rows on hardware.
+  - Uploaded firmware identity clarification: guarded upload wrote `.pio\\build\\crowpanel43\\firmware.bin` from the branch
+    worktree at the time of upload (commit `a9b60d0`), not from the later tracker-only commit.
+  - CH1/CH2 mapping limitation: this validation checked CSV schema/field ordering and consistency with telemetry snapshots only.
+    It did not independently prove physical rail identity or calibration accuracy; near-zero readings cannot by themselves
+    distinguish CH1/CH2 rails.
   - Software-only edge coverage kept explicit: `has_ch2=0` empty-cell enforcement, `demo=1` acceptance, malformed/noise rejection,
     missing-`csv_end`, and open-failure paths were validated with controlled mocked-serial tests.
   - Serial-open reset/history check in this run: repeated COM12 reopen checks showed sample counts increasing (`144 -> 149 -> 153`);

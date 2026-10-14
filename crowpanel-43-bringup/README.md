@@ -65,7 +65,8 @@ to choose the destination. The script waits for the complete `csv_begin` /
 retain their order; CH2 millivolt/amp values and `has_ch2` validity plus the
 `demo` marker are appended. CH2 value cells are empty when unavailable. The
 capture is validated before write: malformed rows, console noise, exported
-count mismatch, non-monotonic timestamps, and broken idx order are rejected.
+count mismatch, invalid/duplicate metadata, non-contiguous idx values, and
+timestamp ordering outside uint32 rollover-safe bounds are rejected.
 
 ## Notes
 

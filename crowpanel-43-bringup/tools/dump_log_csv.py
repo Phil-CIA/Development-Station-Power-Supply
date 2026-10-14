@@ -10,19 +10,23 @@ EXPECTED_HEADER = (
     "idx,t_ms,seq,v12_mV,v12_V,i12_mA,i12_A,rx_count,err_count,uart_frames,"
     "v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo"
 )
+UINT32_MAX = (1 << 32) - 1
+DEFAULT_SAMPLE_PERIOD_MS = 200
+MAX_SAMPLE_PERIOD_GAP_MULTIPLIER = 500
+MIN_ALLOWED_SAMPLE_GAP_MS = 60000
 
 
-def _parse_exported_samples(lines):
+def _parse_metadata(lines):
+    metadata = {}
     for line in lines:
-        if line.startswith("# exported_samples="):
-            value = line.split("=", 1)[1].strip()
-            try:
-                return int(value)
-            except ValueError as exc:
-                raise RuntimeError(
-                    f"Invalid exported_samples metadata value: {value!r}"
-                ) from exc
-    return None
+        if not line.startswith("# "):
+            continue
+        content = line[2:]
+        if "=" not in content:
+            continue
+        key, value = content.split("=", 1)
+        metadata.setdefault(key.strip(), []).append(value.strip())
+    return metadata
 
 
 def validate_csv_lines(lines):
@@ -34,19 +38,51 @@ def validate_csv_lines(lines):
 
     header_index = lines.index(EXPECTED_HEADER)
     data_lines = lines[header_index + 1 :]
-    if any("," in line for line in lines[:header_index] if not line.startswith("# ")):
-        raise RuntimeError(
-            "Unexpected non-metadata content before CSV header; no CSV file was written."
-        )
+    for line in lines[:header_index]:
+        if not line.startswith("# "):
+            raise RuntimeError(
+                "Unexpected non-metadata content before CSV header; "
+                "no CSV file was written."
+            )
 
-    expected_count = _parse_exported_samples(lines)
-    if expected_count is not None and expected_count != len(data_lines):
+    metadata = _parse_metadata(lines[:header_index])
+    exported_entries = metadata.get("exported_samples", [])
+    if len(exported_entries) != 1:
+        raise RuntimeError(
+            "Expected exactly one exported_samples metadata entry before CSV header; "
+            "no CSV file was written."
+        )
+    try:
+        expected_count = int(exported_entries[0])
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Invalid exported_samples metadata value: {exported_entries[0]!r}; "
+            "no CSV file was written."
+        ) from exc
+    if expected_count < 0:
+        raise RuntimeError("exported_samples must be non-negative; no CSV file was written.")
+    if expected_count != len(data_lines):
         raise RuntimeError(
             "exported_samples metadata does not match parsed row count; "
             "no CSV file was written."
         )
 
-    prev_idx = None
+    sample_period_ms = DEFAULT_SAMPLE_PERIOD_MS
+    sample_period_entries = metadata.get("sample_period_ms", [])
+    if sample_period_entries:
+        try:
+            sample_period_ms = int(sample_period_entries[-1])
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid sample_period_ms metadata value: {sample_period_entries[-1]!r}; "
+                "no CSV file was written."
+            ) from exc
+        if sample_period_ms <= 0:
+            raise RuntimeError("sample_period_ms must be greater than zero; no CSV file was written.")
+    max_allowed_step = max(
+        sample_period_ms * MAX_SAMPLE_PERIOD_GAP_MULTIPLIER, MIN_ALLOWED_SAMPLE_GAP_MS
+    )
+
     prev_t_ms = None
     for row_no, line in enumerate(data_lines, start=1):
         cells = line.split(",")
@@ -68,29 +104,52 @@ def validate_csv_lines(lines):
             int(cells[8])  # err_count
             int(cells[9])  # uart_frames
             has_ch2 = int(cells[14])
-            int(cells[15])  # demo
+            demo = int(cells[15])
         except ValueError as exc:
             raise RuntimeError(
                 f"Malformed row {row_no}: expected numeric values; "
                 "no CSV file was written."
             ) from exc
 
-        if prev_idx is not None and idx != prev_idx + 1:
+        expected_idx = row_no - 1
+        if idx != expected_idx:
             raise RuntimeError(
-                f"Malformed row {row_no}: idx sequence broke at {idx}; "
+                f"Malformed row {row_no}: expected idx {expected_idx}, got {idx}; "
                 "no CSV file was written."
             )
-        if prev_t_ms is not None and t_ms < prev_t_ms:
+        if not 0 <= t_ms <= UINT32_MAX:
             raise RuntimeError(
-                f"Malformed row {row_no}: timestamp regressed at {t_ms}; "
+                f"Malformed row {row_no}: t_ms out of uint32 range ({t_ms}); "
                 "no CSV file was written."
             )
-        prev_idx = idx
+        if prev_t_ms is not None:
+            forward_delta = (t_ms - prev_t_ms) & UINT32_MAX
+            if forward_delta == 0:
+                raise RuntimeError(
+                    f"Malformed row {row_no}: timestamp did not advance ({t_ms}); "
+                    "no CSV file was written."
+                )
+            if forward_delta > max_allowed_step:
+                raise RuntimeError(
+                    f"Malformed row {row_no}: timestamp step {forward_delta} ms exceeds "
+                    f"allowed window {max_allowed_step} ms (sample_period_ms={sample_period_ms}); "
+                    "no CSV file was written."
+                )
+            if t_ms < prev_t_ms and prev_t_ms < UINT32_MAX - max_allowed_step:
+                raise RuntimeError(
+                    f"Malformed row {row_no}: timestamp rollover not plausible at {t_ms}; "
+                    "no CSV file was written."
+                )
         prev_t_ms = t_ms
 
         if has_ch2 not in (0, 1):
             raise RuntimeError(
                 f"Malformed row {row_no}: has_ch2 must be 0 or 1; "
+                "no CSV file was written."
+            )
+        if demo not in (0, 1):
+            raise RuntimeError(
+                f"Malformed row {row_no}: demo must be 0 or 1; "
                 "no CSV file was written."
             )
 
