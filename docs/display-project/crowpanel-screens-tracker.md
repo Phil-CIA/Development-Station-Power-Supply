@@ -1129,3 +1129,43 @@ When returning to this session for a status sync:
       redesign, persistence changes, or physical ISET control validation.
   - Limitation restated: ILIM still updates a RAM-held status threshold in current STM32 firmware; this checkpoint does not
     prove physical current-limit control or persistence. #77 remains the next technical objective.
+
+- 2026-10-14 PR #123 PRE-BENCH VALIDATION CHECKPOINT (#84 CSV export, branch `phil-cia-issue-triage`, commit `1a20e50`):
+  - Scope in this checkpoint: software validation only plus build; no hardware upload, no serial-port bench capture yet.
+  - Build result: `.\scripts\guarded-flash.ps1 -Target crowpanel -Action build` succeeded for `crowpanel43`.
+  - Firmware/export review: CSV header in `dumpLogCsv()` keeps the original 10 CH1 columns first and appends
+    `v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo`; `has_ch2=0` rows emit empty CH2 value cells.
+  - Script checks (software-only, mocked serial): complete export, no samples, missing `csv_end`, serial open failure, and
+    no partial output file on failure all verified.
+  - Defect found and fixed in this checkpoint: `tools/dump_log_csv.py` previously accepted malformed/noise rows as success.
+    It now validates header presence, 16-field row shape, numeric columns, idx continuity, non-regressing timestamps, CH2
+    empties when `has_ch2=0`, and `# exported_samples` count consistency before writing output.
+  - Pending hardware evidence (not yet run in this checkpoint): COM12 identity probe on the physical panel, UART transport
+    runtime confirmation on the connected setup, and real bench captures (20-row plus full-buffer) required to close #84
+    validation.
+
+- 2026-10-14 PR #123 BENCH EVIDENCE ADDENDUM (same branch, follow-up commit `a9b60d0` for script hardening):
+  - Approved guarded upload executed with identity prechecks: COM12, ESP32-S3, MAC `80:B5:4E:E2:E4:08`; upload succeeded with
+    hash verification (`guarded-upload-pr123.log` in session evidence).
+  - Hardware captures (real serial data): `dump_log_csv.py COM12 --limit 20` produced 20 data rows; full capture produced 48
+    rows; both passed strict validation (16 fields/row, sequential idx, rollover-aware uint32 timestamps, metadata row-count match).
+    The "full capture" in this checkpoint means all 48 samples available at capture time, not a filled 4,500-sample ring.
+  - Header verification on hardware captures: original CH1 columns remained first and unchanged, and appended columns were
+    `v3v3_mV,v3v3_V,i3v3_mA,i3v3_A,has_ch2,demo`.
+  - Hardware-observed values during this run: `has_ch2=1` and `demo=0` for all captured rows (telemetry source present, demo off).
+    This checkpoint did not produce naturally occurring `has_ch2=0` or `demo=1` rows on hardware.
+  - Uploaded firmware identity clarification: guarded upload wrote `.pio\\build\\crowpanel43\\firmware.bin` from the branch
+    worktree at the time of upload (commit `a9b60d0`), not from the later tracker-only commit.
+  - CH1/CH2 mapping limitation: this validation checked CSV schema/field ordering and consistency with telemetry snapshots only.
+    It did not independently prove physical rail identity or calibration accuracy; near-zero readings cannot by themselves
+    distinguish CH1/CH2 rails.
+  - Software-only edge coverage kept explicit: `has_ch2=0` empty-cell enforcement, `demo=1` acceptance, malformed/noise rejection,
+    missing-`csv_end`, and open-failure paths were validated with controlled mocked-serial tests.
+  - 2026-10-14 software-only correction follow-up: removed sample-period-derived maximum-gap rejection after audit reproduction
+    (valid stop/resume and telemetry interruption gaps were being rejected). Timestamp checks now keep uint32 range validation and
+    half-range modular forward ordering (`delta` must be in `1..2^31-1`), with explicit documentation that gaps near/above the
+    half-range boundary (~24.9 days) are ambiguous from timestamps alone.
+  - Serial-open reset/history check in this run: repeated COM12 reopen checks showed sample counts increasing (`144 -> 149 -> 153`);
+    no reset/clear event was observed from opening USB serial in this setup.
+  - Still pending for broader coverage (not exercised on hardware in this checkpoint): naturally occurring `has_ch2=0` telemetry
+    rows, live demo-mode rows (`demo=1`), and any unsafe output-changing scenarios (intentionally not run).
