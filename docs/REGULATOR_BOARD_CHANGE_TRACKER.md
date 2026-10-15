@@ -522,7 +522,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — CH1 HIGH no-load terminal/raw-INA comparison received; panel calibration discrepancy identified, loaded regulation untested
+**Status:** 🔴 Open — both load-derived voltage gains removed with readback; post-correction terminal/panel comparison and loaded regulation remain untested
 **Severity:** Unassessed until the physical terminal measurement is repeated
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
 
@@ -638,7 +638,45 @@ calibration unchanged pending a separately approved correction/verification
 plan; do not reset all config or alter current coefficients based on this
 no-load point.
 
-`Q2OFF` returned `range: Q2/Q8 forced OFF via aw95xx P0.1 (p0=0x00)`
+**Authorized two-rail voltage correction (operator-relayed agent capture,
+2026-10-15):** The operator clarified that the load-side measurements had not
+been intended as terminal-voltage calibration references and directed that
+both channels' affected voltage calibration be revisited. With all decoded
+Q controls inactive (`p0=0x00 c0=0xC0`) and `cfg d9=OFF`, the agent captured
+the previous coefficients, then sent each command once:
+
+```text
+CALSET 5V 1.00000 0.00 7.40741 0.00
+CALSET 3V3 1.00000 0.00 7.08889 0.00
+```
+
+Both command responses and final `CFGSHOW`/`CALSHOW` reported:
+
+```text
+cfg d9=OFF
+cal 5V vg=1.00000 voff_mV=0.00 ig=7.40741 ioff_mA=0.00
+cal 3V3 vg=1.00000 voff_mV=0.00 ig=7.08889 ioff_mA=0.00
+```
+
+This removes the load-derived voltage gains (previously 0.96642 / 0.97395)
+and preserves all reported current coefficients. `CALSET` invokes persistent
+save immediately; command/readback showed no reported error, but no reboot
+or independent flash readback was performed to verify power-cycle retention.
+Unity gain / zero offset is an uncorrected voltage-reporting baseline, not a
+new precision calibration. No post-correction enabled terminal/panel reading
+was taken, and CH2 still lacks the corresponding no-load terminal/raw-INA
+comparison. The current coefficients remain unchanged, not newly validated.
+
+A preceding malformed serial-framing attempt sent literal backslash+n
+characters; firmware rejected the pre-write commands and no writes occurred
+in that attempt. The successful run used actual LF framing via
+`command.encode("ascii") + bytes([10])`; `CFGSHOW` TX hex was
+`43464753484f570a`. No `CFGSAVE`, output/gate controls, reset, build/flash,
+rewiring, or loads were reported during the correction. Keep outputs inactive;
+any further energized verification requires a new bounded operator approval.
+
+For the preceding no-load measurement's shutdown, `Q2OFF` returned
+`range: Q2/Q8 forced OFF via aw95xx P0.1 (p0=0x00)`
 and `awdiag Q2/Q8 want=0 out=0 in=0 dir=OUT o=0x00 i=0xC0 c=0xC0`;
 `QSTATE` returned all decoded controls zero, and 0x40 CH1/CH2 raw bus
 returned to 0.008V with zero shunts. Shutdown is confirmed by register/sense

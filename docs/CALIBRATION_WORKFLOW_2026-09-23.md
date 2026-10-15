@@ -312,6 +312,20 @@ authorize protection testing, overloads, or persistent calibration changes.
   writes were reported. Retain coefficients until a separate correction/
   verification plan is approved; no loaded test is authorized.
   See RB-014 for the detailed evidence and limits.
+- **Authorized voltage-baseline correction, both rails (2026-10-15):**
+  With all Q controls inactive, the agent sent
+  `CALSET 5V 1.00000 0.00 7.40741 0.00` and
+  `CALSET 3V3 1.00000 0.00 7.08889 0.00` once each after operator approval.
+  Responses and final `CFGSHOW`/`CALSHOW` reported unity voltage gain and zero
+  voltage offset on both rails, with all current coefficients unchanged and
+  `cfg d9=OFF`. `CALSET` invokes persistent save; no error was reported, but
+  power-cycle retention has not been verified. This removes invalid load-derived
+  voltage corrections, not a precision calibration or current-accuracy claim.
+  No post-correction energized DMM/panel comparison has been captured for
+  either rail; CH2 also lacks a raw-INA/terminal baseline comparison.
+  No output/gate command, reset, build/flash, load, or extra `CFGSAVE` was used.
+  A preceding framing-error attempt made no writes; the successful run used
+  actual LF bytes, not literal backslash+n characters. See RB-014 for readback.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.
