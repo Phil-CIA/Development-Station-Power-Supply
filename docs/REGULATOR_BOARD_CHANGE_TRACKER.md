@@ -535,11 +535,14 @@ as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
 CH1 HIGH to INA U10 channel 1 through `+5V_Hi_Range` / `-5V_Hi_Range` across
 R7 (20mΩ); `VSENSE_5V+` is a separate remote-feedback net. The active STM32
 firmware applies per-rail voltage gain/offset to the INA bus-voltage conversion
-before publishing telemetry. The exact probe-side bus node and intended
-remote-feedback target must still be confirmed against the matched schematic
-and physical assembly. These source mappings are not proof of the installed
-board revision, populated parts, physical probe locations, or actual sense
-wiring; reconcile all of those before interpreting measurements.
+before publishing telemetry. In this export, J1.2 (`V_out +5V`) also connects
+to R12.1; R12.2 is on `VSENSE_5V+` with U1.3. Regulator feedback pin U2.4 is
+on `Net-(U2-FB)` with R1, R5, and C2; reconcile the selector/divider connection
+from the matching schematic before assigning a feedback probe point. The exact
+INA bus probe side and all physical probe mappings must still be confirmed
+against the installed assembly. These source mappings are not proof of the
+installed board revision, populated parts, or actual sense wiring; reconcile
+all of those before interpreting measurements.
 
 **Execution plan (read-only first):**
 1. Confirm the physical regulator-board revision, controller/firmware build, wiring, enabled range, output state, and the exact schematic/netlist export matching the installed assembly. If any identity or probe-node mapping is uncertain, stop and record `IDENTITY BLOCKED`.
