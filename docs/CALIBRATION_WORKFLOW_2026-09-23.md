@@ -37,6 +37,12 @@ Use this path to:
 - Verify AW9523 control is alive
 - Capture directional INA behavior while stepping ranges/loads
 
+**D9 control clarification (operator, 2026-10-15):** AW9523 P1.0 / D9 drives
+the board-to-board communication indicator LED, not the CH1 rail. Do not use
+`D9ON`/`D9OFF` or `cfg d9=...` as evidence of CH1 output state. The firmware
+README maps `Q2ON`/`Q2OFF` to AW9523 P0.1 for the Q2/Q8 CH1 +5V HIGH path.
+Those gate-forcing commands are not part of a read-only capture.
+
 ### 2) Legacy ESP32 calibration reference (not the active STM32 controller)
 
 File: src/main.cpp
@@ -156,7 +162,8 @@ authorize protection testing, overloads, or persistent calibration changes.
   0.104V below the reported INA/panel voltage (~5.02V). The capture is bounded
   correlation evidence, not a traceable current measurement: DMM calibration,
   resistor tolerance/temperature, and the exact `CFGSHOW` coefficient values
-  were not established (`cfg d9=ON 5V[   ] 3V3[   ]` was the recorded output).
+  were not established (`cfg d9=ON 5V[   ] 3V3[   ]` was the recorded output;
+  D9/P1.0 is the communication indicator, not CH1 state).
   The known 20mΩ HIGH shunt plus the firmware's 200mΩ conversion predicts a
   nominal 10× under-reading, not the observed 7.02×; therefore the conversion
   mismatch is real in source, but does not alone explain the captured value.

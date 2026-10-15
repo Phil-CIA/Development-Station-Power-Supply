@@ -534,6 +534,11 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 compact F103 build accepted `HELP`, `CFGSHOW`, and `CALSHOW`. Both readback
 commands reported `cfg d9=ON`, `5V vg=0.96642 voff_mV=0.00 ig=7.40741
 ioff_mA=0.00`, and `3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`.
+The operator clarified that AW9523 P1.0 / D9 drives the board-to-board
+communication indicator LED; `D9ON`/`D9OFF` and `cfg d9=...` are not CH1
+rail-control or output-state evidence. The firmware README maps `Q2ON` /
+`Q2OFF` to the AW9523 P0.1 Q2/Q8 CH1 +5V HIGH path; these commands are
+available only in the full-bench profile.
 `INAPROBE` (entered twice), `INANOW`, `INARAILS`, and `INADIAG` each returned
 `cmd: unsupported in compact profile`; these commands are omitted from the
 compact profile by design, so this is not evidence of an INA communication
@@ -542,8 +547,11 @@ failure. Startup status samples reported `Vin=11.400 Iin=120.00` and later
 The capture establishes the calibration values currently read from this
 controller but does not include an INA raw reading, direct terminal DMM
 reading, firmware build identifier, or explicit range/output-state record.
-No load or hardware changes were reported. Do not flash the full-bench profile
-or proceed to loaded testing without separate operator authorization.
+No load or hardware changes were reported. The existing
+`bluepill_f103c8_bench` profile built locally on 2026-10-15 using a temporary
+short-drive mapping after the normal-path build failed while archiving the
+Adafruit BusIO objects; no firmware was flashed. Obtain operator authorization
+before flashing it, changing output/gate state, or proceeding to loaded testing.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps

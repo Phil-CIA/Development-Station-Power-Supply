@@ -136,13 +136,21 @@ Run context:
 | Step | Objective | Evidence summary | Verdict | Claim class |
 |---|---|---|---|---|
 | B2-S0 | Context lock | Rev C, switched mode, serial CLI command path, no constraints; build id unknown | Pass with traceability gap | SPP-capable context |
-| B2-S1 | Cold boot default safety | Boot log showed AW policy-latched outputs low, D9 forced OFF, cfg default OFF state before commands | Pass | CSV |
-| B2-S2 | Warm reset parity | Warm reset reproduced same default OFF behavior before commands | Pass | CSV |
-| B2-S3 | 5V command/state enable | `D9ON` -> `d9: aw95xx P1.0 forced ON`; `CFGSHOW` -> `cfg d9=ON 5V[   ] 3V3[   ]` | Pass | CSV |
-| B2-S4 | 5V command/state disable | `D9OFF` -> `d9: aw95xx P1.0 forced OFF`; `CFGSHOW` -> `cfg d9=OFF 5V[   ] 3V3[   ]` | Pass | CSV |
-| B2-S5 | Non-target unchanged (serial/state) | During toggles, `CFGSHOW` continued to report `3V3[   ]` unchanged | Pass at serial/state level | CSV |
-| B2-S6 | Rapid toggling stability | 5 ON/OFF cycles completed with consistent command/state reflections and no parser/runtime errors | Pass | CSV |
+| B2-S1 | Cold boot default safety | Boot log showed AW policy-latched outputs low, D9/P1.0 indicator OFF, cfg default OFF state before commands | Pass (serial state only) | CSV |
+| B2-S2 | Warm reset parity | Warm reset reproduced same default OFF behavior before commands | Pass (serial state only) | CSV |
+| B2-S3 | D9 communication-indicator enable | `D9ON` -> `d9: aw95xx P1.0 forced ON`; `CFGSHOW` -> `cfg d9=ON 5V[   ] 3V3[   ]` | Pass (indicator command/state only) | CSV |
+| B2-S4 | D9 communication-indicator disable | `D9OFF` -> `d9: aw95xx P1.0 forced OFF`; `CFGSHOW` -> `cfg d9=OFF 5V[   ] 3V3[   ]` | Pass (indicator command/state only) | CSV |
+| B2-S5 | Other displayed state unchanged | During toggles, `CFGSHOW` continued to report `3V3[   ]` unchanged; this is not rail-isolation evidence | Pass at serial/state level | CSV |
+| B2-S6 | Rapid D9-indicator toggling stability | 5 ON/OFF cycles completed with consistent command/state reflections and no parser/runtime errors | Pass (indicator command/state only) | CSV |
 | B2-S7 | Claim separation closeout | No scope/logic captures provided; switched-path proof intentionally not claimed | Pass with bounded claim | CSV-only |
+
+**Correction (operator clarification, 2026-10-15):** AW9523 P1.0 / D9 is the
+board-to-board communication indicator LED, not the CH1 rail control.
+Therefore B2-S3/S4 and the `D9ON`/`D9OFF` log excerpts below establish only
+indicator command/state behavior; they do not establish 5V rail enable/disable.
+The firmware README maps `Q2ON`/`Q2OFF` to AW9523 P0.1 for the Q2/Q8 CH1 +5V
+HIGH path. Its electrical behavior still requires separate approved bench
+evidence.
 
 ### Key serial excerpts captured
 
@@ -193,11 +201,12 @@ Not proven in this run:
 ### Handoff block for next agent
 
 ```md
-Bucket 2 bench evidence handoff (2026-09-26):
+Bucket 2 bench evidence handoff (2026-09-26; claim corrected 2026-10-15):
 
 - CSV-only evidence run completed for B2-S0..B2-S7 on Rev-C.
-- 5V command/state path validated using D9ON/D9OFF and CFGSHOW on COM7.
-- Rapid toggle x5 completed with consistent ON/OFF command-state behavior.
+- D9ON/D9OFF and CFGSHOW on COM7 validated only the AW9523 P1.0 communication indicator command/state.
+- Rapid D9 indicator toggle x5 completed with consistent command/state behavior.
+- These records do not validate the 5V command/state path; Q2ON/Q2OFF map to the CH1 +5V HIGH path in the firmware README.
 - Additional parser-visible path toggles validated: Q3/Q39/Q612 with QSTATE readback.
 - No scope/logic captures attached; do not claim switched-path electrical proof.
 - Remaining gap: attach capture evidence before claiming B2 switched-path closure.
