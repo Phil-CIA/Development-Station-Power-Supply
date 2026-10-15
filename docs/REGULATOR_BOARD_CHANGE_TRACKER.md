@@ -530,6 +530,21 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 
 **Evidence correction:** The operator clarified on 2026-10-14 that the earlier `5.005V`, `4.9497V`, and related loaded voltage figures were measured across resistors on breadboards, not confirmed at the supply terminals. Preserve those values as historical load-resistor measurements; they do not establish terminal droop. `docs/CALIBRATION_WORKFLOW_2026-09-23.md` records a single-point calibration saved on 2026-10-07 (`5V vg=0.96642, voff=0.00mV`; `3V3 vg=0.97395, voff=0.00mV`), fitted against resistor/load readings rather than verified terminal readings. The currently installed config still needs read-only confirmation; neither the historical fit nor the stored values establish terminal-voltage accuracy.
 
+**Read-only compact-profile capture (operator, 2026-10-15):** The installed
+compact F103 build accepted `HELP`, `CFGSHOW`, and `CALSHOW`. Both readback
+commands reported `cfg d9=ON`, `5V vg=0.96642 voff_mV=0.00 ig=7.40741
+ioff_mA=0.00`, and `3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`.
+`INAPROBE` (entered twice), `INANOW`, `INARAILS`, and `INADIAG` each returned
+`cmd: unsupported in compact profile`; these commands are omitted from the
+compact profile by design, so this is not evidence of an INA communication
+failure. Startup status samples reported `Vin=11.400 Iin=120.00` and later
+`Vin=11.384 Iin=124.44` (reported by firmware; not independently verified).
+The capture establishes the calibration values currently read from this
+controller but does not include an INA raw reading, direct terminal DMM
+reading, firmware build identifier, or explicit range/output-state record.
+No load or hardware changes were reported. Do not flash the full-bench profile
+or proceed to loaded testing without separate operator authorization.
+
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
 CH1 HIGH to INA U10 channel 1 through `+5V_Hi_Range` / `-5V_Hi_Range` across
@@ -575,7 +590,11 @@ all of those before interpreting measurements.
 - The intended feedback sense target and all relevant path drops are backed by the matched source and physical measurements.
 - Numerical terminal-regulation and telemetry-to-terminal tolerances are agreed before assigning pass/fail; any untested rail/range/load coverage stays explicit.
 
-**Next step:** Complete the static node map and read-only firmware/calibration review, then request operator approval before any loaded bench capture.
+**Next step:** Record the active compact firmware/build, range/output state,
+and a direct no-load DMM reading across the CH1 output terminals with meter
+details. The compact profile cannot supply INA diagnostics. If raw INA
+readings are needed afterward, request authorization before flashing the
+full-bench profile; no loaded test is authorized by the compact capture.
 
 ---
 

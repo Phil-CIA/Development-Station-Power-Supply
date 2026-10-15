@@ -257,6 +257,20 @@ authorize protection testing, overloads, or persistent calibration changes.
   #100, first read back the installed config and compare the DMM directly at
   the output terminals with raw INA and published telemetry; do not change or
   resave coefficients before this comparison.
+- **Compact-profile read-only capture (operator, 2026-10-15):** On the
+  installed compact F103 profile, `HELP`, `CFGSHOW`, and `CALSHOW` worked.
+  Both config commands reported `cfg d9=ON`, 5V coefficients
+  `vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00`, and 3V3 coefficients
+  `vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`. `INAPROBE` (twice),
+  `INANOW`, `INARAILS`, and `INADIAG` each returned
+  `cmd: unsupported in compact profile`. The compact build intentionally
+  omits those bench-only commands; this does not indicate an INA fault. Startup
+  status lines reported `Vin=11.400 Iin=120.00` and later
+  `Vin=11.384 Iin=124.44`; these are firmware telemetry, not independent
+  measurements. Firmware build identity, active range/output state, direct
+  terminal DMM reading, and raw INA data were not included. No load or hardware
+  changes were reported. Do not flash the full-bench profile without separate
+  operator authorization.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.
