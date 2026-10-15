@@ -522,8 +522,8 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — both load-derived voltage gains removed with readback; post-correction terminal/panel comparison and loaded regulation remain untested
-**Severity:** Unassessed until the physical terminal measurement is repeated
+**Status:** 🔴 Open — both voltage gains restored to unity and no-load terminal/INA/panel comparison received; loaded regulation remains untested
+**Severity:** Loaded terminal-droop concern remains unassessed; no-load panel calibration discrepancy corrected
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
 
 **Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
@@ -682,6 +682,54 @@ and `awdiag Q2/Q8 want=0 out=0 in=0 dir=OUT o=0x00 i=0xC0 c=0xC0`;
 returned to 0.008V with zero shunts. Shutdown is confirmed by register/sense
 readback, not a post-shutdown terminal DMM measurement. The agent reported no
 build, flash, reset, other controls, config writes, rewiring, or loaded tests.
+
+**Post-correction no-external-load verification, one channel at a time
+(operator-relayed agent capture, 2026-10-15):** Operator confirmed loads
+disconnected and readiness before each enable. Meter was reported as
+"OWON 1041", Auto DCV. Baseline `CFGSHOW`/`CALSHOW` confirmed both voltage
+gains 1.00000, offsets zero, and unchanged current coefficients. Initial
+`QSTATE` showed `p0=0x00 c0=0xC0`, all decoded controls inactive.
+
+| Channel / enabled state | Terminal DMM | Raw INA HIGH bus | CrowPanel | Source report |
+|---|---|---|---|---|
+| CH1, Q2 only, `p0=0x02` | 5.0486V | 0x40 CH1 `0x13B8`, 5.048V | 5.05V / 0.010A / 0.05W; no fault indication | 12.09V / 183mA, CV; limit reported 1.1A |
+| CH2, Q5 only, `p0=0x08` | 3.3216V | 0x41 CH1 `0x0CF8`, 3.320V in INADIAG; INANOW had 3.328V | 3.33V / 0.004A / 0.01W; no fault indication | 12.09V / 178mA; literal mode/limit description "cc 1.1A", ambiguous |
+
+CH1 raw-minus-DMM difference is -0.6mV; CH2's INADIAG HIGH bus difference
+is -1.6mV. CH2 HIGH was 3.328V in the preceding INANOW and 3.320V in
+INARAILS/INADIAG, a single 8mV bus-conversion increment. The panel's 3.33V
+is consistent with rounding a 3.328V sample, but no simultaneous transmitted
+frame was supplied to establish which sample it displayed. Do not infer
+an additional calibration correction from these asynchronous, quantized
+readings. The large load-derived voltage under-reading is no longer present
+at these no-load points; this is not a precision accuracy certification or
+loaded-regulation result.
+
+Before the run the source current limit was reported as 2.5A; measurement
+reports instead describe 1.1A. Preserve this discrepancy and clarify the
+actual limit and whether CH2 was truly in CC before proposing a loaded test.
+Source readings above are operator reports, not independently captured
+instrument data; exact timestamps and meter verification status remain absent.
+Incoming INA voltages during enabled reads were approximately 11.336-11.368V,
+lower than the reported source 12.09V; different measurement nodes/timing
+and measurement accuracy are not resolved here. No causal conclusion follows.
+
+`Q2ON` and `Q5ON` each acknowledged the expected AW9523 pin (P0.1 and P0.3)
+with no SR fallback; QSTATE confirmed only the intended decoded control active.
+`Q2OFF` restored `p0=0x00` before CH2 testing; 5V sense then read 0.024V.
+Final `Q5OFF` restored `p0=0x00`, all decoded controls inactive; 3V3 sense
+read 0.016V and 5V sense 0-0.008V. These are register/sensor shutdown
+observations, not post-off terminal DMM readings. No fault indication was
+reported in either enabled interval; the earlier OCP indication did not
+recur in this run, but its cause and protection function remain unverified.
+The operator's suggestion that CH1's 10mA is board-LED current is unverified;
+no independent current measurement was supplied.
+
+No build, flash, reset/power cycle, D9/CMD:OUTPUT controls, other Q controls,
+config writes, or external loads were reported. Power-cycle calibration
+retention remains unverified. Leave unity voltage gains and existing current
+coefficients unchanged; both paths are now inactive. Further energized or
+loaded testing requires separate bounded operator approval.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps

@@ -326,6 +326,24 @@ authorize protection testing, overloads, or persistent calibration changes.
   No output/gate command, reset, build/flash, load, or extra `CFGSAVE` was used.
   A preceding framing-error attempt made no writes; the successful run used
   actual LF bytes, not literal backslash+n characters. See RB-014 for readback.
+- **Post-correction no-load verification, both rails (2026-10-15):**
+  With unity voltage gains/zero offsets and unchanged current coefficients,
+  CH1 Q2-only measured 5.0486V at the terminals, raw INA 5.048V, and panel
+  5.05V. CH2 Q5-only measured 3.3216V at the terminals, raw HIGH bus
+  3.328V in INANOW / 3.320V in INARAILS and INADIAG, and panel 3.33V.
+  Differences of -0.6mV / -1.6mV use the respective INADIAG HIGH values;
+  CH2's 8mV variation is one bus-conversion increment, and the panel may
+  reflect a different sample. Do not fit new coefficients to these
+  asynchronous readings. Meter was reported "OWON 1041", Auto DCV.
+  No fault indication was reported; this does not establish the cause of
+  the earlier OCP indication or validate protection. Source was reported
+  12.09V / 183mA CV for CH1 and 12.09V / 178mA with ambiguous "cc 1.1A"
+  for CH2; initial limit report was 2.5A, later reports 1.1A. Clarify the
+  source mode/limit before a loaded test. Both paths were separately
+  returned OFF, p0=0x00, near-zero INA sense readings. No config writes,
+  loads, build/flash, reset, or power cycle occurred. This confirms removal
+  of the large no-load display discrepancy, not precision calibration,
+  current accuracy, loaded regulation, or power-cycle retention. See RB-014.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.
