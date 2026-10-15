@@ -545,7 +545,7 @@ installed board revision, populated parts, or actual sense wiring; reconcile
 all of those before interpreting measurements.
 
 **Execution plan (read-only first):**
-1. Confirm the physical regulator-board revision, controller/firmware build, wiring, enabled range, output state, and the exact schematic/netlist export matching the installed assembly. If any identity or probe-node mapping is uncertain, stop and record `IDENTITY BLOCKED`.
+1. Use the established Regulator Rev-C board/controller/wiring and the 2026-10-07 Rev-C netlist as the working baseline; do not repeat identity checks as a gate. Record the active firmware/build, enabled range, and output state as ordinary test context. Revisit identity only if new evidence shows the hardware or source differs from this baseline; stop only the affected probe/interpretation if a concrete mismatch is found.
 2. Record the DMM model, range, calibration/verification status, lead
    placement, and exact measurement point. With no external load, compare the
    DMM directly across the output terminals against the simultaneous raw INA
@@ -562,7 +562,7 @@ all of those before interpreting measurements.
    `CALSET` writes the configuration immediately; first establish whether the
    active coefficients or measurement location explain a fixed offset. Do not
    use calibration to hide real path loss.
-4. Trace the exact physical INA voltage-sense points, `VSENSE_5V+`, local fallback/selector output, regulator feedback input, and CH1 output terminals through the matched Rev-C schematic/netlist and installed board. Confirm the intended feedback target and map probe pads without borrowing designators from another revision.
+4. Trace the INA voltage-sense points, `VSENSE_5V+`, local fallback/selector output, regulator feedback input, and CH1 output terminals through the established Rev-C schematic/netlist. Confirm the intended feedback target and map probe pads; revisit the baseline only if measurements or new evidence reveal a concrete mismatch.
 5. Only after operator approval, compare terminal voltage and resistor voltage simultaneously at no load and at individually approved, bounded CH1 loads. Record exact load resistance and temperature context, independently measured output current, raw INA data, calibrated controller/panel values, PSU voltage/current and CV/CC or limit status, and timestamps. If safe approved probe access is available, capture the mapped pre/post-switch, shunt, inductor, feedback-sense, and selector nodes to localize any drop.
 6. Classify the result only from paired measurements: terminal stable but telemetry offset suggests measurement/calibration mismatch; terminal low while upstream/feedback nodes remain higher suggests path loss or sense-target mismatch; correlated movement of terminal and feedback nodes indicates a different regulation condition that needs further analysis. Do not infer root cause from the display alone.
 
