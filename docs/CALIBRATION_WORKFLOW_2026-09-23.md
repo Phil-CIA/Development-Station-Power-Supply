@@ -294,6 +294,24 @@ authorize protection testing, overloads, or persistent calibration changes.
   enabled-output accuracy or regulation. No terminal DMM/panel comparison,
   output/gate changes, config writes, reset, or loaded tests were reported.
   Exact flashed image identity and literal upload log were not provided.
+- **Approved CH1 HIGH no-external-load correlation (2026-10-15):**
+  With only `Q2ON` active (`p0=0x02`, other decoded Q controls zero),
+  operator's OWON XDM1041 at the CH1 terminals read 5.0467V; raw INA bus
+  was 5.048V (`0x13B8`). CrowPanel showed 4.88V / 0.010A / 0.05W.
+  The saved voltage gain 0.96642 converts 5.048V to 4.87848816V,
+  explaining the panel under-reading at this point. Raw bus differs from
+  the DMM by only +1.3mV; this is a single no-load correlation, not a
+  calibration certificate or loaded-regulation result. The 1.40mA
+  uncalibrated HIGH conversion with saved gain 7.40741 predicts about
+  10.37mA, consistent with the panel but not independently verified.
+  Source setpoints were 12.0V / 1.0A; live source numeric readback/CV/CC
+  state and meter verification status were not provided. Panel "OCP trip"
+  was reported as pre-existing but remains unresolved, not established as
+  a false indication or proof of protection. `Q2OFF` restored `p0=0x00`
+  and near-zero INA output sense readings. No other controls or calibration
+  writes were reported. Retain coefficients until a separate correction/
+  verification plan is approved; no loaded test is authorized.
+  See RB-014 for the detailed evidence and limits.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.

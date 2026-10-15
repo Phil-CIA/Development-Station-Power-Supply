@@ -522,7 +522,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — full-bench read-only capture received; enabled-output terminal comparison remains pending
+**Status:** 🔴 Open — CH1 HIGH no-load terminal/raw-INA comparison received; panel calibration discrepancy identified, loaded regulation untested
 **Severity:** Unassessed until the physical terminal measurement is repeated
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
 
@@ -595,9 +595,55 @@ records the firmware conversion assumption, not a physical shunt measurement;
 zero shunt readings cannot validate current scaling. The agent reported no
 reset, gate/output commands, calibration/config writes, rewiring, or loaded
 tests during capture. No direct terminal DMM or simultaneous panel reading
-was supplied. The next stage is a separately operator-approved no-external-load
-CH1 HIGH enable and paired terminal/raw-INA/controller/panel comparison, not
-another build/flash or a calibration adjustment.
+was supplied in that inactive-control capture.
+
+**Approved CH1 HIGH no-external-load measurement (operator-relayed agent
+capture, 2026-10-15):** Operator confirmed external loads disconnected and
+source current limiting in place; source setpoints were 12.0V / 1.0A. Meter
+was an OWON XDM1041, reported 5V range. Source live numeric voltage/current
+and CV/CC state, meter calibration/verification status, and exact measurement
+timestamps were not supplied.
+
+Pre-enable `CFGSHOW`/`CALSHOW` retained the same coefficients and `cfg d9=OFF`.
+`QSTATE` was `p0=0x00 c0=0xC0` with all decoded controls zero. `Q2ON`
+returned `range: Q2/Q8 forced ON via aw95xx P0.1 (p0=0x02)` and
+`awdiag Q2/Q8 want=1 out=1 in=1 dir=OUT o=0x02 i=0xC2 c=0xC0`;
+`QSTATE` confirmed only Q2 active. Enabled results:
+
+| Measurement | Reported value |
+|---|---|
+| CH1 output-terminal DMM | 5.0467V |
+| 0x40 CH1 raw bus | `0x13B8`, 5.048V |
+| 0x40 CH1 raw shunt | `0x0038(7)`, 0.280mV; `Rused=200mOhm`, `Icalc=1mA` |
+| `INANOW` / `INARAILS` CH1 HIGH | 5.048V / 1.40mA (uncalibrated conversion) |
+| 0x40 CH2 raw bus / shunt | `0x13B8`, 5.048V / `0x0020(4)`, 0.160mV |
+| Incoming INA monitor during enabled reads | 11.384-11.392V / about 126.67mA (firmware-derived, not source readback) |
+| CrowPanel CH1 | 4.88V / 0.010A / 0.05W |
+| CrowPanel fault indication | "OCP trip", reported by operator as pre-existing |
+
+The raw INA bus value is 1.3mV above the terminal DMM reading at this
+reported no-load point. The saved CH1 voltage gain 0.96642 applied to 5.048V
+produces 4.87848816V, matching the displayed 4.88V after rounding. Thus the
+stored voltage calibration explains the observed panel under-reading
+(166.7mV below the DMM), without requiring a physical terminal drop of that
+size. This single point does not establish accuracy across voltage/load or
+resolve the historical load-side readings. Applying the stored current gain
+7.40741 to the 1.40mA conversion produces about 10.37mA, consistent with the
+displayed 0.010A; no independent current measurement validates either.
+
+The "OCP trip" indication remains unresolved: the operator's pre-existing
+classification does not prove a false trip or working protection. No further
+energized or loaded test is approved by this record. Leave the existing
+calibration unchanged pending a separately approved correction/verification
+plan; do not reset all config or alter current coefficients based on this
+no-load point.
+
+`Q2OFF` returned `range: Q2/Q8 forced OFF via aw95xx P0.1 (p0=0x00)`
+and `awdiag Q2/Q8 want=0 out=0 in=0 dir=OUT o=0x00 i=0xC0 c=0xC0`;
+`QSTATE` returned all decoded controls zero, and 0x40 CH1/CH2 raw bus
+returned to 0.008V with zero shunts. Shutdown is confirmed by register/sense
+readback, not a post-shutdown terminal DMM measurement. The agent reported no
+build, flash, reset, other controls, config writes, rewiring, or loaded tests.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
