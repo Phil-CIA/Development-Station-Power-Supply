@@ -391,8 +391,9 @@ Notes for this entry:
 - No independent DVM capture was available during combined ON (`not available`), so combined acceptance remains incomplete.
 - Operator indicated the already logged combined run covers the requested immediate operational observation; do not queue a redundant repeat 60 s check by default.
 - Combined independently timed 60 s trace, 5 min soak, shared OUTPUT cycling, transient/no-glitch capture, and current-accuracy acceptance remain pending for formal acceptance claims.
-- Positive functional evidence to retain: four no-load paths worked, each HIGH loaded terminal-voltage point was inside provisional band, both rails were reported operating concurrently in P6-LOAD-001 panel/PSU data, and physical OFF return was confirmed.
+- Positive functional evidence to retain: four no-load paths worked, each HIGH loaded voltage point measured across the breadboard resistor was inside the provisional band, both rails were reported operating concurrently in P6-LOAD-001 panel/PSU data, and physical OFF return was confirmed.
 - Preserve earlier CH2 loaded telemetry report (`1.1 W` in P4-LOAD-001) as historical data point; P6-LOAD-001 logs a different panel reading (`0.15 W`) without retroactive correction.
+- **Measurement-point clarification (operator, 2026-10-14):** the loaded voltage values previously described above as terminal measurements were measured across resistors on breadboards, not verified directly at the supply output terminals. Keep the original log entries as historical observations; do not use them as evidence of terminal regulation or terminal-to-telemetry error. Issue #100 starts with a direct terminal-voltage and read-only calibration comparison.
 
 Verbatim `INARAILS` capture for P0-OBS-002:
 

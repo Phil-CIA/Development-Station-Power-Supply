@@ -266,10 +266,11 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 **Issue #62 closure state (user decision, 2026-10-07):** **Closed as functionally resolved for the original pass-through symptom** based on bounded operator bench evidence now captured in PR #63 docs.
 - Closure basis recorded by operator includes:
   - Four commanded range paths reported working ON/OFF in operation-first bench flow.
-  - CH1 HIGH loaded terminal points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
-  - CH2 HIGH loaded terminal point recorded at `3.3141V` (10 ohm load).
+  - CH1 HIGH loaded voltage points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
+  - CH2 HIGH loaded voltage point recorded at `3.3141V` (10 ohm load).
   - Concurrent CH1+CH2 operation recorded with panel/PSU values and confirmed return to near-zero output with final `p0=0x00` OFF state.
 - Root cause and corrective-action mechanism remain **not established**; closure is functional/operational against the original symptom, not a design-root-cause proof.
+- **Measurement-point clarification (operator, 2026-10-14):** the loaded voltage figures above were measured across resistors on breadboards, not verified directly at the supply output terminals. Retain the original log values, but do not treat them as terminal-regulation measurements. Issue #100 must begin by measuring directly at the output terminals and reconciling the active voltage calibration.
 
 **Current posture update (2026-10-07, user-directed):**
 - User reports hardware now **appears operational** and wants operation testing resumed first.
@@ -520,6 +521,38 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 
 ---
 
+### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
+**Status:** 🔴 Open — investigation plan recorded; no new bench measurements or hardware changes performed
+**Severity:** Unassessed until the physical terminal measurement is repeated
+**Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
+
+**Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
+
+**Evidence correction:** The operator clarified on 2026-10-14 that the earlier `5.005V`, `4.9497V`, and related loaded voltage figures were measured across resistors on breadboards, not confirmed at the supply terminals. Preserve those values as historical load-resistor measurements; they do not establish terminal droop. The DMM calibration status and active firmware calibration values also remain unverified.
+
+**Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. `VSENSE_5V+` is a separate remote-feedback net. These source names are not proof of the installed board revision, populated parts, physical probe locations, or actual sense wiring; reconcile all of those before interpreting measurements.
+
+**Execution plan (read-only first):**
+1. Confirm the physical regulator-board revision, controller/firmware build, wiring, enabled range, output state, and the exact schematic/netlist export matching the installed assembly. If any identity or probe-node mapping is uncertain, stop and record `IDENTITY BLOCKED`.
+2. Record the DMM model, range, calibration/verification status, lead placement, and the exact measurement point. With no external load, compare the DMM directly across the output terminals against the simultaneous raw INA value, controller value, and CrowPanel value. Read `CALSHOW` and `CFGSHOW` from the active controller and preserve their output with firmware/build identity.
+3. Do not run `CALSET`, change coefficients, or save a new calibration during diagnosis. In the active STM32 firmware, `CALSET` writes the configuration immediately; first establish whether the active coefficients or the measurement location explain a fixed offset. Do not use calibration to hide real path loss.
+4. Trace the exact physical INA voltage-sense points, `VSENSE_5V+`, local fallback/selector output, regulator feedback input, and CH1 output terminals through the matched Rev-C schematic/netlist and installed board. Confirm the intended feedback target and map probe pads without borrowing designators from another revision.
+5. Only after operator approval, compare terminal voltage and resistor voltage simultaneously at no load and at individually approved, bounded CH1 loads. Record exact load resistance and temperature context, independently measured output current, raw INA data, calibrated controller/panel values, PSU voltage/current and CV/CC or limit status, and timestamps. If safe approved probe access is available, capture the mapped pre/post-switch, shunt, inductor, feedback-sense, and selector nodes to localize any drop.
+6. Classify the result only from paired measurements: terminal stable but telemetry offset suggests measurement/calibration mismatch; terminal low while upstream/feedback nodes remain higher suggests path loss or sense-target mismatch; correlated movement of terminal and feedback nodes indicates a different regulation condition that needs further analysis. Do not infer root cause from the display alone.
+
+**Safety and scope:** This is a documentation and analysis plan, not authorization to operate the bench. No rewiring, bypass changes, forced gate/feedback states, open-sense tests, overload/short tests, or firmware calibration writes without explicit operator approval. Keep source current limiting and approved load/thermal limits in force; power off and discharge before continuity checks or rewiring.
+
+**Acceptance evidence before any pass/fail or corrective-action decision:**
+- Installed board, firmware, netlist export, and measurement-node identities are reconciled.
+- Direct terminal measurements are paired with load-resistor, raw INA, controller, and display readings at the same timestamps.
+- Active voltage calibration is captured read-only; any proposed coefficient change is justified independently of path losses and separately approved.
+- The intended feedback sense target and all relevant path drops are backed by the matched source and physical measurements.
+- Numerical terminal-regulation and telemetry-to-terminal tolerances are agreed before assigning pass/fail; any untested rail/range/load coverage stays explicit.
+
+**Next step:** Complete the static node map and read-only firmware/calibration review, then request operator approval before any loaded bench capture.
+
+---
+
 ## Summary of Next-Iter Deliverables
 
 | Issue | Next-Iter File | Action | Priority |
@@ -536,6 +569,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | RB-010 (VSENSE open/floating dominance) | `dsp-regulator-next-iter/` | Harden VSENSE_5V+ fallback behavior and validate by SPICE before routing | High (Rev-C routing blocker) |
 | RB-011 (3.3V selector/reference dependency on R25) | `dsp-regulator-next-iter/` | Remove ambiguity in 3.3V feedback selector path; keep-or-redesign decision with bench revalidation | High |
 | RB-013 (Wrong LM74502 driver variant on U9/U14/U15/U16) | `dsp-regulator-rev-c/` (schematic done) | Rework 4x driver ICs to `LM74502HDDFR`, update BOM/LCSC, re-verify Vgs | High |
+| RB-014 (Issue #100 terminal voltage / feedback tracking investigation) | Regulator Rev-C | Reconcile board identity and read-only calibration, then compare terminal/load/INA/feedback nodes under approved conditions | Unassessed |
 
 ---
 
@@ -555,4 +589,5 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
 | 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
 | 2026-10-06 | RB-013 bench rework: replaced U9/U14/U15/U16 and reversed D2/D5/D9/D13; post-rework Vgs verification remains open | Bench continuation session |
+| 2026-10-15 | Added RB-014 issue #100 investigation plan and clarified that earlier loaded voltage figures were taken across breadboard resistors, not verified at supply terminals | Issue #100 review |
 | TBD | Design review and next-iter file creation | TBD |
