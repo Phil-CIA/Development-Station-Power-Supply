@@ -249,6 +249,14 @@ authorize protection testing, overloads, or persistent calibration changes.
   Both channels were returned OFF after captures. Scope limits: single-point
   validation per channel, Dupont/breadboard wiring, and no repeatability sweep,
   multi-point fit, or protection testing in this closeout step.
+- **Measurement-point correction for issue #100 (operator, 2026-10-14):** the
+  reference voltage readings used in the 2026-10-07 single-point fit were
+  measured across resistors on breadboards, not verified directly at the
+  supply output terminals. The saved coefficients above therefore record the
+  historical fit but do not establish terminal-voltage accuracy. For issue
+  #100, first read back the installed config and compare the DMM directly at
+  the output terminals with raw INA and published telemetry; do not change or
+  resave coefficients before this comparison.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.

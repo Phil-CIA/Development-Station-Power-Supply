@@ -528,14 +528,37 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 
 **Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
 
-**Evidence correction:** The operator clarified on 2026-10-14 that the earlier `5.005V`, `4.9497V`, and related loaded voltage figures were measured across resistors on breadboards, not confirmed at the supply terminals. Preserve those values as historical load-resistor measurements; they do not establish terminal droop. The DMM calibration status and active firmware calibration values also remain unverified.
+**Evidence correction:** The operator clarified on 2026-10-14 that the earlier `5.005V`, `4.9497V`, and related loaded voltage figures were measured across resistors on breadboards, not confirmed at the supply terminals. Preserve those values as historical load-resistor measurements; they do not establish terminal droop. `docs/CALIBRATION_WORKFLOW_2026-09-23.md` records a single-point calibration saved on 2026-10-07 (`5V vg=0.96642, voff=0.00mV`; `3V3 vg=0.97395, voff=0.00mV`), fitted against resistor/load readings rather than verified terminal readings. The currently installed config still needs read-only confirmation; neither the historical fit nor the stored values establish terminal-voltage accuracy.
 
-**Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. `VSENSE_5V+` is a separate remote-feedback net. These source names are not proof of the installed board revision, populated parts, physical probe locations, or actual sense wiring; reconcile all of those before interpreting measurements.
+**Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
+as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
+CH1 HIGH to INA U10 channel 1 through `+5V_Hi_Range` / `-5V_Hi_Range` across
+R7 (20mΩ); `VSENSE_5V+` is a separate remote-feedback net. The active STM32
+firmware applies per-rail voltage gain/offset to the INA bus-voltage conversion
+before publishing telemetry. The exact probe-side bus node and intended
+remote-feedback target must still be confirmed against the matched schematic
+and physical assembly. These source mappings are not proof of the installed
+board revision, populated parts, physical probe locations, or actual sense
+wiring; reconcile all of those before interpreting measurements.
 
 **Execution plan (read-only first):**
 1. Confirm the physical regulator-board revision, controller/firmware build, wiring, enabled range, output state, and the exact schematic/netlist export matching the installed assembly. If any identity or probe-node mapping is uncertain, stop and record `IDENTITY BLOCKED`.
-2. Record the DMM model, range, calibration/verification status, lead placement, and the exact measurement point. With no external load, compare the DMM directly across the output terminals against the simultaneous raw INA value, controller value, and CrowPanel value. Read `CALSHOW` and `CFGSHOW` from the active controller and preserve their output with firmware/build identity.
-3. Do not run `CALSET`, change coefficients, or save a new calibration during diagnosis. In the active STM32 firmware, `CALSET` writes the configuration immediately; first establish whether the active coefficients or the measurement location explain a fixed offset. Do not use calibration to hide real path loss.
+2. Record the DMM model, range, calibration/verification status, lead
+   placement, and exact measurement point. With no external load, compare the
+   DMM directly across the output terminals against the simultaneous raw INA
+   value, controller value, and CrowPanel value. Use the existing read-only
+   capture sequence (`HELP`, `CFGSHOW`, `CALSHOW`, `INAPROBE`, `INANOW`,
+   `INARAILS`, `INADIAG`) and preserve literal output with firmware/build
+   identity. `INADIAG` is needed for raw INA bus-register readings;
+   `INANOW`/`INARAILS` are derived estimates.
+3. Compare the readback with the historical 2026-10-07 saved coefficients
+   (`5V vg=0.96642, voff=0.00mV`; `3V3 vg=0.97395, voff=0.00mV`). Those
+   values were fitted against resistor/load readings and are not terminal-
+   voltage calibration evidence. Do not run `CALSET`, change coefficients, or
+   save a new calibration during diagnosis. In the active STM32 firmware,
+   `CALSET` writes the configuration immediately; first establish whether the
+   active coefficients or measurement location explain a fixed offset. Do not
+   use calibration to hide real path loss.
 4. Trace the exact physical INA voltage-sense points, `VSENSE_5V+`, local fallback/selector output, regulator feedback input, and CH1 output terminals through the matched Rev-C schematic/netlist and installed board. Confirm the intended feedback target and map probe pads without borrowing designators from another revision.
 5. Only after operator approval, compare terminal voltage and resistor voltage simultaneously at no load and at individually approved, bounded CH1 loads. Record exact load resistance and temperature context, independently measured output current, raw INA data, calibrated controller/panel values, PSU voltage/current and CV/CC or limit status, and timestamps. If safe approved probe access is available, capture the mapped pre/post-switch, shunt, inductor, feedback-sense, and selector nodes to localize any drop.
 6. Classify the result only from paired measurements: terminal stable but telemetry offset suggests measurement/calibration mismatch; terminal low while upstream/feedback nodes remain higher suggests path loss or sense-target mismatch; correlated movement of terminal and feedback nodes indicates a different regulation condition that needs further analysis. Do not infer root cause from the display alone.
