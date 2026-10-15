@@ -522,7 +522,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — investigation plan recorded; no new bench measurements or hardware changes performed
+**Status:** 🔴 Open — full-bench read-only capture received; enabled-output terminal comparison remains pending
 **Severity:** Unassessed until the physical terminal measurement is repeated
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
 
@@ -550,12 +550,54 @@ reading, firmware build identifier, or explicit range/output-state record.
 No load or hardware changes were reported. The existing
 `bluepill_f103c8_bench` profile built locally on 2026-10-15 using a temporary
 short-drive mapping after the normal-path build failed while archiving the
-Adafruit BusIO objects; no firmware was flashed. Obtain operator authorization
-before flashing it, changing output/gate state, or proceeding to loaded testing.
+Adafruit BusIO objects; no firmware was flashed during that local build.
 The same build is now available in VS Code as **Issue #100: Build F103
 full-bench (no upload)**; it selects an unused temporary drive letter so the
 Windows workspace path with spaces does not reach the archiver. The separate
-upload and COM7 monitor tasks are available but have not been run.
+upload and COM7 monitor tasks are available. A later operator-relayed agent
+report states that direct invocation of `scripts\run-f103-bench.ps1 -Action
+Upload` returned `Programming Finished`, `Verified OK`, and `SUCCESS`;
+the literal upload log was not supplied with the serial capture below.
+
+**Full-bench read-only capture (operator-relayed agent log, 2026-10-15):**
+Direct pyserial access to COM7 succeeded at 115200 baud, 8N1, with flow control
+disabled and DTR/RTS inactive before opening. The PlatformIO monitor had
+previously failed because the agent terminal had non-interactive stdin, not
+because COM7 was inaccessible. No text arrived during the bounded initial
+receive window; commands then returned responses. `HELP` listed the full-bench
+commands, confirming that the diagnostic command set is running, but not the
+exact flashed source commit or image hash.
+
+`CFGSHOW` and `CALSHOW` both returned `cfg d9=OFF` and the same voltage/current
+coefficients captured above. D9 had previously read ON; no cause for this
+change is established by the supplied capture. It is not rail-state evidence.
+`QSTATE` returned `p0=0x00 c0=0xC0 Q1=0 Q2=0 Q3=0 Q4=0 Q5=0 Q9=0`,
+showing all decoded AW range controls inactive, not a measured terminal state.
+`INAPROBE` returned `ina: 0x40=ACK 0x41=ACK`. `INANOW` and `INARAILS`
+reported output sense voltages near zero and the incoming monitor at
+11.424V / 117.78mA. The literal raw diagnostic response was:
+
+```text
+ina raw 0x40 CH1 shunt=0x0000(0) 0.000mV bus=0x0008 0.008V Rused=200mOhm Icalc=0mA
+ina raw 0x40 CH2 shunt=0x0000(0) 0.000mV bus=0x0008 0.008V Rused=200mOhm Icalc=0mA
+ina raw 0x40 CH3 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH1 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH2 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH3 shunt=0x01A8(53) 2.120mV bus=0x2CA0 11.424V Rused=18mOhm Icalc=118mA
+cal 5V vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00
+cal 3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00
+```
+
+The register reads establish working diagnostic access in the inactive-control
+state; they do not establish output-terminal accuracy, enabled regulation, or
+the cause of the historical load-side voltage difference. `Rused=200mOhm`
+records the firmware conversion assumption, not a physical shunt measurement;
+zero shunt readings cannot validate current scaling. The agent reported no
+reset, gate/output commands, calibration/config writes, rewiring, or loaded
+tests during capture. No direct terminal DMM or simultaneous panel reading
+was supplied. The next stage is a separately operator-approved no-external-load
+CH1 HIGH enable and paired terminal/raw-INA/controller/panel comparison, not
+another build/flash or a calibration adjustment.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps

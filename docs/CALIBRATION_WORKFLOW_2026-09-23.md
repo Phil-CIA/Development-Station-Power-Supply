@@ -278,6 +278,22 @@ authorize protection testing, overloads, or persistent calibration changes.
   terminal DMM reading, and raw INA data were not included. No load or hardware
   changes were reported. Do not flash the full-bench profile without separate
   operator authorization.
+- **Full-bench read-only continuation (operator-relayed agent log,
+  2026-10-15):** Direct pyserial capture on COM7 at 115200, 8N1 succeeded
+  with flow control disabled and DTR/RTS inactive. `HELP` listed the bench
+  diagnostics. `CFGSHOW` and `CALSHOW` returned the same coefficients as
+  above, now with `cfg d9=OFF`; the capture does not explain that D9 change.
+  `QSTATE` reported `p0=0x00 c0=0xC0` and all decoded Q controls zero.
+  Both INA addresses ACKed. Raw diagnostics showed 0x40 CH1/CH2 bus
+  `0x0008` (0.008V), all output-channel shunts zero, and 0x41 CH3 incoming
+  bus `0x2CA0` (11.424V), shunt `0x01A8` (2.120mV), `Rused=18mOhm`,
+  `Icalc=118mA`. Output-channel diagnostics still used `Rused=200mOhm`;
+  that is a firmware assumption, not a shunt measurement. The full literal
+  raw response is retained in RB-014 in the regulator tracker.
+  This establishes diagnostic access with range controls inactive, not
+  enabled-output accuracy or regulation. No terminal DMM/panel comparison,
+  output/gate changes, config writes, reset, or loaded tests were reported.
+  Exact flashed image identity and literal upload log were not provided.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.
