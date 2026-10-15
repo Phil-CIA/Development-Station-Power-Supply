@@ -119,6 +119,14 @@ Build the full-bench F103 profile:
 
 `platformio run -d stm32-bluepill-bringup -e bluepill_f103c8_bench`
 
+From the repository root in VS Code on Windows, use **Terminal: Run Task...**
+and select **Issue #100: Build F103 full-bench (no upload)**. This task maps
+the repository to an available temporary drive letter before invoking
+PlatformIO, avoiding the Windows path-with-spaces failure seen while
+archiving Adafruit BusIO. The separate **Issue #100: Upload F103 full-bench
+via ST-Link** task flashes the board. The **Issue #100: Monitor Blue Pill
+console (COM7)** task opens its 115200-baud serial console.
+
 Build the Rev-D target:
 
 `platformio run -d stm32-bluepill-bringup -e f405rg`

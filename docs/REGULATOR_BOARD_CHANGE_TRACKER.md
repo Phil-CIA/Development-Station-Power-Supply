@@ -552,6 +552,10 @@ No load or hardware changes were reported. The existing
 short-drive mapping after the normal-path build failed while archiving the
 Adafruit BusIO objects; no firmware was flashed. Obtain operator authorization
 before flashing it, changing output/gate state, or proceeding to loaded testing.
+The same build is now available in VS Code as **Issue #100: Build F103
+full-bench (no upload)**; it selects an unused temporary drive letter so the
+Windows workspace path with spaces does not reach the archiver. The separate
+upload and COM7 monitor tasks are available but have not been run.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
