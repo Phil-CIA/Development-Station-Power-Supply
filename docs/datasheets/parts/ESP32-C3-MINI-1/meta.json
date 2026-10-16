@@ -1,0 +1,23 @@
+{
+  "part": "ESP32-C3-MINI-1",
+  "title": "ESP32-C3-MINI-1 and MINI-1U Datasheet",
+  "manufacturer": "Espressif Systems",
+  "tags": [
+    "bluetooth",
+    "module",
+    "rf",
+    "wifi"
+  ],
+  "used_in": [
+    "dsp-regulator-hat-rev-d"
+  ],
+  "documents": [
+    {
+      "file": "ESP32-C3-MINI-1.pdf",
+      "url": "https://documentation.espressif.com/esp32-c3-mini-1_datasheet_en.pdf",
+      "type": "datasheet",
+      "sha256": "de7361381348d82a1abd337f10170be7a420675987568f71fe3c5b100deed270",
+      "added": "2026-10-13"
+    }
+  ]
+}

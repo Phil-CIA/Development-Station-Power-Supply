@@ -7,6 +7,7 @@ See [README.md](README.md) for how to search and add documents.
 
 | Part | Manufacturer | Title | Tags | Used in | Documents | Notes |
 |------|--------------|-------|------|---------|-----------|-------|
+| ESP32-C3-MINI-1 | Espressif Systems | ESP32-C3-MINI-1 and MINI-1U Datasheet | bluetooth, module, rf, wifi | dsp-regulator-hat-rev-d | [ESP32-C3-MINI-1.pdf](parts/ESP32-C3-MINI-1/ESP32-C3-MINI-1.pdf) ([txt](parts/ESP32-C3-MINI-1/ESP32-C3-MINI-1.txt)) | [NOTES](parts/ESP32-C3-MINI-1/NOTES.md) |
 | INA219 | Texas Instruments | Zero-drift bidirectional current/power monitor, I2C | current-sense, i2c | dsp-regulator, stm32-bluepill-bringup | [INA219.pdf](parts/INA219/INA219.pdf) ([txt](parts/INA219/INA219.txt)) | [NOTES](parts/INA219/NOTES.md) |
 | MCP4231 | Microchip | 7/8-bit SPI digital potentiometer (dual) | digipot, spi | dsp-regulator | [MCP4231.pdf](parts/MCP4231/MCP4231.pdf) ([txt](parts/MCP4231/MCP4231.txt)) | [NOTES](parts/MCP4231/NOTES.md) |
 
