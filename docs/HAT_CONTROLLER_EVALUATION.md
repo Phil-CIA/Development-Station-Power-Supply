@@ -17,7 +17,7 @@ supersede this session's October 13-14 proposals:
 | LEDs | No additional physical LEDs. Existing HAT/regulator/SuperMini indication policy is tracked by [#125](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/125); do not add PC13 LED circuitry from the earlier ledger by assumption. |
 | Editing workflow | The user manually maintains the readable single-sheet `My_Edits` schematic. Agents review and provide manual instructions; no automatic schematic/PCB reconstruction or edits are authorized here. |
 | Latest reported design evidence | #126 records the root netlist exported 2026-10-15 at 06:54:17 and ERC at 06:54:30, 0 errors / 24 warnings, with corrected UART endpoints. These are user-provided VS Code reports, not files independently inspected in this worktree. |
-| Remaining gates | Preserve the actual schematic in a reviewed PR; finish SuperMini footprint/pad/mechanical checks, electrical qualification, firmware pin/loader alignment, PCB/DRC, and bench evidence under #126. Do not close #102 or #126 based on this preservation work. |
+| Remaining gates | #102 is closed for the controller decision/evaluation scope only, not implementation readiness. Preserve the actual schematic in a reviewed PR; finish SuperMini footprint/pad/mechanical checks, electrical qualification, firmware pin/loader alignment, PCB/DRC, and bench evidence under #126, which remains open. This preservation work does not complete those gates. |
 
 **Preservation scope:** the complete earlier session state is retained in
 commit `dda4f1b`. The reconciled branch tip restores all three firmware files
