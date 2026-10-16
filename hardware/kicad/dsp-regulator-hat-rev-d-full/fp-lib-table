@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "SuperMini_Review")(type "KiCad")(uri "${KIPRJMOD}/SuperMini_Review.pretty")(options "")(descr "Project-local SuperMini review footprints"))
+)

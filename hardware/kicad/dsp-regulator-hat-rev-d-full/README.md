@@ -129,3 +129,18 @@ $kicad = "$env:LOCALAPPDATA\Programs\KiCad\10.0\bin\kicad-cli.exe"
   --output "$project\build_kicad\DSP-Regulator-HAT-RevD-Full.net" `
   --format kicadsexpr
 ```
+
+## SuperMini review closeout (user-accepted baseline)
+
+- User accepted directly soldered through-hole header mounting for
+  `SuperMini_Review:Teyleten_ESP32_C3_SuperMini` with the saved geometry:
+  2.54mm pitch, 15.00mm row spacing, aligned rows, 1.7mm copper / 1.0mm
+  drill, existing numbering, and USB at negative Y.
+- Saved footprint text was audited and KiCad opening was user-confirmed.
+- Physical hole fit, body/USB envelope, installed height, and antenna
+  clearance were not verified in this review and are retained as
+  implementation caveats (not blockers for this user-requested closeout).
+- U2 assignment and PCB integration were not performed.
+- Project-local library and footprint paths:
+  - `hardware/kicad/dsp-regulator-hat-rev-d-full/fp-lib-table`
+  - `hardware/kicad/dsp-regulator-hat-rev-d-full/SuperMini_Review.pretty/Teyleten_ESP32_C3_SuperMini.kicad_mod`
