@@ -1,15 +1,20 @@
 # HAT Controller Decision and Rev-D Migration (#102)
 
-**Status:** Controller architecture and MCU selected for future HAT Rev-D:
-STM32F405RG bare MCU plus ESP32-C3-MINI Wi-Fi coprocessor. Schematic/layout
-migration and verification remain to be done; Rev-C files are not changed by
-this decision. The reviewed F405 support project is preserved; use the
-separate editable integration starter in
+**Current status (2026-10-13):** STM32F405RG remains the selected and locked
+Rev-D controller. Native USB is deferred to a later HAT revision. Wi-Fi is
+likely, but no coprocessor/module or interface has been selected. The current
+F405 firmware target keeps native USB CDC and the candidate C3 UART disabled
+by default; CH340 USART1 remains the debug console. These user-directed
+decisions supersede earlier C3/USB architecture assumptions below.
+
+Schematic/layout migration and verification remain open; Rev-C files are not
+changed by this decision. The reviewed F405 support project is preserved; use
+the separate editable integration starter in
 `hardware/kicad/dsp-regulator-hat-rev-d-full/` for full-HAT work. Its HAT
-sheet was rebuilt from the user's exact 2026-09-21 schematic selection
-(SHA-256 recorded in that project's README), not the repository Rev-C copy.
-It retains 55 source components alongside the local F405 support sheet; it is
-still partial and has no bare C3 module or PCB.
+sheet was rebuilt from a previous schematic selection and is still partial;
+it does not incorporate the user's separately provided schematic
+interpretation. Make the user-provided source available for review before
+KiCad integration. Preserve it and ask the user before any KiCad edits.
 
 This decision applies to the future HAT revision, referred to here as
 Rev-D. Continue Rev-C bring-up and firmware work separately.
@@ -18,49 +23,93 @@ Rev-D. Continue Rev-C bring-up and firmware work separately.
 
 | Function | Current direction | Boundary |
 |---|---|---|
-| PC display link | USB device with CDC serial telemetry; a separate PC application renders a larger dashboard | Data/telemetry path, not USB host functionality. The existing CH340C/USART debug path is distinct from the future native USB interface. |
-| Wi-Fi | Local-network telemetry and OTA updates | No remote power control has been requested. OTA security, recovery, and update interruption behavior must be evaluated before selection. |
+| PC display link | Native USB deferred | The existing CH340C/USART debug path remains; do not treat it as a selected PC telemetry interface. |
+| Wi-Fi | Likely; preliminary hardware recommendation below, not yet a locked BOM/interface | Do not assume ESP32-C3, OTA, provisioning, or remote-control behavior is approved. |
 | Power control | Preserve a deterministic, safe control path | USB, Wi-Fi, and update activity must not compromise safe output states, hardware protection, or fault reporting. |
 
-These are future-revision requirements, not authorization to enable Wi-Fi,
-OTA, or a new USB path on Rev-C. The exact PC telemetry schema, update
-security/recovery policy, and network provisioning behavior remain open.
+Native USB, the Wi-Fi coprocessor/interface, and any network/update behavior
+remain outside the current F405 firmware scope until selected. The exact PC
+telemetry schema, update security/recovery policy, and provisioning behavior
+remain open for a later revision.
+
+### Preliminary Wi-Fi hardware recommendation
+
+To make the next schematic pass actionable without silently treating an
+earlier candidate as selected, use this as the proposed baseline for review:
+
+- Use a soldered **ESP32-C3-MINI-1U-H4X** module (4 MB flash, extended
+  temperature grade) with an external antenna. The external antenna gives
+  placement flexibility around the HAT's switching power hardware; keep the
+  antenna feed/connector at the board edge and follow Espressif's RF layout
+  guidance. Verify exact orderable part and antenna before BOM freeze.
+- Provide a dedicated local 3.3 V radio supply path with at least 500 mA
+  available for the module, subject to final regulator, thermal, and
+  transient-response calculations. The module datasheet reports a 350 mA
+  peak Wi-Fi transmit condition. Do not assume the existing logic rail has
+  this headroom without checking its source and loads.
+- Reserve F405 UART4 PC10/PC11 for an application UART only if the final
+  schematic confirms those pins are free. Keep the C3's UART0 GPIO20/GPIO21
+  available on a separate recovery/programming header. If the user's J4
+  does not already have another confirmed role, use it for a C3 recovery
+  header with UART0 TX/RX, GND, 3.3 V target reference (not a power input),
+  EN, GPIO8, and GPIO9.
+- Provide accessible module reset and complete boot recovery. GPIO8 and GPIO9
+  are strap pins: ROM joint-download mode requires GPIO8 high and GPIO9 low
+  when reset is released. A single GPIO9 control is insufficient. Include
+  GPIO2/GPIO8/GPIO9 default bias and expose GPIO8/GPIO9 plus EN at the
+  recovery interface; do not rely on the F405 running to recover the radio.
+- Keep the C3 limited to communications. It may request operations through a
+  validated STM32 interface but cannot directly control rails, limits,
+  protection, or the safety state.
+
+This recommendation is grounded in the local
+[ESP32-C3-MINI datasheet notes](datasheets/parts/ESP32-C3-MINI-1/NOTES.md).
+It is not approval to edit the KiCad schematic. The actual user schematic,
+board outline, antenna location, source-rail capacity, and J4 role are still
+needed to confirm or reject the recommendation.
+
+### Clock, programming header, and reset-switch recommendations
+
+- **Y1:** retain an external 8 MHz HSE crystal as the starting board
+  recommendation because the documented F405 clock plan is based on that
+  reference. Select an orderable crystal and calculate the two load capacitors
+  from its specified load capacitance and the final PCB parasitics; the
+  support sheet's 10 pF values are unverified and DNP. The F405 can use its
+  internal oscillator, but that is a different clock design and requires
+  confirming timing/baud-rate margins before removing Y1.
+- **J3:** honor the user's JTAG-header identification. Reserve the full
+  JTAG-capable pads (PA13/TMS, PA14/TCK, PA15/TDI, PB3/TDO, PB4/NJTRST) and
+  shared NRST, GND, and target-voltage reference. SWD can use PA13/PA14 on
+  that interface. Confirm J3's connector pin numbering and footprint against
+  the user's schematic; the separate support sheet's J1/SWD and J3/USB
+  designators are not authoritative.
+- **S1:** recommend a normally-open momentary reset switch from NRST to GND,
+  independent of the programming header. The support sheet depicts this
+  behavior under SW1, but do not assume the user's S1 has that function
+  until its nets are traced.
 
 ## Selected Rev-D architecture
 
-The selected architecture is:
+The current controller decision is:
 
 - **STM32F405RG** as the on-board, bare LQFP64 control MCU. It replaces the
   STM32F103C8T6 Blue Pill development board used by the current firmware
   bring-up setup and remains the deterministic real-time/control and safety
   authority.
-- **ESP32-C3-MINI** as a separate, low-cost Wi-Fi coprocessor for local
-  network telemetry and OTA.
-- **USB CDC device telemetry** from the HAT to a PC, where a separate
-  application can render the larger dashboard.
-- Keep Wi-Fi/network activity from directly owning time-critical rail control
-  or bypassing STM32 safety/fault handling.
+- Wi-Fi is expected to remain a separate communications function, but its
+  module, UART/pin assignment, protocol, and responsibilities are unselected.
+- Native USB CDC is deferred; the existing CH340 USART1 debug path is not
+  redefined as a telemetry link.
+- Any future communications coprocessor must not own time-critical rail
+  control or bypass STM32 safety/fault handling.
 
-The STM32F405RG selection is final for this architecture decision. The cited
-F405 pin allocation and minimum-support targets are frozen in the
-[Rev-D pin and support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md);
-schematic capture, electrical review, USB routing, and C3 module integration
-remain open before a Rev-D schematic or PCB is ready. Session 3 confirmed
-PC0=`C3_EN_N` and PC1=`C3_BOOT_N` for the bare ESP32-C3-MINI-1U external-antenna
-module path; exact ordering code and electrical implementation remain to be
-verified.
-The exact C3 module variant and its use of the current Rev-C U2 footprint and
-routing also require verification; the existing `ESP32_C3_mini` symbol at U2
-does not prove that it is fully wired or firmware-ready. The Rev-C netlist
-identifies that footprint as Seeed SKU `113991054` (XIAO ESP32C3), not a bare
-ESP32-C3-MINI module. Its 5 V input is connected, its 3.3 V output is
-explicitly no-connected, two GPIOs link to the STM32, two more have isolated
-RTS/CTS-named net stubs, and nine GPIOs are explicit no-connects. EN and USB
-programming signals are not exposed by the schematic symbol. Rev-D therefore
-uses a bare ESP32-C3-MINI-1U module with external antenna, with explicit
-power, EN/boot control, UART, and recovery access. Confirm the exact orderable
-module variant and antenna/connector before layout; see the C3 audit in the
-[Rev-D pin and minimum-support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md).
+The STM32F405RG selection is final. The F405 control-pin allocation and
+minimum-support targets are recorded in the
+[Rev-D pin and support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md).
+Its C3 and native-USB allocations are retained as unselected candidates, not
+active interfaces. The user's separately supplied schematic interpretation
+must be reviewed before KiCad integration; no schematic edits are authorized
+without asking the user.
 
 The STM32F405RG is an LQFP64 device, not a Blue Pill module. Rev-D must
 provide the MCU's required board-level power, clock/reset/boot, programming,
@@ -91,69 +140,93 @@ The remaining Rev-C firmware and validation work is tracked in
 work and additional planned features, with an explicit growth reserve; do not
 infer the full requirement from the present build alone.
 
-## Migration and implementation checklist
+## Rev-D hardware-first execution path
 
-The [Rev-D pin and minimum-support contract](HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md)
-provides the frozen, cited F405 allocation and schematic review gates.
-Confirmed interface decisions: supply-powered USB device (data/VBUS sensing
-only) and a dedicated UART between the STM32 and C3. Session 3 confirmed the
-bare ESP32-C3-MINI-1U external-antenna path and PC0/PC1 as the C3 EN/BOOT
-controls. The support schematic has passed initial ERC/netlist review, and a
-separate editable full-HAT project now has a corrected, partial source-backed
-HAT integration. The latest full project exports 95 components / 107 nets;
-KiCad CLI 10.0.5 reports 0 errors / 64 warnings with all severities enabled.
-The earlier support-only 0/0 result and superseded PR112 repo-source 0/80
-result are not current full-HAT ERC claims. Source-supported SPI flash,
-CH340, UDI, I2C, fan-control and SWD data/clock paths are mapped; ISET
-destinations, shift-register/AW9523 circuits and bare C3 implementation are
-absent from the selected source and remain unintegrated. Under the user's
-2026-10-09 direction, prior HAT circuits are reuse candidates; full Rev-C
-bench requalification and the untested fan's later bench check do not block
-integration. The selected schematic is not proven to match the production
-PCB or any physical board, and Rev-D validation remains open; see the contract
-for the source boundary and remaining gates.
+**Primary deliverable:** complete a fabrication-ready Rev-D HAT schematic and
+PCB with a bare STM32F405RG on the board, then order/build that PCB for
+bring-up. The F405 was selected because the F103C8 is constrained by firmware
+capacity; compiling the existing F405 target is supporting evidence, not the
+main outcome. Do not spend the critical path on further firmware optimization.
 
-The F405RG provides up to 1 MiB of flash, 192 KiB SRAM, and USB OTG FS
-according to ST documentation. Confirm the exact datasheet limits and memory
-regions during firmware migration. The ESP32-C3 remains a separate radio
-coprocessor; do not merge its networking responsibilities into the STM32
-control loop.
+The existing
+`hardware/kicad/dsp-regulator-hat-rev-d-full/` project is a partial integration
+starter only. Its earlier agent-created schematic is not the design authority
+for the next integration pass. The user created
+`DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch` as their own interpretation of
+the signal flow, but that file is not available in this worktree. Do not
+access the main checkout or silently substitute the starter. Make the user's
+schematic available inside the active worktree before using it. Preserve its
+original contents and ask the user before making any KiCad edits.
 
-- [ST STM32F405RG product page](https://www.st.com/en/microcontrollers-microprocessors/stm32f405rg.html)
-- [ST STM32F405RG datasheet](https://www.st.com/resource/en/datasheet/stm32f405rg.pdf)
-- [Espressif ESP32-C3-MINI-1 datasheet](https://documentation.espressif.com/esp32-c3-mini-1_datasheet_en.html)
+### Review handoff and stopping point (2026-10-14)
 
-1. **Board-level STM32 integration:** replace the Blue Pill module representation
-   with the exact STM32F405RG LQFP64 symbol and footprint; allocate VDD/VSS,
-   VDDA/VSSA, VCAP, decoupling, reset, boot-strapping, clock source, and SWD
-   programming/debug access from the current ST documentation and design
-   requirements.
-2. **Pin/peripheral migration:** map every current F103 signal contract to
-   legal F405RG LQFP64 pins and alternate functions. Preserve USART for CH340
-   debug and UDI, I2C, SPI W25Q128, shift-register controls, AW9523 interrupt,
-   and needed timers/PWM/ADC. Check all simultaneous peripheral use and avoid
-   assuming pin-name equivalence between MCUs.
-3. **USB CDC hardware:** reserve and route the F405 USB OTG FS device D+/D-
-   signals with the required connector, protection, VBUS sensing/power
-   policy, and routing constraints. Confirm USB CDC does not conflict with
-   existing debug/programming paths.
-4. **C3 coprocessor interface:** verify the ESP32-C3-MINI variant, U2
-   footprint/power/RF layout, and available GPIOs. Define a robust STM32-C3
-   transport, framing, reset/boot control, and behavior when Wi-Fi is absent
-   or the coprocessor resets.
-5. **Firmware migration:** add a dedicated STM32F405RG build target and move
-   the controller firmware off the F103C8 memory map. Revalidate startup,
-   safe output defaults, fault latency, watchdog behavior, calibration and
-   persistence, UDI, USB CDC telemetry, and build-size/RAM headroom.
-6. **Network/update boundary:** define provisioning and local telemetry,
-   OTA authentication/signing, rollback/recovery, and power-loss behavior.
-   OTA may update the C3 firmware; any STM32 update path must be designed and
-   independently validated. Remote power control remains out of scope.
-7. **Hardware verification:** run schematic ERC, pin/net contract checks,
-   footprint review, PCB DRC, and programming/boot/USB/Wi-Fi coexistence
-   tests. Keep fabrication release gated on the applicable Rev-D electrical
-   and safety review.
+**Paused before schematic editing.** The next work package is source-specific
+review, not more firmware optimization or immediate PCB layout.
 
-The W25Q128 remains external SPI data flash. It may support data storage or
-update staging only if a future boot/update design explicitly implements and
-validates that role; it does not replace the F405's executable flash or RAM.
+| Item | Handoff state |
+|---|---|
+| Confirmed direction | Bare STM32F405RG LQFP64; hardware-first HAT PCB; native USB deferred; F405 retains control/safety authority. |
+| Review artifacts | `docs/F405_PAD_LEDGER.md` contains a preliminary 64-pad ledger and Rev-C signal migration matrix. The pin/support contract and local C3 datasheet notes are the supporting references. They do not prove connectivity in the user's schematic. |
+| Recommendations, not approved design changes | External 8 MHz HSE baseline, NRST reset-switch behavior, full JTAG-capable pad reservations following the J3 callout, and ESP32-C3-MINI-1U-H4X with a separately budgeted supply and independent recovery interface. Neither the radio BOM nor the exact J3/J4/S1/Y1 circuitry is locked by this review. |
+| Source blocker | `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch` is not available in this active worktree. Do not read the main checkout or substitute the partial integration starter. |
+| Repository state at handoff | Changes remain uncommitted on `phil-cia-f405-hat-upgrade-evaluation`: README, firmware plan, controller tracker, pin/support contract, pad ledger, datasheet index/C3 reference folder, and the earlier supporting firmware changes in `platformio.ini`, `board_pins_f405rg.h`, and `main.cpp`. No KiCad source was changed. |
+| Evidence boundary | Preliminary pad coverage and documentation checks only for the hardware review. Earlier firmware build evidence is recorded separately; no F405 PCB, flashing, fabrication, or bench validation exists. |
+
+Resume in this order:
+
+1. Have the user provide an unchanged copy of their schematic and any
+   referenced child sheets/project-local libraries inside the active
+   worktree. Record the source path and SHA-256 before review; retain the
+   untouched copy.
+2. Export its netlist read-only and trace each former Blue Pill signal to its
+   F405 pad and endpoint. Review J3's actual pinout/debug mode, J4 and related
+   connectors, Y1 and its load network, S1, bare-MCU supply/VCAP/boot support,
+   and the regulator-board AW9523/D9 versus HAT fan paths.
+3. Present one bounded change list: confirmed connectivity, corrections
+   needed, and decisions to settle for the radio supply/module/antenna,
+   application UART, straps, and independent programming/recovery.
+4. Obtain explicit approval of that change list before editing KiCad.
+   Apply approved edits to a working copy, then reconcile the full netlist
+   and ERC against the ledger before beginning PCB layout.
+
+### Hardware release sequence
+
+1. **Use the user's design intent:** review the supplied schematic and explain
+   its net/signal flow against the frozen F405 contract. Resolve source
+   mismatches before editing: F405 board support, CH340 USART1 on PB6/PB7,
+   UDI USART3 on PB10/PB11, SPI W25Q128, I2C wiring, and the AW9523's actual
+   location on the regulator board. Use the preliminary
+   [`F405_PAD_LEDGER.md`](F405_PAD_LEDGER.md) as a checklist, not as proof of
+   the user's schematic connectivity. Specifically reconcile J3 (user-
+   identified JTAG), J4, S1, and Y1
+   from the staged source. Do not conflate D9 (the yellow LED on AW9523 P1.0)
+   with fan control (the separately disputed PB5/Q9/J7 path).
+2. **Complete the HAT schematic:** retain the selected F405 LQFP64 and its
+   required power, VCAP, clock, reset, boot, JTAG/SWD, decoupling, and
+   programming circuits. Include only confirmed HAT/regulator interconnects
+   and functions.
+   Native USB is deferred; Wi-Fi is likely but its module and interface are
+   unselected. Do not add USB/C3 circuitry as assumed requirements.
+3. **Schematic gate:** produce a complete netlist, run ERC, reconcile all
+   warnings affecting electrical connectivity, check symbol/footprint
+   assignments and pin/net contracts, and record unresolved non-blocking
+   items. The prior partial project's 95-component/107-net, 0-error/64-warning
+   export is not evidence that the user's design is complete or release-ready.
+4. **Create the PCB:** assign and verify footprints, establish board outline,
+   connector/mechanical locations and assembly constraints, place the F405
+   support components and interface circuits, then route the HAT. Run DRC,
+   inspect critical nets and copper/clearance/return paths, and generate
+   fabrication outputs only after review.
+5. **Order and assemble a prototype:** after the user approves fabrication
+   release, order and build the board populated with the F405. Preserve
+   JTAG/SWD, serial recovery and safe-state access.
+6. **First-board bring-up:** separately validate power/clock/reset/boot,
+   programming, safe GPIO defaults, CH340 console, UDI route, I2C devices,
+   SPI flash, fault/control paths, and recovery with recorded bench evidence.
+   Do not treat host builds or prior operator overrides as bench passes.
+
+Firmware work stays supporting and minimal until the F405 PCB exists: keep the
+buildable target and use builds only to check compatibility with the selected
+pin map. Runtime stack/heap headroom and physical behavior remain unmeasured.
+No fabrication, hardware, or bench validation has been performed in this
+session.
