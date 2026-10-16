@@ -3,6 +3,23 @@
 Date: 2026-09-23
 Status: Active working procedure for next calibration session
 
+## Current voltage-calibration disposition (2026-10-16)
+
+Issue #100 was closed by explicit operator acceptance of the observed
+performance for intended use, not precision calibration. Keep both voltage
+gains at 1.00000 and voltage offsets at 0.00mV; do not fit additional voltage
+constants from the load measurements. Preserve current gains 7.40741 (5V)
+and 7.08889 (3V3), with current offsets zero, without claiming independent
+current-accuracy validation.
+
+The operator clarified that the resistor-run CH1 serial point labeled
+no-load was accidentally captured with the load connected and must be
+excluded from no-load evidence. Do not use that disputed pairing to certify
+a no-load-to-load drop. Historical raw/panel pairing limitations remain
+recorded below, but further reconciliation or testing is not required for
+issue #100 under the operator's final decision. No new bench action or
+configuration write is authorized by this disposition. See RB-014.
+
 ## Purpose
 
 Recover and update the existing calibration approach already present in firmware and handoff notes, without changing the current CrowPanel UART0 shared transport setup.

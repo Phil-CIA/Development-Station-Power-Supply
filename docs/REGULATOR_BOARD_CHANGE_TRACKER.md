@@ -522,9 +522,27 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — resistor-load terminal readings received; conflicting serial interval labels/readings require reconciliation before a loaded-regulation verdict
-**Severity:** Loaded-regulation result not yet established; no-load panel calibration discrepancy corrected
+**Status:** Closed by explicit operator acceptance, 2026-10-16 — no further voltage correction or investigation required for issue #100
+**Severity:** Operator accepts observed performance for intended use; no precision-regulation certification claimed
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
+
+**Final operator disposition (2026-10-16):** The operator clarified that the
+resistor-run point labeled no-load was accidentally taken with the load
+connected and should have been omitted. Exclude that mislabeled CH1 serial
+point from no-load evidence; do not use the disputed pairing to assert a
+validated no-load-to-load drop. The operator accepts the observed terminal/
+display performance as sufficient for this project and explicitly directed
+closing issue #100 rather than pursuing smaller discrepancies or additional
+calibration constants. Keep BOTH voltage gains at 1.00000 and voltage offsets
+at 0.00mV. Existing current gains/offsets remain unchanged; this decision does
+not reset or validate current calibration.
+
+This disposition supersedes the investigation/recapture next steps in the
+historical entries below. No more tests, coefficient writes, or hardware
+changes are requested for this issue. The remaining CH2 raw/panel pairing
+limitations are retained as evidence limits, not closure blockers. Closure is
+operator acceptance, not proof of a hardware repair, exact loaded regulation,
+current accuracy, or protection function. Both paths were last reported OFF.
 
 **Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
 
@@ -782,12 +800,13 @@ reset, build/flash, D9/CMD:OUTPUT commands, or other Q controls. Some shutdown
 sensor excerpts are abbreviated, so distinguish reported shutdown sense
 results from the complete literal final QSTATE.
 
-Next action is offline reconciliation of the existing complete logs and
+At the time of this report, the proposed next action was offline reconciliation of the existing complete logs and
 operator measurement notes, with no new bench action: identify each actual
 no-load/loaded interval and pair raw reads and panel/DMM/source observations
 by time. If the original logs cannot resolve the conflicts, mark those pairs
 unusable and propose a separately approved targeted recapture. Do not change
-calibration or close issue #100 from this report.
+calibration or close issue #100 from this report alone. This proposed work is
+superseded by the final operator disposition above.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
