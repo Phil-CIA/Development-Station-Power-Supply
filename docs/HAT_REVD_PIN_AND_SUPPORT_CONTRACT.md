@@ -1,6 +1,25 @@
 # HAT Rev-D F405 Pin and Minimum-Support Contract
 
-**Current scope update (2026-10-13):** STM32F405RG remains the selected and
+**Reconciliation (2026-10-16):** the October 15 user decisions in
+[#126](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/126)
+supersede the interface allocation below. The current architecture is F405RG
+plus the actual Teyleten Robot SuperMini, native F405 USB CDC replacing CH340,
+and a custom F405 loader over UART4 PC10 TX to GPIO0 RX / PC11 RX from GPIO1
+TX. PB6/PB7/PD2 are spare links to C3 GPIO5/6/7; PC0/PC1 radio controls are
+not required now. Do not wire CH340 to PB6/PB7 or add a PC13 status LED based
+on the historical table. The complete current pin contract still requires
+reconciliation with the manually edited `My_Edits` schematic, absent here.
+See [current handoff](HAT_CONTROLLER_EVALUATION.md).
+
+## Historical support contract and evidence
+
+The remaining sections preserve the October 13-14 review of the support-only
+project and earlier integration starter. Their "frozen", "confirmed", and
+unselected/deferred descriptions are historical, not a freeze of the latest
+user design. Package/support data remain useful reference material, but no
+connectivity or part qualification is established for the latest schematic.
+
+**Historical scope update (2026-10-13):** STM32F405RG remains the selected and
 locked controller. Native USB is deferred to a later HAT revision, and no
 Wi-Fi module/interface is selected. The C3 and USB pins/support circuits in
 this contract are candidate reservations only; they are not active firmware

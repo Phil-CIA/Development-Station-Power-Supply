@@ -3,7 +3,6 @@
 #include <Arduino.h>
 
 // Rev-D assignments from docs/HAT_REVD_PIN_AND_SUPPORT_CONTRACT.md.
-// USB and C3 pins are reserved candidates; neither interface is enabled by default.
 static constexpr uint8_t PIN_DEBUG_RX = PB7;
 static constexpr uint8_t PIN_DEBUG_TX = PB6;
 static constexpr uint8_t PIN_UDI_RX = PB11;

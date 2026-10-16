@@ -1,5 +1,15 @@
 # Rev-D STM32F405 LQFP64 Pad Ledger
 
+**Historical ledger, reconciled 2026-10-16:** use the 64 package pads as a
+review checklist, not a current wiring contract. Later user decisions in
+[#126](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/126)
+select the actual SuperMini, native F405 USB CDC, and a custom F405 loader
+over UART4 (PC10 to GPIO0; PC11 from GPIO1). PB6/PB7/PD2 are spare links to
+C3 GPIO5/6/7, not CH340; PC0/PC1 reset/boot controls are not required. The
+PC13 LED and bare-MINI-1U proposals are not approved additions. See
+[current reconciliation](HAT_CONTROLLER_EVALUATION.md) before reusing any
+allocation or recommendation below.
+
 Status: preliminary cross-check only. This ledger compares the frozen F405
 pin contract with the repository's session-4 minimum-support schematic and
 netlist. It is **not** a pin-by-pin review of the user's signal-flow

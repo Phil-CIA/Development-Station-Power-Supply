@@ -21,6 +21,12 @@ Prefer adding findings here over re-reading the full datasheet.
 
 ## Project usage / gotchas
 
+- Historical reference only: the October 15 decisions in issue #126 select
+  the actual Teyleten Robot ESP32-C3 SuperMini development board, not a bare
+  MINI-1/MINI-1U module. The bare-module supply, pin numbering, footprint,
+  reset/strap, and antenna guidance below do not establish the SuperMini
+  board's circuitry or mechanical fit. The current F405 UART4 role is a
+  custom-loader transport, not the earlier application-only candidate.
 - A Wi-Fi rail sized only for average current is insufficient. Budget for at
   least the datasheet's 350 mA peak TX condition plus the module's transient
   response and any other 3.3 V loads; verify regulator and decoupling on the

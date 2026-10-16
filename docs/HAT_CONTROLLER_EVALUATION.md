@@ -1,6 +1,51 @@
 # HAT Controller Decision and Rev-D Migration (#102)
 
-**Current status (2026-10-13):** STM32F405RG remains the selected and locked
+## Current reconciliation and retirement handoff (2026-10-16)
+
+The October 15 decisions recorded in
+[#102](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/102#issuecomment-6191752950)
+and implementation tracker
+[#126](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/126)
+supersede this session's October 13-14 proposals:
+
+| Topic | Current user decision / evidence boundary |
+|---|---|
+| Controller and radio | Bare STM32F405RG LQFP64 plus the actual Teyleten Robot ESP32-C3 SuperMini, not a bare MINI-1U or XIAO. |
+| USB / console | Native F405 USB CDC replaces CH340. ST-Link remains for initial programming, debug, and independent recovery. USB is no longer deferred. |
+| UART4 | Custom F405 bootloader transport: PC10 TX to SuperMini GPIO0 RX; PC11 RX from GPIO1 TX. This is not an application-only UART or an assumed factory-ROM loader. |
+| Other radio signals | PB6 to C3 GPIO5, PB7 to GPIO6, and PD2 to GPIO7 are spare signals. PC0/PC1 reset/boot controls are not required now. |
+| LEDs | No additional physical LEDs. Existing HAT/regulator/SuperMini indication policy is tracked by [#125](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/125); do not add PC13 LED circuitry from the earlier ledger by assumption. |
+| Editing workflow | The user manually maintains the readable single-sheet `My_Edits` schematic. Agents review and provide manual instructions; no automatic schematic/PCB reconstruction or edits are authorized here. |
+| Latest reported design evidence | #126 records the root netlist exported 2026-10-15 at 06:54:17 and ERC at 06:54:30, 0 errors / 24 warnings, with corrected UART endpoints. These are user-provided VS Code reports, not files independently inspected in this worktree. |
+| Remaining gates | Preserve the actual schematic in a reviewed PR; finish SuperMini footprint/pad/mechanical checks, electrical qualification, firmware pin/loader alignment, PCB/DRC, and bench evidence under #126. Do not close #102 or #126 based on this preservation work. |
+
+**Preservation scope:** the complete earlier session state is retained in
+commit `dda4f1b`. The reconciled branch tip restores all three firmware files
+to the session's original committed baseline: the earlier USB-disable,
+candidate-UART gating, and output-preload edits are historical only, not
+changes proposed for merging. No firmware implementation, build, flash,
+KiCad edit, or hardware operation is part of this retirement pass. Restoring
+the baseline does not mean that baseline matches the new schematic.
+
+The unique review aid is [`F405_PAD_LEDGER.md`](F405_PAD_LEDGER.md): a complete
+package-pad checklist and historical Blue Pill migration comparison. Its
+old assignments (especially CH340 PB6/PB7, PC0/PC1, PC13, and USB/radio scope)
+must not override #126. The local bare-MINI datasheet is retained as a
+reference, not evidence for the actual SuperMini board.
+
+**Resume in the migration audit / SuperMini verification workstreams**, not
+by restarting the obsolete recommendations below. Preserve the user's live
+source and its identity there, then reconcile the actual netlist and pin
+ownership. This session cannot archive itself; archive it from the app only
+after confirming the preservation PR and branch are available remotely.
+
+## Historical October 13-14 evaluation (superseded)
+
+Everything below records the earlier session state, including its then-open
+questions and recommendations. It is retained for review/history, not as the
+current design contract or authorization to edit.
+
+**Historical status (2026-10-13):** STM32F405RG remains the selected and locked
 Rev-D controller. Native USB is deferred to a later HAT revision. Wi-Fi is
 likely, but no coprocessor/module or interface has been selected. The current
 F405 firmware target keeps native USB CDC and the candidate C3 UART disabled

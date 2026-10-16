@@ -10,11 +10,6 @@
 #include "board_pins_f103c8.h"
 #endif
 
-// The Wi-Fi module is not selected; keep its candidate UART pins inactive by default.
-#ifndef STM32_ENABLE_C3_LINK
-#define STM32_ENABLE_C3_LINK 0
-#endif
-
 // F103 keeps one core-owned USART1 console; F405 retains its separate debug UART.
 #if defined(FIRMWARE_BOARD_F405RG)
 HardwareSerial SerialDbg(PIN_DEBUG_RX, PIN_DEBUG_TX);
@@ -23,7 +18,7 @@ HardwareSerial& SerialConsole = SerialDbg;
 HardwareSerial& SerialConsole = Serial1;
 #endif
 HardwareSerial SerialU3(PIN_UDI_RX, PIN_UDI_TX);
-#if defined(FIRMWARE_BOARD_F405RG) && STM32_ENABLE_C3_LINK
+#if defined(FIRMWARE_BOARD_F405RG)
 HardwareSerial SerialC3(PIN_C3_UART_RX, PIN_C3_UART_TX);
 #endif
 
@@ -278,6 +273,9 @@ void serviceAw9523FaultPath();
 bool sampleFaultSumFromAw9523();
 
 void logConsole(const char* msg) {
+#if defined(FIRMWARE_BOARD_F405RG)
+  Serial.println(msg);
+#endif
   SerialConsole.println(msg);
 }
 void onAw9523Interrupt() {
@@ -2663,11 +2661,6 @@ bool is3v3PathEnabled() {
 
 void setup() {
   // Keep control outputs inactive as early as possible.
-  digitalWrite(PIN_ISET_5V, LOW);
-  digitalWrite(PIN_ISET_3V3, LOW);
-  if (PIN_ISET_CH3 >= 0) {
-    digitalWrite(static_cast<uint8_t>(PIN_ISET_CH3), LOW);
-  }
   pinMode(PIN_ISET_5V, OUTPUT);
   pinMode(PIN_ISET_3V3, OUTPUT);
   if (PIN_ISET_CH3 >= 0) {
@@ -2678,15 +2671,20 @@ void setup() {
   }
   pinMode(PIN_AW9523_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_AW9523_INT), onAw9523Interrupt, FALLING);
+  digitalWrite(PIN_ISET_5V, LOW);
+  digitalWrite(PIN_ISET_3V3, LOW);
+  if (PIN_ISET_CH3 >= 0) {
+    digitalWrite(static_cast<uint8_t>(PIN_ISET_CH3), LOW);
+  }
 
-  digitalWrite(PIN_STATUS_LED, HIGH);
   pinMode(PIN_STATUS_LED, OUTPUT);
+  digitalWrite(PIN_STATUS_LED, HIGH); // LED off (active-low)
 
-  digitalWrite(PIN_FLASH_CS, HIGH);
   pinMode(PIN_FLASH_CS, OUTPUT);
+  digitalWrite(PIN_FLASH_CS, HIGH);
 
-  digitalWrite(PIN_SR_LATCH, LOW);
   pinMode(PIN_SR_LATCH, OUTPUT);
+  digitalWrite(PIN_SR_LATCH, LOW);
 
   SPI.begin();
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
@@ -2697,6 +2695,9 @@ void setup() {
 
   SerialConsole.setRx(PIN_DEBUG_RX);
   SerialConsole.setTx(PIN_DEBUG_TX);
+#if defined(FIRMWARE_BOARD_F405RG)
+  Serial.begin(115200);
+#endif
   SerialConsole.begin(115200);
   delay(150);
   logConsole("stm32-bluepill bringup: boot");
@@ -2714,7 +2715,7 @@ void setup() {
   SerialU3.begin(115200);
   SerialU3.println("stm32-bluepill usart3: ready");
   SerialConsole.println("stm32-bluepill usart3: ready");
-#if defined(FIRMWARE_BOARD_F405RG) && STM32_ENABLE_C3_LINK
+#if defined(FIRMWARE_BOARD_F405RG)
   SerialC3.begin(115200);
   SerialC3.println("uart4 configured: 115200");
   SerialDbg.println("uart4 configured: 115200");
