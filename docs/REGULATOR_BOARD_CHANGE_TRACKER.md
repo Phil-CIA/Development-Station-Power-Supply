@@ -266,10 +266,11 @@ The ON/OFF control pin (LM2596 pin 5) uses an N-channel MOSFET for low-side pull
 **Issue #62 closure state (user decision, 2026-10-07):** **Closed as functionally resolved for the original pass-through symptom** based on bounded operator bench evidence now captured in PR #63 docs.
 - Closure basis recorded by operator includes:
   - Four commanded range paths reported working ON/OFF in operation-first bench flow.
-  - CH1 HIGH loaded terminal points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
-  - CH2 HIGH loaded terminal point recorded at `3.3141V` (10 ohm load).
+  - CH1 HIGH loaded voltage points recorded at `5.005V` (10 ohm load) and `4.9497V` (5 ohm load).
+  - CH2 HIGH loaded voltage point recorded at `3.3141V` (10 ohm load).
   - Concurrent CH1+CH2 operation recorded with panel/PSU values and confirmed return to near-zero output with final `p0=0x00` OFF state.
 - Root cause and corrective-action mechanism remain **not established**; closure is functional/operational against the original symptom, not a design-root-cause proof.
+- **Measurement-point clarification (operator, 2026-10-14):** the loaded voltage figures above were measured across resistors on breadboards, not verified directly at the supply output terminals. Retain the original log values, but do not treat them as terminal-regulation measurements. Issue #100 must begin by measuring directly at the output terminals and reconciling the active voltage calibration.
 
 **Current posture update (2026-10-07, user-directed):**
 - User reports hardware now **appears operational** and wants operation testing resumed first.
@@ -520,6 +521,346 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 
 ---
 
+### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
+**Status:** Closed by explicit operator acceptance, 2026-10-16 — no further voltage correction or investigation required for issue #100
+**Severity:** Operator accepts observed performance for intended use; no precision-regulation certification claimed
+**Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
+
+**Final operator disposition (2026-10-16):** The operator clarified that the
+resistor-run point labeled no-load was accidentally taken with the load
+connected and should have been omitted. Exclude that mislabeled CH1 serial
+point from no-load evidence; do not use the disputed pairing to assert a
+validated no-load-to-load drop. The operator accepts the observed terminal/
+display performance as sufficient for this project and explicitly directed
+closing issue #100 rather than pursuing smaller discrepancies or additional
+calibration constants. Keep BOTH voltage gains at 1.00000 and voltage offsets
+at 0.00mV. Existing current gains/offsets remain unchanged; this decision does
+not reset or validate current calibration.
+
+This disposition supersedes the investigation/recapture next steps in the
+historical entries below. No more tests, coefficient writes, or hardware
+changes are requested for this issue. The remaining CH2 raw/panel pairing
+limitations are retained as evidence limits, not closure blockers. Closure is
+operator acceptance, not proof of a hardware repair, exact loaded regulation,
+current accuracy, or protection function. Both paths were last reported OFF.
+
+**Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
+
+**Evidence correction:** The operator clarified on 2026-10-14 that the earlier `5.005V`, `4.9497V`, and related loaded voltage figures were measured across resistors on breadboards, not confirmed at the supply terminals. Preserve those values as historical load-resistor measurements; they do not establish terminal droop. `docs/CALIBRATION_WORKFLOW_2026-09-23.md` records a single-point calibration saved on 2026-10-07 (`5V vg=0.96642, voff=0.00mV`; `3V3 vg=0.97395, voff=0.00mV`), fitted against resistor/load readings rather than verified terminal readings. The currently installed config still needs read-only confirmation; neither the historical fit nor the stored values establish terminal-voltage accuracy.
+
+**Read-only compact-profile capture (operator, 2026-10-15):** The installed
+compact F103 build accepted `HELP`, `CFGSHOW`, and `CALSHOW`. Both readback
+commands reported `cfg d9=ON`, `5V vg=0.96642 voff_mV=0.00 ig=7.40741
+ioff_mA=0.00`, and `3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00`.
+The operator clarified that AW9523 P1.0 / D9 drives the board-to-board
+communication indicator LED; `D9ON`/`D9OFF` and `cfg d9=...` are not CH1
+rail-control or output-state evidence. The firmware README maps `Q2ON` /
+`Q2OFF` to the AW9523 P0.1 Q2/Q8 CH1 +5V HIGH path; these commands are
+available only in the full-bench profile.
+`INAPROBE` (entered twice), `INANOW`, `INARAILS`, and `INADIAG` each returned
+`cmd: unsupported in compact profile`; these commands are omitted from the
+compact profile by design, so this is not evidence of an INA communication
+failure. Startup status samples reported `Vin=11.400 Iin=120.00` and later
+`Vin=11.384 Iin=124.44` (reported by firmware; not independently verified).
+The capture establishes the calibration values currently read from this
+controller but does not include an INA raw reading, direct terminal DMM
+reading, firmware build identifier, or explicit range/output-state record.
+No load or hardware changes were reported. The existing
+`bluepill_f103c8_bench` profile built locally on 2026-10-15 using a temporary
+short-drive mapping after the normal-path build failed while archiving the
+Adafruit BusIO objects; no firmware was flashed during that local build.
+The same build is now available in VS Code as **Issue #100: Build F103
+full-bench (no upload)**; it selects an unused temporary drive letter so the
+Windows workspace path with spaces does not reach the archiver. The separate
+upload and COM7 monitor tasks are available. A later operator-relayed agent
+report states that direct invocation of `scripts\run-f103-bench.ps1 -Action
+Upload` returned `Programming Finished`, `Verified OK`, and `SUCCESS`;
+the literal upload log was not supplied with the serial capture below.
+
+**Full-bench read-only capture (operator-relayed agent log, 2026-10-15):**
+Direct pyserial access to COM7 succeeded at 115200 baud, 8N1, with flow control
+disabled and DTR/RTS inactive before opening. The PlatformIO monitor had
+previously failed because the agent terminal had non-interactive stdin, not
+because COM7 was inaccessible. No text arrived during the bounded initial
+receive window; commands then returned responses. `HELP` listed the full-bench
+commands, confirming that the diagnostic command set is running, but not the
+exact flashed source commit or image hash.
+
+`CFGSHOW` and `CALSHOW` both returned `cfg d9=OFF` and the same voltage/current
+coefficients captured above. D9 had previously read ON; no cause for this
+change is established by the supplied capture. It is not rail-state evidence.
+`QSTATE` returned `p0=0x00 c0=0xC0 Q1=0 Q2=0 Q3=0 Q4=0 Q5=0 Q9=0`,
+showing all decoded AW range controls inactive, not a measured terminal state.
+`INAPROBE` returned `ina: 0x40=ACK 0x41=ACK`. `INANOW` and `INARAILS`
+reported output sense voltages near zero and the incoming monitor at
+11.424V / 117.78mA. The literal raw diagnostic response was:
+
+```text
+ina raw 0x40 CH1 shunt=0x0000(0) 0.000mV bus=0x0008 0.008V Rused=200mOhm Icalc=0mA
+ina raw 0x40 CH2 shunt=0x0000(0) 0.000mV bus=0x0008 0.008V Rused=200mOhm Icalc=0mA
+ina raw 0x40 CH3 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH1 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH2 shunt=0x0000(0) 0.000mV bus=0x0000 0.000V Rused=200mOhm Icalc=0mA
+ina raw 0x41 CH3 shunt=0x01A8(53) 2.120mV bus=0x2CA0 11.424V Rused=18mOhm Icalc=118mA
+cal 5V vg=0.96642 voff_mV=0.00 ig=7.40741 ioff_mA=0.00
+cal 3V3 vg=0.97395 voff_mV=0.00 ig=7.08889 ioff_mA=0.00
+```
+
+The register reads establish working diagnostic access in the inactive-control
+state; they do not establish output-terminal accuracy, enabled regulation, or
+the cause of the historical load-side voltage difference. `Rused=200mOhm`
+records the firmware conversion assumption, not a physical shunt measurement;
+zero shunt readings cannot validate current scaling. The agent reported no
+reset, gate/output commands, calibration/config writes, rewiring, or loaded
+tests during capture. No direct terminal DMM or simultaneous panel reading
+was supplied in that inactive-control capture.
+
+**Approved CH1 HIGH no-external-load measurement (operator-relayed agent
+capture, 2026-10-15):** Operator confirmed external loads disconnected and
+source current limiting in place; source setpoints were 12.0V / 1.0A. Meter
+was an OWON XDM1041, reported 5V range. Source live numeric voltage/current
+and CV/CC state, meter calibration/verification status, and exact measurement
+timestamps were not supplied.
+
+Pre-enable `CFGSHOW`/`CALSHOW` retained the same coefficients and `cfg d9=OFF`.
+`QSTATE` was `p0=0x00 c0=0xC0` with all decoded controls zero. `Q2ON`
+returned `range: Q2/Q8 forced ON via aw95xx P0.1 (p0=0x02)` and
+`awdiag Q2/Q8 want=1 out=1 in=1 dir=OUT o=0x02 i=0xC2 c=0xC0`;
+`QSTATE` confirmed only Q2 active. Enabled results:
+
+| Measurement | Reported value |
+|---|---|
+| CH1 output-terminal DMM | 5.0467V |
+| 0x40 CH1 raw bus | `0x13B8`, 5.048V |
+| 0x40 CH1 raw shunt | `0x0038(7)`, 0.280mV; `Rused=200mOhm`, `Icalc=1mA` |
+| `INANOW` / `INARAILS` CH1 HIGH | 5.048V / 1.40mA (uncalibrated conversion) |
+| 0x40 CH2 raw bus / shunt | `0x13B8`, 5.048V / `0x0020(4)`, 0.160mV |
+| Incoming INA monitor during enabled reads | 11.384-11.392V / about 126.67mA (firmware-derived, not source readback) |
+| CrowPanel CH1 | 4.88V / 0.010A / 0.05W |
+| CrowPanel fault indication | "OCP trip", reported by operator as pre-existing |
+
+The raw INA bus value is 1.3mV above the terminal DMM reading at this
+reported no-load point. The saved CH1 voltage gain 0.96642 applied to 5.048V
+produces 4.87848816V, matching the displayed 4.88V after rounding. Thus the
+stored voltage calibration explains the observed panel under-reading
+(166.7mV below the DMM), without requiring a physical terminal drop of that
+size. This single point does not establish accuracy across voltage/load or
+resolve the historical load-side readings. Applying the stored current gain
+7.40741 to the 1.40mA conversion produces about 10.37mA, consistent with the
+displayed 0.010A; no independent current measurement validates either.
+
+The "OCP trip" indication remains unresolved: the operator's pre-existing
+classification does not prove a false trip or working protection. No further
+energized or loaded test is approved by this record. Leave the existing
+calibration unchanged pending a separately approved correction/verification
+plan; do not reset all config or alter current coefficients based on this
+no-load point.
+
+**Authorized two-rail voltage correction (operator-relayed agent capture,
+2026-10-15):** The operator clarified that the load-side measurements had not
+been intended as terminal-voltage calibration references and directed that
+both channels' affected voltage calibration be revisited. With all decoded
+Q controls inactive (`p0=0x00 c0=0xC0`) and `cfg d9=OFF`, the agent captured
+the previous coefficients, then sent each command once:
+
+```text
+CALSET 5V 1.00000 0.00 7.40741 0.00
+CALSET 3V3 1.00000 0.00 7.08889 0.00
+```
+
+Both command responses and final `CFGSHOW`/`CALSHOW` reported:
+
+```text
+cfg d9=OFF
+cal 5V vg=1.00000 voff_mV=0.00 ig=7.40741 ioff_mA=0.00
+cal 3V3 vg=1.00000 voff_mV=0.00 ig=7.08889 ioff_mA=0.00
+```
+
+This removes the load-derived voltage gains (previously 0.96642 / 0.97395)
+and preserves all reported current coefficients. `CALSET` invokes persistent
+save immediately; command/readback showed no reported error, but no reboot
+or independent flash readback was performed to verify power-cycle retention.
+Unity gain / zero offset is an uncorrected voltage-reporting baseline, not a
+new precision calibration. No post-correction enabled terminal/panel reading
+was taken, and CH2 still lacks the corresponding no-load terminal/raw-INA
+comparison. The current coefficients remain unchanged, not newly validated.
+
+A preceding malformed serial-framing attempt sent literal backslash+n
+characters; firmware rejected the pre-write commands and no writes occurred
+in that attempt. The successful run used actual LF framing via
+`command.encode("ascii") + bytes([10])`; `CFGSHOW` TX hex was
+`43464753484f570a`. No `CFGSAVE`, output/gate controls, reset, build/flash,
+rewiring, or loads were reported during the correction. Keep outputs inactive;
+any further energized verification requires a new bounded operator approval.
+
+For the preceding no-load measurement's shutdown, `Q2OFF` returned
+`range: Q2/Q8 forced OFF via aw95xx P0.1 (p0=0x00)`
+and `awdiag Q2/Q8 want=0 out=0 in=0 dir=OUT o=0x00 i=0xC0 c=0xC0`;
+`QSTATE` returned all decoded controls zero, and 0x40 CH1/CH2 raw bus
+returned to 0.008V with zero shunts. Shutdown is confirmed by register/sense
+readback, not a post-shutdown terminal DMM measurement. The agent reported no
+build, flash, reset, other controls, config writes, rewiring, or loaded tests.
+
+**Post-correction no-external-load verification, one channel at a time
+(operator-relayed agent capture, 2026-10-15):** Operator confirmed loads
+disconnected and readiness before each enable. Meter was reported as
+"OWON 1041", Auto DCV. Baseline `CFGSHOW`/`CALSHOW` confirmed both voltage
+gains 1.00000, offsets zero, and unchanged current coefficients. Initial
+`QSTATE` showed `p0=0x00 c0=0xC0`, all decoded controls inactive.
+
+| Channel / enabled state | Terminal DMM | Raw INA HIGH bus | CrowPanel | Source report |
+|---|---|---|---|---|
+| CH1, Q2 only, `p0=0x02` | 5.0486V | 0x40 CH1 `0x13B8`, 5.048V | 5.05V / 0.010A / 0.05W; no fault indication | 12.09V / 183mA, CV; limit reported 1.1A |
+| CH2, Q5 only, `p0=0x08` | 3.3216V | 0x41 CH1 `0x0CF8`, 3.320V in INADIAG; INANOW had 3.328V | 3.33V / 0.004A / 0.01W; no fault indication | 12.09V / 178mA; literal mode/limit description "cc 1.1A", ambiguous |
+
+CH1 raw-minus-DMM difference is -0.6mV; CH2's INADIAG HIGH bus difference
+is -1.6mV. CH2 HIGH was 3.328V in the preceding INANOW and 3.320V in
+INARAILS/INADIAG, a single 8mV bus-conversion increment. The panel's 3.33V
+is consistent with rounding a 3.328V sample, but no simultaneous transmitted
+frame was supplied to establish which sample it displayed. Do not infer
+an additional calibration correction from these asynchronous, quantized
+readings. The large load-derived voltage under-reading is no longer present
+at these no-load points; this is not a precision accuracy certification or
+loaded-regulation result.
+
+Before the run the source current limit was reported as 2.5A; measurement
+reports instead describe 1.1A. Preserve this discrepancy and clarify the
+actual limit and whether CH2 was truly in CC before proposing a loaded test.
+Source readings above are operator reports, not independently captured
+instrument data; exact timestamps and meter verification status remain absent.
+Incoming INA voltages during enabled reads were approximately 11.336-11.368V,
+lower than the reported source 12.09V; different measurement nodes/timing
+and measurement accuracy are not resolved here. No causal conclusion follows.
+
+`Q2ON` and `Q5ON` each acknowledged the expected AW9523 pin (P0.1 and P0.3)
+with no SR fallback; QSTATE confirmed only the intended decoded control active.
+`Q2OFF` restored `p0=0x00` before CH2 testing; 5V sense then read 0.024V.
+Final `Q5OFF` restored `p0=0x00`, all decoded controls inactive; 3V3 sense
+read 0.016V and 5V sense 0-0.008V. These are register/sensor shutdown
+observations, not post-off terminal DMM readings. No fault indication was
+reported in either enabled interval; the earlier OCP indication did not
+recur in this run, but its cause and protection function remain unverified.
+The operator's suggestion that CH1's 10mA is board-LED current is unverified;
+no independent current measurement was supplied.
+
+No build, flash, reset/power cycle, D9/CMD:OUTPUT controls, other Q controls,
+config writes, or external loads were reported. Power-cycle calibration
+retention remains unverified. Leave unity voltage gains and existing current
+coefficients unchanged; both paths are now inactive. Further energized or
+loaded testing requires separate bounded operator approval.
+
+**Approved resistor-load report (operator-relayed agent attachment,
+2026-10-16):** Agent reported nominal 10-ohm testing one channel at a time,
+actual reported resistances/ratings below, unity voltage gains and unchanged
+current coefficients. Measurements across the resistor were separate enabled
+intervals, not simultaneous with terminal measurements.
+
+| Channel | Reported resistor | No-load terminal | Loaded terminal | Terminal change | Resistor voltage, separate interval | Loaded panel |
+|---|---|---|---|---|---|---|
+| CH1, Q2 | 10.9 ohms / 10W | 5.0458V | 5.0156V | -30.2mV, about -0.60% | 5.0193V | 5.03V / 0.486A / 2.44W |
+| CH2, Q5 | 11 ohms / 10W | 3.3183V (repeat) | 3.3139V | -4.4mV, about -0.13% | 3.3141V | 3.32V / 0.332A / 1.07W |
+
+These DMM differences are arithmetic on the operator-reported intervals,
+not an independently verified regulation specification/pass. The CH1
+resistor voltage exceeds its loaded terminal reading by 3.7mV and CH2 by
+0.2mV, but separate intervals cannot establish the sign or size of wiring
+loss. Do not use resistor voltage as a terminal-calibration reference.
+
+The report contains material evidence conflicts:
+- CH1's section labeled "no-load ON" gives raw shunt
+  `0x0A40(328)`, 13.120mV / 65.60mA, essentially the loaded reading,
+  and incoming INA about 10.248-10.280V / 371.11mA. Applying the saved
+  current gain predicts about 0.486A, not its table's no-load panel 0.010A.
+  Its reported no-load source reading was 12.09V / 181mA, versus loaded
+  12.09V / 450mA CV. Thus that serial block cannot be accepted as a
+  paired no-load capture without reconciliation.
+- CH2's section corrected to "loaded-terminal" and its resistor interval
+  both retain `0x41 CH1 shunt=0x0018(3)` / 0.60mA, the same as the
+  true no-load repeat. With gain 7.08889 this predicts about 0.00425A,
+  not reported loaded panel 0.332A or resistor-interval panel 0.322A.
+  Incoming INA is also near the no-load value (~122-127mA) while operator
+  source readings increase from 177mA no-load to 300-301mA loaded.
+  This is not reconciled by the supplied serial excerpts.
+- Many blocks described as literal are abbreviated with `...`, so the
+  complete raw capture and timestamps are not available in this attachment.
+  CH2's first interval was relabeled loaded by the operator, then a no-load
+  repeat was performed; preserve that chronology instead of assuming the
+  original headings establish physical load state.
+
+No fault was reported; source CV was reported for CH1 intervals and CH2
+no-load/resistor intervals. CH2 loaded-terminal source mode was not supplied;
+its reported timestamp was `10/16 @0343`. All other exact measurement times
+remain absent. No conclusion about the cause of the lower incoming INA
+voltage or current accuracy follows from these conflicting records.
+
+The pasted Q2/Q5 command/register excerpts show the intended single-bit
+enables and `p0=0x00` after OFF; final QSTATE has all decoded controls zero.
+Agent reported both outputs OFF with near-zero INA sense, no config writes,
+reset, build/flash, D9/CMD:OUTPUT commands, or other Q controls. Some shutdown
+sensor excerpts are abbreviated, so distinguish reported shutdown sense
+results from the complete literal final QSTATE.
+
+At the time of this report, the proposed next action was offline reconciliation of the existing complete logs and
+operator measurement notes, with no new bench action: identify each actual
+no-load/loaded interval and pair raw reads and panel/DMM/source observations
+by time. If the original logs cannot resolve the conflicts, mark those pairs
+unusable and propose a separately approved targeted recapture. Do not change
+calibration or close issue #100 from this report alone. This proposed work is
+superseded by the final operator disposition above.
+
+**Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
+as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
+CH1 HIGH to INA U10 channel 1 through `+5V_Hi_Range` / `-5V_Hi_Range` across
+R7 (20mΩ); `VSENSE_5V+` is a separate remote-feedback net. The active STM32
+firmware applies per-rail voltage gain/offset to the INA bus-voltage conversion
+before publishing telemetry. In this export, J1.2 (`V_out +5V`) also connects
+to R12.1; R12.2 is on `VSENSE_5V+` with U1.3. Regulator feedback pin U2.4 is
+on `Net-(U2-FB)` with R1, R5, and C2; reconcile the selector/divider connection
+from the matching schematic before assigning a feedback probe point. The exact
+INA bus probe side and all physical probe mappings must still be confirmed
+against the installed assembly. These source mappings are not proof of the
+installed board revision, populated parts, or actual sense wiring; reconcile
+all of those before interpreting measurements.
+
+**Execution plan (read-only first):**
+1. Use the established Regulator Rev-C board/controller/wiring and the 2026-10-07 Rev-C netlist as the working baseline; do not repeat identity checks as a gate. Record the active firmware/build, enabled range, and output state as ordinary test context. Revisit identity only if new evidence shows the hardware or source differs from this baseline; stop only the affected probe/interpretation if a concrete mismatch is found.
+2. Record the DMM model, range, calibration/verification status, lead
+   placement, and exact measurement point. With no external load, compare the
+   DMM directly across the output terminals against the simultaneous raw INA
+   value, controller value, and CrowPanel value. Use the existing read-only
+   capture sequence (`HELP`, `CFGSHOW`, `CALSHOW`, `INAPROBE`, `INANOW`,
+   `INARAILS`, `INADIAG`) and preserve literal output with firmware/build
+   identity. `INADIAG` is needed for raw INA bus-register readings;
+   `INANOW`/`INARAILS` are derived estimates.
+3. Compare the readback with the historical 2026-10-07 saved coefficients
+   (`5V vg=0.96642, voff=0.00mV`; `3V3 vg=0.97395, voff=0.00mV`). Those
+   values were fitted against resistor/load readings and are not terminal-
+   voltage calibration evidence. Do not run `CALSET`, change coefficients, or
+   save a new calibration during diagnosis. In the active STM32 firmware,
+   `CALSET` writes the configuration immediately; first establish whether the
+   active coefficients or measurement location explain a fixed offset. Do not
+   use calibration to hide real path loss.
+4. Trace the INA voltage-sense points, `VSENSE_5V+`, local fallback/selector output, regulator feedback input, and CH1 output terminals through the established Rev-C schematic/netlist. Confirm the intended feedback target and map probe pads; revisit the baseline only if measurements or new evidence reveal a concrete mismatch.
+5. Only after operator approval, compare terminal voltage and resistor voltage simultaneously at no load and at individually approved, bounded CH1 loads. Record exact load resistance and temperature context, independently measured output current, raw INA data, calibrated controller/panel values, PSU voltage/current and CV/CC or limit status, and timestamps. If safe approved probe access is available, capture the mapped pre/post-switch, shunt, inductor, feedback-sense, and selector nodes to localize any drop.
+6. Classify the result only from paired measurements: terminal stable but telemetry offset suggests measurement/calibration mismatch; terminal low while upstream/feedback nodes remain higher suggests path loss or sense-target mismatch; correlated movement of terminal and feedback nodes indicates a different regulation condition that needs further analysis. Do not infer root cause from the display alone.
+
+**Safety and scope:** This is a documentation and analysis plan, not authorization to operate the bench. No rewiring, bypass changes, forced gate/feedback states, open-sense tests, overload/short tests, or firmware calibration writes without explicit operator approval. Keep source current limiting and approved load/thermal limits in force; power off and discharge before continuity checks or rewiring.
+
+**Acceptance evidence before any pass/fail or corrective-action decision:**
+- Installed board, firmware, netlist export, and measurement-node identities are reconciled.
+- Direct terminal measurements are paired with load-resistor, raw INA, controller, and display readings at the same timestamps.
+- Active voltage calibration is captured read-only; any proposed coefficient change is justified independently of path losses and separately approved.
+- The intended feedback sense target and all relevant path drops are backed by the matched source and physical measurements.
+- Numerical terminal-regulation and telemetry-to-terminal tolerances are agreed before assigning pass/fail; any untested rail/range/load coverage stays explicit.
+
+**Next step:** Record the active compact firmware/build, range/output state,
+and a direct no-load DMM reading across the CH1 output terminals with meter
+details. The compact profile cannot supply INA diagnostics. If raw INA
+readings are needed afterward, request authorization before flashing the
+full-bench profile; no loaded test is authorized by the compact capture.
+
+---
+
 ## Summary of Next-Iter Deliverables
 
 | Issue | Next-Iter File | Action | Priority |
@@ -536,6 +877,7 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | RB-010 (VSENSE open/floating dominance) | `dsp-regulator-next-iter/` | Harden VSENSE_5V+ fallback behavior and validate by SPICE before routing | High (Rev-C routing blocker) |
 | RB-011 (3.3V selector/reference dependency on R25) | `dsp-regulator-next-iter/` | Remove ambiguity in 3.3V feedback selector path; keep-or-redesign decision with bench revalidation | High |
 | RB-013 (Wrong LM74502 driver variant on U9/U14/U15/U16) | `dsp-regulator-rev-c/` (schematic done) | Rework 4x driver ICs to `LM74502HDDFR`, update BOM/LCSC, re-verify Vgs | High |
+| RB-014 (Issue #100 terminal voltage / feedback tracking investigation) | Regulator Rev-C | Reconcile board identity and read-only calibration, then compare terminal/load/INA/feedback nodes under approved conditions | Unassessed |
 
 ---
 
@@ -555,4 +897,5 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 | 2026-09-21 | Added forced-enable evidence: U2 and U4 cores regulate at IC pins when pin5 is grounded, but board output nodes remain out of range | Rev-C bench continuation session |
 | 2026-09-27 | Added issue #62 bench readings for RB-003 and recorded low `VGS` (0.74V) evidence on `GATE_5_HIGH` versus `SRC_5_HIGH` | Rev-C bench continuation session |
 | 2026-10-06 | RB-013 bench rework: replaced U9/U14/U15/U16 and reversed D2/D5/D9/D13; post-rework Vgs verification remains open | Bench continuation session |
+| 2026-10-15 | Added RB-014 issue #100 investigation plan and clarified that earlier loaded voltage figures were taken across breadboard resistors, not verified at supply terminals | Issue #100 review |
 | TBD | Design review and next-iter file creation | TBD |

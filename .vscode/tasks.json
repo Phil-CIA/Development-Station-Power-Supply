@@ -2,6 +2,55 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Issue #100: Build F103 full-bench (no upload)",
+			"detail": "Builds the INA diagnostic profile through a temporary short drive path; does not flash the board",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/run-f103-bench.ps1",
+				"-Action",
+				"Build"
+			],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Issue #100: Upload F103 full-bench via ST-Link",
+			"detail": "Flashes the INA diagnostic profile to the STM32F103 using the configured ST-Link upload protocol",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/run-f103-bench.ps1",
+				"-Action",
+				"Upload"
+			],
+			"group": "none",
+			"problemMatcher": []
+		},
+		{
+			"label": "Issue #100: Monitor Blue Pill console (COM7)",
+			"detail": "Open the Blue Pill USB-serial console at 115200 baud",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"device",
+				"monitor",
+				"-p",
+				"COM7",
+				"-b",
+				"115200"
+			],
+			"problemMatcher": []
+		},
+		{
 			"label": "WorkStation: Upload (hat_c6_i2c_probe)",
 			"detail": "HAT ESP32-C6 guarded upload (port + chip precheck)",
 			"type": "shell",
