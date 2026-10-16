@@ -344,6 +344,22 @@ authorize protection testing, overloads, or persistent calibration changes.
   loads, build/flash, reset, or power cycle occurred. This confirms removal
   of the large no-load display discrepancy, not precision calibration,
   current accuracy, loaded regulation, or power-cycle retention. See RB-014.
+- **Bounded resistor-load report (2026-10-16), pairing unresolved:** Reported
+  CH1 10.9-ohm/10W load changed terminal DMM 5.0458V to 5.0156V
+  (-30.2mV, about -0.60%); CH2 11-ohm/10W changed 3.3183V to 3.3139V
+  (-4.4mV, about -0.13%). Resistor voltages 5.0193V / 3.3141V were
+  separate intervals, not simultaneous wiring-loss measurements. Both
+  unity voltage gains and current coefficients were reported unchanged.
+  However, CH1's "no-load" serial block contains loaded-like 65.60mA
+  raw current, incompatible with the paired 0.010A panel reading under
+  the saved gain. CH2's loaded blocks retain no-load-like 0.60mA raw
+  current, incompatible with reported panel 0.322-0.332A under its gain.
+  Incoming INA/source-current reports also lack consistent pairing;
+  serial excerpts are abbreviated. Do not accept a loaded-regulation
+  pass or derive any calibration from these conflicting pairs.
+  Both controls were returned inactive per final QSTATE. Reconcile
+  complete existing logs/timestamps offline before proposing any recapture.
+  Detailed report, limitations, and next action are in RB-014.
 - The older `src/main.cpp` / `src/power_telemetry_map.h` `RCAL` and `SHUNT`
   commands belong to the legacy ESP32 implementation; they do not establish
   the active STM32 controller's range mapping.

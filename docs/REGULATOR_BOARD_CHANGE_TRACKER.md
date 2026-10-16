@@ -522,8 +522,8 @@ With only 60µA available, the existing 100kΩ gate-source bleeder resistor on e
 ---
 
 ### RB-014 — Issue #100: Verify Terminal VOUT, Voltage Calibration, and Feedback Tracking
-**Status:** 🔴 Open — both voltage gains restored to unity and no-load terminal/INA/panel comparison received; loaded regulation remains untested
-**Severity:** Loaded terminal-droop concern remains unassessed; no-load panel calibration discrepancy corrected
+**Status:** 🔴 Open — resistor-load terminal readings received; conflicting serial interval labels/readings require reconciliation before a loaded-regulation verdict
+**Severity:** Loaded-regulation result not yet established; no-load panel calibration discrepancy corrected
 **Related issue:** [#100](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/100)
 
 **Question:** Does the physical CH1 output-terminal voltage change under load, and if so, does the INA/firmware voltage report or remote-feedback path track the same node?
@@ -730,6 +730,64 @@ config writes, or external loads were reported. Power-cycle calibration
 retention remains unverified. Leave unity voltage gains and existing current
 coefficients unchanged; both paths are now inactive. Further energized or
 loaded testing requires separate bounded operator approval.
+
+**Approved resistor-load report (operator-relayed agent attachment,
+2026-10-16):** Agent reported nominal 10-ohm testing one channel at a time,
+actual reported resistances/ratings below, unity voltage gains and unchanged
+current coefficients. Measurements across the resistor were separate enabled
+intervals, not simultaneous with terminal measurements.
+
+| Channel | Reported resistor | No-load terminal | Loaded terminal | Terminal change | Resistor voltage, separate interval | Loaded panel |
+|---|---|---|---|---|---|---|
+| CH1, Q2 | 10.9 ohms / 10W | 5.0458V | 5.0156V | -30.2mV, about -0.60% | 5.0193V | 5.03V / 0.486A / 2.44W |
+| CH2, Q5 | 11 ohms / 10W | 3.3183V (repeat) | 3.3139V | -4.4mV, about -0.13% | 3.3141V | 3.32V / 0.332A / 1.07W |
+
+These DMM differences are arithmetic on the operator-reported intervals,
+not an independently verified regulation specification/pass. The CH1
+resistor voltage exceeds its loaded terminal reading by 3.7mV and CH2 by
+0.2mV, but separate intervals cannot establish the sign or size of wiring
+loss. Do not use resistor voltage as a terminal-calibration reference.
+
+The report contains material evidence conflicts:
+- CH1's section labeled "no-load ON" gives raw shunt
+  `0x0A40(328)`, 13.120mV / 65.60mA, essentially the loaded reading,
+  and incoming INA about 10.248-10.280V / 371.11mA. Applying the saved
+  current gain predicts about 0.486A, not its table's no-load panel 0.010A.
+  Its reported no-load source reading was 12.09V / 181mA, versus loaded
+  12.09V / 450mA CV. Thus that serial block cannot be accepted as a
+  paired no-load capture without reconciliation.
+- CH2's section corrected to "loaded-terminal" and its resistor interval
+  both retain `0x41 CH1 shunt=0x0018(3)` / 0.60mA, the same as the
+  true no-load repeat. With gain 7.08889 this predicts about 0.00425A,
+  not reported loaded panel 0.332A or resistor-interval panel 0.322A.
+  Incoming INA is also near the no-load value (~122-127mA) while operator
+  source readings increase from 177mA no-load to 300-301mA loaded.
+  This is not reconciled by the supplied serial excerpts.
+- Many blocks described as literal are abbreviated with `...`, so the
+  complete raw capture and timestamps are not available in this attachment.
+  CH2's first interval was relabeled loaded by the operator, then a no-load
+  repeat was performed; preserve that chronology instead of assuming the
+  original headings establish physical load state.
+
+No fault was reported; source CV was reported for CH1 intervals and CH2
+no-load/resistor intervals. CH2 loaded-terminal source mode was not supplied;
+its reported timestamp was `10/16 @0343`. All other exact measurement times
+remain absent. No conclusion about the cause of the lower incoming INA
+voltage or current accuracy follows from these conflicting records.
+
+The pasted Q2/Q5 command/register excerpts show the intended single-bit
+enables and `p0=0x00` after OFF; final QSTATE has all decoded controls zero.
+Agent reported both outputs OFF with near-zero INA sense, no config writes,
+reset, build/flash, D9/CMD:OUTPUT commands, or other Q controls. Some shutdown
+sensor excerpts are abbreviated, so distinguish reported shutdown sense
+results from the complete literal final QSTATE.
+
+Next action is offline reconciliation of the existing complete logs and
+operator measurement notes, with no new bench action: identify each actual
+no-load/loaded interval and pair raw reads and panel/DMM/source observations
+by time. If the original logs cannot resolve the conflicts, mark those pairs
+unusable and propose a separately approved targeted recapture. Do not change
+calibration or close issue #100 from this report.
 
 **Static design reference:** The 2026-10-07 Rev-C netlist records the CH1 power path
 as `+5V_reg` through Q1/Q2, shunt R7, and L1 to `V_out +5V` at J1.2. It maps
