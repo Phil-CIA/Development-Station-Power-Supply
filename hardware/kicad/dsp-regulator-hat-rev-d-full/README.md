@@ -144,3 +144,21 @@ $kicad = "$env:LOCALAPPDATA\Programs\KiCad\10.0\bin\kicad-cli.exe"
 - Project-local library and footprint paths:
   - `hardware/kicad/dsp-regulator-hat-rev-d-full/fp-lib-table`
   - `hardware/kicad/dsp-regulator-hat-rev-d-full/SuperMini_Review.pretty/Teyleten_ESP32_C3_SuperMini.kicad_mod`
+
+## Rev-D source preservation status (2026-10-24 user-confirmed)
+
+- Confirmed Rev-D source set in this workspace:
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pro`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pcb`
+- SHA-256 (full):
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch`
+    `56DBB1829EC3D60BC174B423BB3C076FEBDE61CBA844A3334B06E9B805610F86`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pro`
+    `70C6AB58C39FFBC618B4C45C720BD51EEC6F3F04F0216B5DFA340010E44D0D51`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pcb`
+    `8F7872B7946E3F1403190E5051BBDE5EB1976761201A710C185F5A749642770A`
+- Historical copies only (not current source authority): `.history/`, `_restore_backup_*`,
+  `../recovery-snapshots/`, and `../rev-d-source-staging/`.
+- Current `DSP-Regulator-HAT-Rev_D_My_Edits.net`, `ERC.rpt`, and `DRC.rpt` files predate
+  the current source timestamps and do not validate electrical correctness of this source set.
