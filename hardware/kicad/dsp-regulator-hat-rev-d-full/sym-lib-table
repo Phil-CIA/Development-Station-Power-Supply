@@ -1,0 +1,9 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "1My_Connectors")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Symbols/1My parts - Connectors/1My_Connectors.kicad_sym")(options "")(descr "Project-local mapping to existing personal symbol library"))
+  (lib (name "1My_IC's")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Symbols/1My parts - IC's/1My_IC's.kicad_sym")(options "")(descr "Project-local mapping to existing personal symbol library"))
+  (lib (name "1My_MPUs")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Symbols/1My parts - MPUs/1My_MPUs.kicad_sym")(options "")(descr "Project-local mapping to existing personal symbol library"))
+  (lib (name "dk_TVS-Diodes")(type "Legacy")(uri "C:/Users/user/OneDrive/KiCad projects/Downloaded foot prints and symbols/Digikey library/digikey-kicad-library-master/digikey-symbols/dk_TVS-Diodes.lib")(options "")(descr "Project-local mapping to existing personal symbol library"))
+  (lib (name "1My_Passive")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Symbols/1My parts - Passive/1My_Passive.kicad_sym")(options "")(descr "Project-local mapping to existing personal symbol library"))
+  (lib (name "1My_Basic components")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Symbols/1My parts - Basic components/1My_Basic components.kicad_sym")(options "")(descr "Project-local mapping to existing personal symbol library"))
+)

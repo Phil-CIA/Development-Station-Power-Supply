@@ -129,3 +129,36 @@ $kicad = "$env:LOCALAPPDATA\Programs\KiCad\10.0\bin\kicad-cli.exe"
   --output "$project\build_kicad\DSP-Regulator-HAT-RevD-Full.net" `
   --format kicadsexpr
 ```
+
+## SuperMini review closeout (user-accepted baseline)
+
+- User accepted directly soldered through-hole header mounting for
+  `SuperMini_Review:Teyleten_ESP32_C3_SuperMini` with the saved geometry:
+  2.54mm pitch, 15.00mm row spacing, aligned rows, 1.7mm copper / 1.0mm
+  drill, existing numbering, and USB at negative Y.
+- Saved footprint text was audited and KiCad opening was user-confirmed.
+- Physical hole fit, body/USB envelope, installed height, and antenna
+  clearance were not verified in this review and are retained as
+  implementation caveats (not blockers for this user-requested closeout).
+- U2 assignment and PCB integration were not performed.
+- Project-local library and footprint paths:
+  - `hardware/kicad/dsp-regulator-hat-rev-d-full/fp-lib-table`
+  - `hardware/kicad/dsp-regulator-hat-rev-d-full/SuperMini_Review.pretty/Teyleten_ESP32_C3_SuperMini.kicad_mod`
+
+## Rev-D source preservation status (2026-10-24 user-confirmed)
+
+- Confirmed Rev-D source set in this workspace:
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pro`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pcb`
+- SHA-256 (full):
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch`
+    `56DBB1829EC3D60BC174B423BB3C076FEBDE61CBA844A3334B06E9B805610F86`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pro`
+    `70C6AB58C39FFBC618B4C45C720BD51EEC6F3F04F0216B5DFA340010E44D0D51`
+  - `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_pcb`
+    `8F7872B7946E3F1403190E5051BBDE5EB1976761201A710C185F5A749642770A`
+- Historical copies only (not current source authority): `.history/`, `_restore_backup_*`,
+  `../recovery-snapshots/`, and `../rev-d-source-staging/`.
+- Current `DSP-Regulator-HAT-Rev_D_My_Edits.net`, `ERC.rpt`, and `DRC.rpt` files predate
+  the current source timestamps and do not validate electrical correctness of this source set.

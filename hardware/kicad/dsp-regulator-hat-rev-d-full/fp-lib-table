@@ -1,0 +1,9 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "1My_Parts_ Connectors")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Footprints/1My_Parts_ Connectors.pretty")(options "")(descr "Project-local mapping to existing personal footprint library"))
+  (lib (name "1My_Parts_ ICs")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Footprints/1My_Parts_ ICs.pretty")(options "")(descr "Project-local mapping to existing personal footprint library"))
+  (lib (name "1My_Parts_ MPUs")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Footprints/1My_Parts_ MPUs.pretty")(options "")(descr "Project-local mapping to existing personal footprint library"))
+  (lib (name "digikey-footprints")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/Downloaded foot prints and symbols/Digikey library/digikey-kicad-library-master/digikey-footprints.pretty")(options "")(descr "Project-local mapping to existing personal footprint library"))
+  (lib (name "1My_Parts_ Passive")(type "KiCad")(uri "C:/Users/user/OneDrive/KiCad projects/1 My Parts Lib/Footprints/1My_Parts_ Passive.pretty")(options "")(descr "Project-local mapping to existing personal footprint library"))
+  (lib (name "SuperMini_Review")(type "KiCad")(uri "${KIPRJMOD}/SuperMini_Review.pretty")(options "")(descr "Project-local SuperMini review footprints"))
+)
