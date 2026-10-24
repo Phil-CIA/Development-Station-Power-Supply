@@ -41,6 +41,14 @@ Current power-hardware status:
 - **Rev-D HAT is a hardware-first deliverable:** bare STM32F405RG LQFP64 plus the actual Teyleten Robot ESP32-C3 SuperMini are selected. The October 15 decisions in [#126](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/126) select native F405 USB CDC replacing CH340, a separate custom F405 loader over UART4 (PC10 TX to C3 GPIO0 RX; PC11 RX from GPIO1 TX), and independent ST-Link recovery. They supersede the October 13-14 USB-deferred/bare-MINI-1U proposals. The user's manually maintained `My_Edits` schematic must be preserved and reviewed; this worktree does not contain it and the repository's partial starter is not a substitute. Firmware pin alignment, electrical/footprint qualification, PCB/DRC, and bench validation remain open under #126; existing-indicator policy is [#125](https://github.com/Phil-CIA/Development-Station-Power-Supply/issues/125). See `docs/HAT_CONTROLLER_EVALUATION.md` for the reconciliation and historical review boundary. No fabrication or hardware validation is claimed.
 - See `docs/DEV_STATION_HANDOFF_2026-08-14.md` for the active restart state.
 
+**Immediate firmware priority (2026-10-24):** The next controller work is the
+Rev-D STM32F405 transition. Do not spend bench time validating the compact F103
+profile or continue optimizing F103 flash usage for future features. The F405
+build already enables the full bring-up command set; its existing build is not
+evidence of hardware compatibility or bench validation. Reconcile firmware
+against the actual Rev-D hardware and re-verify behavior when that hardware is
+available. See `docs/FIRMWARE_DEVELOPMENT_PLAN.md` and issue #126.
+
 ## Hardware scope in this repo
 
 - External supply 12V feeds the regulator and HAT control stack

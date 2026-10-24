@@ -5,6 +5,23 @@ work going forward, replacing "figure it out from old handoff docs" with a
 single tracked list. Follow `docs/SYSTEM_DEVELOPMENT_WORKFLOW.md` for how to
 branch, PR, and merge each item below.
 
+## Immediate execution priority (2026-10-24)
+
+The user has selected the Rev-D STM32F405 transition as the next firmware
+activity. Do not block that work on bench-validating the compact F103 image or
+continue optimizing F103 flash usage for future features. The F103 compact and
+full-bench profiles remain build-verified reference configurations; their
+hardware validation is not the next milestone.
+
+The existing `f405rg` PlatformIO environment sets
+`STM32_ENABLE_BRINGUP_BENCH_COMMANDS=1`, so the F405 build includes the
+full-bench command set. No rollback of the compact F103 profile is needed to
+restore those commands. This does not establish that the F405 firmware matches
+the final Rev-D schematic or works on hardware. The next work is to preserve
+and review the user's actual Rev-D design, reconcile F405 pin ownership and
+firmware behavior against it, then re-check the intended features on F405
+hardware. Track the implementation and validation gates under issue #126.
+
 This was built by reading the actual firmware source in all four targets
 (not just the design docs), so the status column reflects what the code
 does today, not what a doc says it should do.
@@ -145,7 +162,7 @@ PR description.
 | #40 CrowPanel startup test | Bucket 4 | In scope now |
 | #38 SPI memory test | Bucket 5 | In scope now |
 | #27 Bootup log and testing | Bucket 6 | In scope now |
-| #101 STM32F103C8 flash headroom and size budget | Bucket 6 | Active replacement for closed-unmerged PR #103 on `firmware/stm32-flash-headroom`; separate from the #102 HAT controller upgrade. Adds compact/full-bench F103 profiles and CI image budgets; new profile binaries are build-verified, not bench-validated. |
+| #101 STM32F103C8 flash headroom and size budget | Bucket 6 | Completed by merged PR #115. Compact/full-bench F103 profiles and CI image budgets remain available as reference; compact-image bench validation is not the next milestone after the user selected the F405 transition. |
 | #33 Milestone C AHT20 fan curve | Bucket 6 | In scope now (diagnostics + validation evidence) |
 | #35 Milestone E bench fan-validation evidence capture | Bucket 6 | In scope now |
 | #25 Add OTA and Wi-Fi | Bucket 5 | Out of scope for Rev-C bench bring-up unless explicitly re-scoped |
@@ -195,7 +212,7 @@ behavior and does not close any bench exit criterion.
 | Display → host command channel (`CMD:`/`ACK:`/`ERR:`/`EVT:`) | ⚠️ Expanded and in use | `stm32-bluepill-bringup/src/main.cpp` + `crowpanel-43-bringup/src/disp_link_slave.*` + `crowpanel-43-bringup/src/main.cpp` | Parser/framing is now wired to Setup UI flow: `OUTPUT`/`ILIM` write commands plus `GET OUTPUT`, `GET ILIM CH1|CH2`, `GET STATE`, and additive `GET CFGREC` readback commands with ACK/ERR/EVT parsing on the display. Fault transitions now emit immediate `EVT:FAULT TRIP` / `EVT:FAULT CLEAR` from the AW9523 interrupt path. Bench validation remains open. |
 | Bring-up diagnostics + recovery hints (Bucket 6) | ⚠️ In progress | `stm32-bluepill-bringup/src/main.cpp` | Startup and manual `DIAG` now emit compact contract/health snapshots (including Rev-C AW9523 fault-path mode) for repeatable bench log capture; richer recovery-path coverage remains open for follow-on work. |
 | Custom front-panel board (ESP32-C6) UDI + LVGL rewrite | ❌ Not started | `src/rev1/display_main.cpp` | Paused/secondary path. Needs the Phase 3 rewrite described in `docs/display-project/README.md` before it reaches parity with CrowPanel. |
-| STM32 F103 flash profiles and F405 build | ✅ Build-verified baseline only; not latest-design alignment | `stm32-bluepill-bringup/` | `bluepill_f103c8` is the compact F103 profile (bench-only shell commands disabled); `bluepill_f103c8_bench` retains the full bench shell. Their complete-image ceilings are 52,428 B and 65,536 B respectively, checked in CI with ELF-span cross-checks and checker unit tests. Reconciled builds measured 44,944 / 65,536 B PlatformIO flash and 2,000 B RAM for compact, and 52,236 / 65,536 B and 2,000 B RAM for full-bench; complete images were 45,264 B and 52,556 B. These profile binaries have not been bench-validated. The original `f405rg` baseline retains USB CDC and full bring-up commands, measured at 66,252 / 1,048,576 B flash and 6,428 / 131,072 B RAM; it is build-only and has not been bench-tested. This preservation branch has no net firmware changes. Its historical USB-off trial (53,536 B flash / 2,368 B static RAM) is not the selected implementation. Firmware pin ownership and the custom loader must be reconciled under #126; build success is not schematic/PCB validation and runtime stack/heap headroom is unmeasured. |
+| STM32 F103 flash profiles and F405 transition baseline | ✅ F103 profiles and F405 target build-verified; F405 hardware validation pending | `stm32-bluepill-bringup/` | `bluepill_f103c8` is the compact F103 profile (bench-only shell commands disabled); `bluepill_f103c8_bench` retains the full bench shell. Their complete-image ceilings are 52,428 B and 65,536 B respectively, checked in CI with ELF-span cross-checks and checker unit tests. Reconciled builds measured 44,944 / 65,536 B PlatformIO flash and 2,000 B RAM for compact, and 52,236 / 65,536 B and 2,000 B RAM for full-bench; complete images were 45,264 B and 52,556 B. Compact-profile bench validation is intentionally not the next milestone. The `f405rg` environment enables the full bring-up command set, measured at 66,252 / 1,048,576 B flash and 6,428 / 131,072 B RAM; it is build-only and has not been bench-tested. No source rollback is needed to restore commands hidden only in the compact F103 profile. Reconcile firmware pin ownership, intended features, and the custom loader against the actual Rev-D design under #126; build success is not schematic/PCB validation and runtime stack/heap headroom is unmeasured. |
 | CrowPanel host link transport (#93, Bucket 4) | ✅ Implemented; user-reported repeated powered/connected uploads | `crowpanel-43-bringup/src/disp_link_slave.cpp` (`DISP_LINK_SLAVE_USE_UART0 = 0`) | Default moved to UART1 (IO19/IO20) so the Blue Pill no longer shares UART0 with the CH340K programmer; requires the split-connector cable and K1 setting in `docs/DISPLAY_INTERFACE_STANDARD.md`. Current closeout evidence is user-reported repeated guarded uploads with CrowPanel + Blue Pill both connected and powered. Structured stress checks (wrong-target rejection, reset/recovery combinations, and explicit UART1 ACK/ERR round-trip capture) are still open follow-up evidence, not pass criteria for this closure. |
 
 ## Milestones and branches
