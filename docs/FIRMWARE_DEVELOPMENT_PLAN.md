@@ -22,6 +22,43 @@ and review the user's actual Rev-D design, reconcile F405 pin ownership and
 firmware behavior against it, then re-check the intended features on F405
 hardware. Track the implementation and validation gates under issue #126.
 
+### Issue #126 F405 transition checklist (source/build now vs board-required)
+
+Use this checklist to separate what is provable today from what must wait for
+physical Rev-D hardware.
+
+**Can be checked now (source/build review only):**
+
+- [ ] Confirm preserved Rev-D source files exist in `hardware/kicad/dsp-regulator-hat-rev-d-full/`:
+  `DSP-Regulator-HAT-Rev_D_My_Edits.kicad_sch`, `.kicad_pro`, `.kicad_pcb`.
+- [ ] Confirm schematic references `STM32F405RGTx` / `STM32F405RGT6`.
+- [ ] Confirm schematic references `ESP32-C3 Supermini` with footprint
+  `SuperMini_Review:Teyleten_ESP32_C3_SuperMini`.
+- [ ] Confirm F405 USB FS pins `PA11`/`PA12` are present in the schematic and
+  mapped as USB data pins (CDC path uses native F405 USB stack in firmware).
+- [ ] Confirm F405 `PC10`/`PC11` include `UART4_TX`/`UART4_RX` capability and
+  remain reserved for the custom F405↔C3 loader transport.
+- [ ] Confirm SWD/NRST/BOOT0 signals and SWD header presence for independent
+  ST-Link recovery.
+- [ ] Keep `.net`, `ERC.rpt`, and `DRC.rpt` out of pass/fail evidence when they
+  predate the preserved source set.
+
+**Must wait for hardware-in-hand (bench execution required):**
+
+- [ ] Verify actual PCB routing continuity for the chosen UART4 loader path
+  (`PC10 -> C3 GPIO0`, `PC11 <- C3 GPIO1`) and polarity/direction at pads.
+- [ ] Verify native F405 USB-C/USB FS bring-up on real hardware (enumeration,
+  CDC open/close, command channel stability).
+- [ ] Verify ST-Link SWD attach/recover flows (including recovery from invalid
+  application image and expected BOOT0/NRST behavior).
+- [ ] Verify custom UART4 loader protocol behavior on target hardware (enter,
+  transfer, validate, recover).
+- [ ] Re-run ERC/DRC/netlist generation from the preserved source and review any
+  errors against the board revision before claiming readiness.
+
+Do not claim bench readiness, electrical validation, or fabrication readiness
+until the board is present and these hardware-gated checks are executed.
+
 This was built by reading the actual firmware source in all four targets
 (not just the design docs), so the status column reflects what the code
 does today, not what a doc says it should do.
